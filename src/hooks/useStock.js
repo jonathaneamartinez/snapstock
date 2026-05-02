@@ -19,7 +19,7 @@ export function useStock(filters = {}) {
       if (condicion) q = q.eq('condition', condicion)
       if (busqueda)  q = q.ilike('nombre_base', `%${busqueda}%`)
 
-      q = q.order('created_at', { ascending: false }).limit(200)
+      q = q.order('inventory_id', { ascending: false }).limit(200)
 
       const { data, error } = await q
       if (error) throw error
