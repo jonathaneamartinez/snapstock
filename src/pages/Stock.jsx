@@ -8,6 +8,12 @@ import { IDIOMAS, CONDICIONES, ESTADOS } from '../constants'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
+const fmtFecha = (s) => {
+  if (!s) return '—'
+  try { return new Date(s).toLocaleDateString('es-AR') } catch { return '—' }
+}
+
+const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
 export default function Stock() {
   const [filters, setFilters] = useState({ estado: 'disponible' })
@@ -16,19 +22,19 @@ export default function Stock() {
 
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v || undefined }))
 
-  const total      = (m?.totalCartas ?? 0)
-  const disponibles = data?.filter(r => (r.status || r.estado) === 'disponible').length ?? 0
-  const reservadas  = data?.filter(r => (r.status || r.estado) === 'reservada').length  ?? 0
-  const valorUSD    = data?.reduce((s, r) => s + (r.price_usd || 0) * (r.quantity || 1), 0) ?? 0
+  const rows = data ?? []
+  const disponibles = rows.filter(r => r.status === 'disponible').length
+  const reservadas  = rows.filter(r => r.status === 'reservada').length
+  const valorUSD    = rows.reduce((s, r) => s + (r.price_usd || 0) * (r.stock || 1), 0)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total cartas',  value: total.toLocaleString('es-AR'),          sub: 'en stock',          color: 'text-blue-600'    },
-          { label: 'Disponibles',   value: disponibles.toLocaleString('es-AR'),    sub: 'para venta',        color: 'text-emerald-600' },
-          { label: 'Reservadas',    value: reservadas.toLocaleString('es-AR'),     sub: 'por entregar',      color: 'text-amber-500'   },
+          { label: 'Total cartas',  value: (m?.totalCartas ?? 0).toLocaleString('es-AR'), sub: 'en stock',     color: 'text-blue-600'    },
+          { label: 'Disponibles',   value: disponibles.toLocaleString('es-AR'),           sub: 'para venta',   color: 'text-emerald-600' },
+          { label: 'Reservadas',    value: reservadas.toLocaleString('es-AR'),            sub: 'por entregar', color: 'text-amber-500'   },
           { label: 'Valor total',   value: `$${valorUSD.toLocaleString('en', { maximumFractionDigits: 0 })}`, sub: 'USD mercado', color: 'text-gray-800' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
@@ -42,28 +48,27 @@ export default function Stock() {
       {/* Filtros */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
         <div className="flex flex-wrap gap-2">
-          {/* Tabs de estado */}
+          {/* Tabs estado */}
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            {['', 'disponible', 'reservada', 'vendida'].map(e => (
-              <button
-                key={e}
-                onClick={() => set('estado', e)}
+            {[
+              { v: '',           l: 'Todos'      },
+              { v: 'disponible', l: 'Disponible' },
+              { v: 'reservada',  l: 'Reservada'  },
+              { v: 'vendida',    l: 'Vendida'    },
+            ].map(e => (
+              <button key={e.v} onClick={() => set('estado', e.v)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition
-                  ${(filters.estado ?? '') === e
+                  ${(filters.estado ?? '') === e.v
                     ? 'bg-white shadow text-gray-800'
-                    : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                {e === '' ? 'Todos' : e.charAt(0).toUpperCase() + e.slice(1)}
+                    : 'text-gray-500 hover:text-gray-700'}`}>
+                {e.l}
               </button>
             ))}
           </div>
-
-          <input
-            type="text" placeholder="Buscar carta…"
+          <input type="text" placeholder="Buscar por nombre o set…"
             onChange={e => set('busqueda', e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-36
-                       focus:outline-none focus:ring-2 focus:ring-blue-200"
-          />
+            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-40
+                       focus:outline-none focus:ring-2 focus:ring-blue-200" />
           <select onChange={e => set('idioma', e.target.value)}
             className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white">
             <option value="">Idioma</option>
@@ -81,46 +86,85 @@ export default function Stock() {
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {isLoading && <div className="flex justify-center py-16"><Spinner size={32} className="text-blue-400" /></div>}
         {error     && <p className="text-red-500 text-sm p-6">Error: {error.message}</p>}
-        {!isLoading && !error && data?.length === 0 && (
+        {!isLoading && !error && rows.length === 0 && (
           <EmptyState emoji="📭" title="Sin resultados" sub="Probá con otros filtros" />
         )}
-        {!isLoading && data?.length > 0 && (
+
+        {!isLoading && rows.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-gray-400 uppercase sticky top-0">
                 <tr>
-                  {['Carta', 'Set', 'Cond.', 'Stock', 'USD', 'ARS Blue', 'Precio venta', 'Estado', 'Comprador'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
+                  {[
+                    'Imagen','Nombre','Set','Nº','Idioma','Holo',
+                    'Cond.','Stock','USD','ARS Ofic.','ARS Blue',
+                    'P. Venta','Estado','Comprador','Contacto',
+                    'Notas','F. Reserva','F. Escaneada',
+                  ].map(h => (
+                    <th key={h} className="px-3 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map(row => (
-                  <tr key={row.inventory_id} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {row.image_url && (
-                          <img src={row.image_url} alt="" className="w-7 h-10 object-cover rounded" />
-                        )}
-                        <span className="font-medium text-gray-800 truncate max-w-[140px]">
-                          {row.nombre_base || row.carta}
-                        </span>
-                      </div>
+                {rows.map(r => (
+                  <tr key={r.inventory_id} className="hover:bg-gray-50 transition">
+                    {/* Imagen */}
+                    <td className="px-3 py-2">
+                      {r.image_url
+                        ? <img src={r.image_url} alt="" className="w-7 h-10 object-cover rounded" />
+                        : <div className="w-7 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-300 text-xs">?</div>
+                      }
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap max-w-[100px] truncate">{row.set_name}</td>
-                    <td className="px-4 py-3"><Badge label={row.condition || row.condicion} /></td>
-                    <td className="px-4 py-3 font-semibold text-gray-700">{row.quantity ?? 1}</td>
-                    <td className="px-4 py-3 text-emerald-600 font-semibold whitespace-nowrap">{fmtUSD(row.price_usd)}</td>
-                    <td className="px-4 py-3 text-blue-600 font-semibold whitespace-nowrap">{fmtARS(row.price_ars_blue)}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{fmtARS(row.price_ars_oficial)}</td>
-                    <td className="px-4 py-3"><Badge label={row.status || row.estado} /></td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{row.buyer_name || '—'}</td>
+                    {/* Nombre */}
+                    <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px]">
+                      <span className="truncate block">{r.nombre || '—'}</span>
+                    </td>
+                    {/* Set */}
+                    <td className="px-3 py-2 text-gray-500 max-w-[100px]">
+                      <span className="truncate block">{r.set_name || '—'}</span>
+                    </td>
+                    {/* Número */}
+                    <td className="px-3 py-2 text-gray-500">{r.numero || '—'}</td>
+                    {/* Idioma */}
+                    <td className="px-3 py-2 text-center">
+                      {IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}
+                    </td>
+                    {/* Holo */}
+                    <td className="px-3 py-2 text-center">
+                      {r.holo ? '✨' : '—'}
+                    </td>
+                    {/* Condición */}
+                    <td className="px-3 py-2"><Badge label={r.condicion} /></td>
+                    {/* Stock */}
+                    <td className="px-3 py-2 font-semibold text-gray-700 text-center">{r.stock}</td>
+                    {/* USD */}
+                    <td className="px-3 py-2 text-emerald-600 font-semibold whitespace-nowrap">{fmtUSD(r.price_usd)}</td>
+                    {/* ARS Oficial */}
+                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtARS(r.price_ars_oficial)}</td>
+                    {/* ARS Blue */}
+                    <td className="px-3 py-2 text-blue-600 font-semibold whitespace-nowrap">{fmtARS(r.price_ars_blue)}</td>
+                    {/* Precio venta */}
+                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtARS(r.precio_venta)}</td>
+                    {/* Estado */}
+                    <td className="px-3 py-2"><Badge label={r.status} /></td>
+                    {/* Comprador */}
+                    <td className="px-3 py-2 text-gray-600">{r.buyer_name || '—'}</td>
+                    {/* Contacto */}
+                    <td className="px-3 py-2 text-gray-500">{r.buyer_contact || '—'}</td>
+                    {/* Notas */}
+                    <td className="px-3 py-2 text-gray-400 max-w-[100px]">
+                      <span className="truncate block">{r.notes || '—'}</span>
+                    </td>
+                    {/* Fecha reserva */}
+                    <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{fmtFecha(r.reserved_at)}</td>
+                    {/* Fecha escaneada */}
+                    <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{fmtFecha(r.fecha_escaneada)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-              {data.length} registros
+              {rows.length} registros
             </div>
           </div>
         )}

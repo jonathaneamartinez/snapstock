@@ -8,7 +8,6 @@ export function useStock(filters = {}) {
   return useQuery({
     queryKey: ['stock', filters],
     queryFn: async () => {
-      // Intentar primero con inventory JOIN cards para tener store_id real
       let q = supabase
         .from('inventory')
         .select(`
@@ -23,7 +22,10 @@ export function useStock(filters = {}) {
           price_ars_oficial,
           buyer_name,
           buyer_contact,
-          store_id,
+          notes,
+          reserved_at,
+          created_at,
+          scanned_at,
           cards (
             id,
             name,
@@ -31,16 +33,15 @@ export function useStock(filters = {}) {
             set_name,
             card_number,
             image_url,
-            language
+            language,
+            is_holo,
+            variant
           )
         `)
         .eq('store_id', STORE_ID)
 
       if (estado)    q = q.or(`status.eq.${estado},estado.eq.${estado}`)
       if (condicion) q = q.or(`condition.eq.${condicion},condicion.eq.${condicion}`)
-      if (busqueda) {
-        // buscar en cards.name via la relación — usamos filter manual después
-      }
 
       q = q.order('id', { ascending: false }).limit(300)
 
@@ -49,28 +50,32 @@ export function useStock(filters = {}) {
 
       let rows = (data ?? []).map(r => ({
         inventory_id:      r.id,
-        quantity:          r.quantity,
-        condition:         r.condition || r.condicion,
-        condicion:         r.condicion || r.condition,
-        status:            r.status    || r.estado,
-        estado:            r.estado    || r.status,
+        // Carta
+        nombre:            r.cards?.name || r.cards?.full_name || '',
+        set_name:          r.cards?.set_name || '',
+        numero:            r.cards?.card_number || '',
+        idioma:            r.cards?.language || 'en',
+        holo:              r.cards?.is_holo || false,
+        image_url:         r.cards?.image_url || '',
+        // Inventario
+        condicion:         r.condition || r.condicion || '',
+        stock:             r.quantity ?? 1,
         price_usd:         r.price_usd,
         price_ars_blue:    r.price_ars_blue,
         price_ars_oficial: r.price_ars_oficial,
-        buyer_name:        r.buyer_name,
-        buyer_contact:     r.buyer_contact,
-        nombre_base:       r.cards?.name || r.cards?.full_name || '',
-        carta:             r.cards?.name || '',
-        set_name:          r.cards?.set_name || '',
-        card_number:       r.cards?.card_number || '',
-        image_url:         r.cards?.image_url || '',
-        language:          r.cards?.language || 'en',
+        precio_venta:      r.price_ars_blue, // por defecto ARS blue
+        status:            r.status || r.estado || '',
+        // Reserva
+        buyer_name:        r.buyer_name || '',
+        buyer_contact:     r.buyer_contact || '',
+        notes:             r.notes || '',
+        reserved_at:       r.reserved_at || '',
+        fecha_escaneada:   r.scanned_at || r.created_at || '',
       }))
 
-      // Filtro idioma y búsqueda en JS (más flexible)
-      if (idioma)   rows = rows.filter(r => r.language === idioma)
+      if (idioma)   rows = rows.filter(r => r.idioma === idioma)
       if (busqueda) rows = rows.filter(r =>
-        r.nombre_base.toLowerCase().includes(busqueda.toLowerCase()) ||
+        r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         r.set_name.toLowerCase().includes(busqueda.toLowerCase())
       )
 
