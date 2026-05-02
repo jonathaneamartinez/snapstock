@@ -176,7 +176,8 @@ export default function Scanner() {
       </div>
 
       {/* ── Viewfinder + video ───────────────────────────────────────────────── */}
-      <div className="flex-1 relative mx-4 mt-3">
+      {/* Altura fija para que quepan los controles arriba y abajo */}
+      <div className="relative mx-4 mt-2" style={{ height: 'min(55vh, 420px)' }}>
         <Viewfinder estado={estado} />
         <video
           ref={videoRef}

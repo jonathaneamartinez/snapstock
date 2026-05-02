@@ -1,7 +1,7 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, TrendingUp, Users,
-  ShoppingCart, PlusCircle, Settings, Scan,
+  ShoppingCart, PlusCircle, Settings, Scan, X,
 } from 'lucide-react'
 
 const NAV = [
@@ -14,13 +14,34 @@ const NAV = [
   { to: '/settings',  label: 'Settings',        icon: Settings        },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }) {
+  const navigate = useNavigate()
+
+  const handleScanner = () => {
+    onClose?.()
+    navigate('/scanner')
+  }
+
   return (
-    <aside className="hidden lg:flex flex-col w-52 bg-white border-r border-gray-200 h-full fixed left-0 top-0 bottom-0 z-30">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-gray-100">
-        <span className="font-extrabold text-blue-600 text-lg tracking-tight">⚡ Snap Stock</span>
-        <p className="text-xs text-gray-400 mt-0.5">Singles UT</p>
+    <aside className={`
+      flex flex-col w-64 bg-white border-r border-gray-200
+      fixed left-0 top-0 bottom-0 z-30 h-full
+      transition-transform duration-300 ease-in-out
+      ${open ? 'translate-x-0' : '-translate-x-full'}
+      lg:translate-x-0 lg:w-52
+    `}>
+      {/* Header con botón cerrar en mobile */}
+      <div className="px-5 py-5 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <span className="font-extrabold text-blue-600 text-lg tracking-tight">⚡ Snap Stock</span>
+          <p className="text-xs text-gray-400 mt-0.5">Singles UT</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="lg:hidden text-gray-400 hover:text-gray-700 p-1"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       {/* Nav items */}
@@ -28,6 +49,7 @@ export default function Sidebar() {
         {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to} to={to}
+            onClick={onClose}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
                ${isActive
@@ -41,16 +63,16 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Scanner (siempre al fondo) */}
+      {/* Scanner al fondo */}
       <div className="p-4 border-t border-gray-100">
-        <NavLink
-          to="/scanner"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold
+        <button
+          onClick={handleScanner}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold
                      bg-blue-600 text-white hover:bg-blue-500 transition justify-center"
         >
           <Scan size={18} />
           Abrir Scanner
-        </NavLink>
+        </button>
       </div>
     </aside>
   )
