@@ -1,10 +1,14 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useMetricas } from '../hooks/useMetricas'
-import { useVentas }   from '../hooks/useVentas'
-import { useDolar }    from '../hooks/useDolar'
+import { useMetricas }        from '../hooks/useMetricas'
+import { useVentas }          from '../hooks/useVentas'
+import { useDolar }           from '../hooks/useDolar'
+import { useDeudas }          from '../hooks/useDeudas'
+import { useLastClaim }       from '../hooks/useLastClaim'
+import { useTop5Cards }       from '../hooks/useTop5Cards'
+import { usePurchasesMonth }  from '../hooks/usePurchasesMonth'
 import {
-  LineChart, Line, BarChart, Bar,
+  LineChart, Line, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, CartesianGrid
 } from 'recharts'
@@ -99,6 +103,10 @@ export default function Home() {
   const { data: m, isLoading: mLoad } = useMetricas()
   const { data: ventas = [] }          = useVentas(now.getFullYear(), now.getMonth() + 1)
   const { blue, oficial }              = useDolar()
+  const { data: deudas = [] }          = useDeudas()
+  const { data: lastClaim }            = useLastClaim()
+  const { data: top5 = [] }            = useTop5Cards(now.getFullYear(), now.getMonth() + 1)
+  const { data: compras }              = usePurchasesMonth(now.getFullYear(), now.getMonth() + 1)
 
   // ── Ventas por semana y canal ─────────────────────────────────────────────
   const { chartData, semanaMap, totalPresencial, totalClaims } = useMemo(() => {
@@ -323,6 +331,170 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* ── Fila: Último CLAIM + Reservas + Top 5 ───────────────────────── */}
+      <div className="grid lg:grid-cols-3 gap-4">
+
+        {/* Resumen último CLAIM */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="font-bold text-gray-800 mb-1">Resumen de último CLAIM</h3>
+          {lastClaim ? (
+            <>
+              <div className="flex flex-wrap gap-4 text-xs text-gray-400 mb-4">
+                <span>Fecha: <span className="font-semibold text-gray-600">
+                  {new Date(lastClaim.fecha).toLocaleDateString('es-AR')}
+                </span></span>
+                <span>Cartas: <span className="font-semibold text-gray-600">{lastClaim.totalCartas}</span></span>
+              </div>
+              <div className="space-y-2.5">
+                {[
+                  { label: 'Cartas vendidas', pct: 100,  val: lastClaim.totalCartas },
+                  { label: 'ARS Blue',        pct: 100,  val: fmtARS(lastClaim.totalARS) },
+                  { label: 'Compradores',     pct: 100,  val: lastClaim.compradores },
+                ].map(row => (
+                  <div key={row.label}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-600 font-medium">{row.label}</span>
+                      <span className="text-gray-500 font-semibold">{row.val}</span>
+                    </div>
+                    <div className="h-2 bg-blue-50 rounded-full">
+                      <div className="h-full bg-blue-200 rounded-full w-full" />
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-1 border-t border-gray-100 space-y-1.5">
+                  {lastClaim.buyers.slice(0, 4).map(b => (
+                    <div key={b.buyer} className="flex justify-between text-xs">
+                      <span className="text-gray-400 truncate">{b.buyer}</span>
+                      <span className="text-gray-500 font-medium shrink-0 ml-2">{fmtARS(b.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 py-6 text-center">Sin claims registrados</p>
+          )}
+        </div>
+
+        {/* Reservas pendientes */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col">
+          <h3 className="font-bold text-gray-800 mb-3">Reservas</h3>
+          {deudas.length > 0 ? (
+            <>
+              <div className="mb-4">
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+                  <span>Faltan por retirar</span>
+                  <span className="font-semibold text-gray-600">
+                    {deudas.reduce((s, d) => s + d.items.length, 0)} cartas
+                  </span>
+                </div>
+                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full w-[70%]" />
+                </div>
+              </div>
+              <div className="space-y-2 flex-1 overflow-y-auto max-h-44">
+                {deudas.map((d, i) => (
+                  <div key={d.buyer}
+                    className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm
+                      ${i === 0 ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${i === 0 ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                      <span className={`truncate text-xs font-medium ${i === 0 ? 'text-blue-700' : 'text-gray-600'}`}>
+                        {d.buyer} — {fmtARS(d.total)}
+                      </span>
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ml-2
+                      ${i === 0 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                      {d.items.length}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <Link to="/deudas"
+                className="mt-4 block w-full py-2.5 bg-blue-600 hover:bg-blue-500
+                           text-white text-sm font-bold text-center rounded-2xl transition">
+                Agregar reservas
+              </Link>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-300 gap-2">
+              <span className="text-3xl">📋</span>
+              <p className="text-sm">Sin reservas activas</p>
+            </div>
+          )}
+        </div>
+
+        {/* Top 5 cartas más vendidas */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="font-bold text-gray-800 mb-4">Top 5 cartas más vendidas del mes</h3>
+          {top5.length > 0 ? (
+            <div className="space-y-3">
+              {top5.map((c, i) => (
+                <div key={c.nombre} className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-bold text-gray-300 w-4 shrink-0">{i + 1}</span>
+                    <span className="bg-blue-50 text-blue-700 text-xs font-medium
+                                     px-2.5 py-1.5 rounded-xl truncate">
+                      {c.nombre}
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold text-gray-700 shrink-0">{c.qty}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 py-6 text-center">Sin datos este mes</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Ingresos y Egresos ───────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <h3 className="font-bold text-gray-800 mb-5">Ingresos y Egresos</h3>
+        <div className="grid grid-cols-2 gap-8">
+          {/* Ingresos */}
+          <div>
+            <p className="text-xs text-gray-400 mb-1">Ingresos del mes</p>
+            <p className="text-2xl font-extrabold text-blue-600 mb-3">
+              {fmtK(ventas.reduce((s, v) => s + (v.total_ars_blue || v.total_ars || 0), 0))}
+            </p>
+            <ResponsiveContainer width="100%" height={70}>
+              <AreaChart data={[1,2,3,4,5].map(s => ({ s, v: semanaMap[s] || 0 }))}
+                margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#3B6BF5" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#3B6BF5" stopOpacity={0}   />
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="v" stroke="#3B6BF5" strokeWidth={2}
+                  fill="url(#gIn)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Egresos */}
+          <div className="border-l border-gray-100 pl-8">
+            <p className="text-xs text-gray-400 mb-1">Egresos del mes</p>
+            <p className="text-2xl font-extrabold text-emerald-600 mb-3">
+              {fmtK(compras?.total ?? 0)}
+            </p>
+            <ResponsiveContainer width="100%" height={70}>
+              <AreaChart data={[1,2,3,4,5].map(s => ({ s, v: compras?.weeks?.[s] || 0 }))}
+                margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#10B981" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}   />
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="v" stroke="#10B981" strokeWidth={2}
+                  fill="url(#gOut)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
 
     </div>
   )
