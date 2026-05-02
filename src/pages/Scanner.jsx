@@ -66,7 +66,7 @@ export default function Scanner() {
   const [searchLoading, setSearchLoading] = useState(false)
   const searchTimer = useRef(null)
 
-  const { estado, carta, error, sesion, capturar, confirmar, reset } = useScanner()
+  const { estado, carta, error, sesion, capturar, confirmar, reset, forceCard } = useScanner()
 
   // ── Cámara ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -92,16 +92,30 @@ export default function Scanner() {
   }, [])
 
   // ── Zoom ──────────────────────────────────────────────────────────────────
+  // Estrategia dual:
+  //   1. applyConstraints nativo (Android Chrome) — zoom óptico real
+  //   2. CSS transform scale — fallback universal (iOS Safari, desktop, etc.)
   const applyZoom = useCallback(async (z) => {
     setZoom(z)
     const track = videoRef.current?.srcObject?.getVideoTracks()[0]
-    if (!track) return
-    try {
-      const caps = track.getCapabilities()
-      if (caps.zoom) {
-        await track.applyConstraints({ advanced: [{ zoom: z }] })
-      }
-    } catch (_) {}
+    let usedNative = false
+    if (track) {
+      try {
+        const caps = track.getCapabilities()
+        if (caps.zoom) {
+          const min = caps.zoom.min ?? 1
+          const max = caps.zoom.max ?? z
+          const clamped = Math.min(Math.max(z, min), max)
+          await track.applyConstraints({ advanced: [{ zoom: clamped }] })
+          usedNative = true
+        }
+      } catch (_) {}
+    }
+    // Fallback CSS zoom para iOS / desktop
+    if (!usedNative && videoRef.current) {
+      videoRef.current.style.transform = z === 1 ? '' : `scale(${z})`
+      videoRef.current.style.transformOrigin = 'center center'
+    }
   }, [])
 
   // ── Loop pHash ────────────────────────────────────────────────────────────
@@ -152,18 +166,6 @@ export default function Scanner() {
       } catch (_) {}
       finally { setSearchLoading(false) }
     }, 380)
-  }
-
-  const selectFromSearch = (item) => {
-    setSearchQ('')
-    setSearchResults([])
-    // Simular resultado del scanner
-    reset()
-    // Usamos el hook interno para mostrar CardResult
-    capturar.__forceCard?.(item) // fallback: mostrar directo
-    window.__snapSearchItem = item
-    // Trigger manual en useScanner via identificar
-    scannerApi.identificar(null, STORE_ID).catch(() => {})
   }
 
   // ── Confirmar ─────────────────────────────────────────────────────────────
@@ -307,13 +309,7 @@ export default function Scanner() {
               <button key={i} onClick={() => {
                 setSearchQ('')
                 setSearchResults([])
-                // Forzar mostrar como identificado
-                reset()
-                // Usar hook directamente
-                setTimeout(() => {
-                  window.__forcedCard = item
-                  capturar('__search__')
-                }, 100)
+                forceCard(item)
               }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/5
                            text-left border-b border-white/5 last:border-0 transition">

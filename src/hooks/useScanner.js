@@ -73,5 +73,13 @@ export function useScanner() {
     setSesion({ cartas: 0, totalUSD: 0 })
   }, [])
 
-  return { estado, opciones, carta, error, sesion, capturar, confirmar, reset, resetSesion }
+  // Fuerza mostrar una carta directamente (desde buscador manual)
+  const forceCard = useCallback((cartaItem) => {
+    setCarta(cartaItem)
+    setEstado('identified')
+    setError(null)
+    procesandoRef.current = false
+  }, [])
+
+  return { estado, opciones, carta, error, sesion, capturar, confirmar, reset, resetSesion, forceCard }
 }
