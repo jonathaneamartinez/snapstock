@@ -356,7 +356,7 @@ export default function Ingresos() {
 
               {/* Precio venta */}
               <div>
-                <label className={labelCls}>Precio de venta (USD)</label>
+                <label className={labelCls}>Precio de venta (ARS)</label>
                 <input type="number" step="0.01" min="0"
                   value={form.precioVenta}
                   onChange={e => setField('precioVenta', e.target.value)}
