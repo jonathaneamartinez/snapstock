@@ -10,6 +10,7 @@ import CardImage       from '../components/ui/CardImage'
 import CardModal       from '../components/ui/CardModal'
 import { AnimatePresence, motion } from 'framer-motion'
 import { IDIOMAS, CONDICIONES } from '../constants'
+import { PAGE_SIZE } from '../hooks/useStock'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -23,7 +24,7 @@ const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫�
 export default function Stock() {
   const queryClient = useQueryClient()
 
-  const [filters,     setFilters]     = useState({ estado: 'disponible' })
+  const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0 })
   const [modalCard,   setModalCard]   = useState(null)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -34,11 +35,20 @@ export default function Stock() {
 
   const set = (k, v) => {
     setSelectedIds(new Set())
-    setFilters(f => ({ ...f, [k]: v || undefined }))
+    setFilters(f => ({ ...f, [k]: v || undefined, page: 0 }))
+  }
+  const goToPage = (p) => {
+    setSelectedIds(new Set())
+    setFilters(f => ({ ...f, page: p }))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const rows        = data ?? []
-  const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.inventory_id))
+  const rows        = data?.rows  ?? []
+  const total       = data?.total ?? 0
+  const currentPage = data?.page  ?? 0
+  const totalPages  = Math.ceil(total / PAGE_SIZE)
+
+  const allSelected  = rows.length > 0 && rows.every(r => selectedIds.has(r.inventory_id))
   const someSelected = selectedIds.size > 0
 
   const disponibles = rows.filter(r => r.status === 'disponible').length
@@ -234,9 +244,58 @@ export default function Stock() {
                 })}
               </tbody>
             </table>
-            <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-              {rows.length} registros
-              {someSelected && <span className="ml-2 text-blue-500 font-semibold">· {selectedIds.size} seleccionadas</span>}
+            {/* Paginador */}
+            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-gray-400">
+                {total.toLocaleString('es-AR')} registros totales
+                · página {currentPage + 1} de {totalPages || 1}
+                {someSelected && <span className="ml-2 text-blue-500 font-semibold">· {selectedIds.size} seleccionadas</span>}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => goToPage(0)}
+                  disabled={currentPage === 0}
+                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
+                             disabled:opacity-30 hover:bg-gray-50 transition">
+                  «
+                </button>
+                <button
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 0}
+                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
+                             disabled:opacity-30 hover:bg-gray-50 transition">
+                  ‹ Ant.
+                </button>
+
+                {/* Páginas cercanas */}
+                {Array.from({ length: totalPages }, (_, i) => i)
+                  .filter(i => Math.abs(i - currentPage) <= 2)
+                  .map(i => (
+                    <button key={i} onClick={() => goToPage(i)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
+                        ${i === currentPage
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
+                      {i + 1}
+                    </button>
+                  ))
+                }
+
+                <button
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages - 1}
+                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
+                             disabled:opacity-30 hover:bg-gray-50 transition">
+                  Sig. ›
+                </button>
+                <button
+                  onClick={() => goToPage(totalPages - 1)}
+                  disabled={currentPage >= totalPages - 1}
+                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
+                             disabled:opacity-30 hover:bg-gray-50 transition">
+                  »
+                </button>
+              </div>
             </div>
           </div>
         )}
