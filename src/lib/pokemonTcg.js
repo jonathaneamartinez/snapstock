@@ -109,12 +109,25 @@ export async function fetchCardImages(nombre, numero) {
       card = await apiSearch(`name:"${withApostrophe}" number:${numOnly}`)
     }
 
-    // S6: wildcard con primera palabra significativa (>= 4 chars)
+    // S6: nombre sin comillas (algunos parsers de Lucene fallan con apóstrofe dentro de "")
+    if (!card && withApostrophe.includes("'")) {
+      if (bestNum) card = await apiSearch(`name:${withoutApostrophe} number:${bestNum}`)
+      if (!card)   card = await apiSearch(`name:${withoutApostrophe}`)
+    }
+
+    // S7: wildcard con el nombre base  →  name:*Energy* number:35
+    if (!card && base) {
+      if (bestNum) card = await apiSearch(`name:*${base}* number:${bestNum}`)
+      if (!card)   card = await apiSearch(`name:*${base}*`)
+    }
+
+    // S8: wildcard con última palabra significativa del nombre completo
     if (!card) {
-      const firstWord = withApostrophe.split(' ').find(w => w.replace(/'/g, '').length >= 4)
-      if (firstWord) {
-        const clean = firstWord.replace(/'/g, '')
-        card = await apiSearch(`name:${clean}*${bestNum ? ` number:${bestNum}` : ''}`.trim())
+      const words  = withoutApostrophe.split(' ').filter(w => w.length >= 4)
+      const last   = words[words.length - 1]
+      if (last && last !== base) {
+        if (bestNum) card = await apiSearch(`name:*${last}* number:${bestNum}`)
+        if (!card)   card = await apiSearch(`name:*${last}*`)
       }
     }
 
