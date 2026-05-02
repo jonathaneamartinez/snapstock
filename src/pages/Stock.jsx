@@ -11,6 +11,7 @@ import CardModal       from '../components/ui/CardModal'
 import { AnimatePresence, motion } from 'framer-motion'
 import { IDIOMAS, CONDICIONES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
+import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -45,6 +46,7 @@ export default function Stock() {
 
   const rows        = data?.rows  ?? []
   const total       = data?.total ?? 0
+  const imageMap    = usePrefetchPageImages(rows)
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
 
@@ -199,7 +201,7 @@ export default function Stock() {
                       {/* Imagen */}
                       <td className="px-3 py-2">
                         <CardImage
-                          imageUrl={r.image_url}
+                          imageUrl={r.image_url || imageMap[r.card_id]}
                           cardId={r.card_id}
                           nombre={r.nombre}
                           numero={r.numero}
