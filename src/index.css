@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+/* Animación de scan para el Viewfinder */
+@keyframes scanLine {
+  0%   { top: 10%; opacity: 1; }
+  50%  { top: 88%; opacity: 0.6; }
+  100% { top: 10%; opacity: 1; }
+}
+
+/* Safe area para iOS (notch / home indicator) */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 16px); }
