@@ -8,22 +8,73 @@ export function useStock(filters = {}) {
   return useQuery({
     queryKey: ['stock', filters],
     queryFn: async () => {
-      // stock_completo es una VIEW — no expone store_id directamente
-      // como solo hay una tienda los datos ya son correctos
+      // Intentar primero con inventory JOIN cards para tener store_id real
       let q = supabase
-        .from('stock_completo')
-        .select('*')
+        .from('inventory')
+        .select(`
+          id,
+          quantity,
+          condition,
+          condicion,
+          status,
+          estado,
+          price_usd,
+          price_ars_blue,
+          price_ars_oficial,
+          buyer_name,
+          buyer_contact,
+          store_id,
+          cards (
+            id,
+            name,
+            full_name,
+            set_name,
+            card_number,
+            image_url,
+            language
+          )
+        `)
+        .eq('store_id', STORE_ID)
 
-      if (estado)    q = q.eq('status', estado)
-      if (idioma)    q = q.eq('language', idioma)
-      if (condicion) q = q.eq('condition', condicion)
-      if (busqueda)  q = q.ilike('nombre_base', `%${busqueda}%`)
+      if (estado)    q = q.or(`status.eq.${estado},estado.eq.${estado}`)
+      if (condicion) q = q.or(`condition.eq.${condicion},condicion.eq.${condicion}`)
+      if (busqueda) {
+        // buscar en cards.name via la relación — usamos filter manual después
+      }
 
-      q = q.order('inventory_id', { ascending: false }).limit(200)
+      q = q.order('id', { ascending: false }).limit(300)
 
       const { data, error } = await q
       if (error) throw error
-      return data ?? []
+
+      let rows = (data ?? []).map(r => ({
+        inventory_id:      r.id,
+        quantity:          r.quantity,
+        condition:         r.condition || r.condicion,
+        condicion:         r.condicion || r.condition,
+        status:            r.status    || r.estado,
+        estado:            r.estado    || r.status,
+        price_usd:         r.price_usd,
+        price_ars_blue:    r.price_ars_blue,
+        price_ars_oficial: r.price_ars_oficial,
+        buyer_name:        r.buyer_name,
+        buyer_contact:     r.buyer_contact,
+        nombre_base:       r.cards?.name || r.cards?.full_name || '',
+        carta:             r.cards?.name || '',
+        set_name:          r.cards?.set_name || '',
+        card_number:       r.cards?.card_number || '',
+        image_url:         r.cards?.image_url || '',
+        language:          r.cards?.language || 'en',
+      }))
+
+      // Filtro idioma y búsqueda en JS (más flexible)
+      if (idioma)   rows = rows.filter(r => r.language === idioma)
+      if (busqueda) rows = rows.filter(r =>
+        r.nombre_base.toLowerCase().includes(busqueda.toLowerCase()) ||
+        r.set_name.toLowerCase().includes(busqueda.toLowerCase())
+      )
+
+      return rows
     },
     staleTime: 30_000,
   })
