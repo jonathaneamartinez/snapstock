@@ -55,6 +55,7 @@ export function useStock(filters = {}) {
 
       let rows = (data ?? []).map(r => ({
         inventory_id:      r.id,
+        card_id:           r.cards?.id || null,
         // Carta
         nombre:            r.cards?.name || r.cards?.full_name || '',
         set_name:          r.cards?.set_name || '',

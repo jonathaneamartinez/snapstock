@@ -115,6 +115,7 @@ export default function Stock() {
                     <td className="px-3 py-2">
                       <CardImage
                         imageUrl={r.image_url}
+                        cardId={r.card_id}
                         nombre={r.nombre}
                         numero={r.numero}
                         idioma={r.idioma}
