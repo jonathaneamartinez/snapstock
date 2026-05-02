@@ -6,14 +6,32 @@ const BASE = 'https://api.pokemontcg.io/v2'
 // In-memory cache: "nombre|numero" → { small, large } | null
 const _cache = new Map()
 
-/** Extrae el nombre base quitando prefijos tipo "Team Rocket's", "Dark", "Lt. Surge's", etc. */
+/**
+ * Extrae el sufijo de número del nombre si está incluido.
+ * Ej: "Mew VMAX #TG30" → { cleanName: "Mew VMAX", extraNum: "TG30" }
+ * Ej: "Pikachu #001"   → { cleanName: "Pikachu",   extraNum: "001"  }
+ * Ej: "Oddish"         → { cleanName: "Oddish",     extraNum: null   }
+ */
+function extractEmbeddedNumber(nombre) {
+  // Patrón: cualquier cosa que empiece con # seguido de letras/números al final del nombre
+  const match = nombre.match(/\s*#([A-Za-z0-9]+)\s*$/)
+  if (match) {
+    return {
+      cleanName: nombre.slice(0, match.index).trim(),
+      extraNum:  match[1],
+    }
+  }
+  return { cleanName: nombre.trim(), extraNum: null }
+}
+
+/** Quita prefijos de entrenador: "Team Rocket's", "Dark", "Lt. Surge's", etc. */
 function baseName(nombre) {
   return nombre
     .replace(/^(Team Rocket's|Dark |Light |Lt\. Surge's|Brock's|Misty's|Sabrina's|Giovanni's|Blaine's|Koga's|Erika's|Janine's|Pryce's|Jasmine's|Whitney's|Morty's|Chuck's|Karen's)\s*/i, '')
     .trim()
 }
 
-/** Limpia el nombre para la query: quita comillas, apóstrofes problemáticos */
+/** Limpia comillas/apóstrofes para la query */
 function sanitize(s) {
   return s.replace(/['"]/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -44,35 +62,47 @@ export async function fetchCardImages(nombre, numero) {
   const key = `${nombre}|${numero}`
   if (_cache.has(key)) return _cache.get(key)
 
-  const safe    = sanitize(nombre)
-  const base    = sanitize(baseName(nombre))
-  const num     = numero ? String(numero).replace(/\D/g, '') : '' // solo dígitos
+  // Limpiar número embebido en el nombre ("Mew VMAX #TG30" → "Mew VMAX", "TG30")
+  const { cleanName, extraNum } = extractEmbeddedNumber(nombre)
+
+  // Número a usar: preferir el extraído del nombre (TG30, GG70, etc.) sobre el campo numero
+  const bestNum = extraNum || (numero ? String(numero) : '')
+  // También preparar versión solo dígitos como fallback
+  const numOnly = bestNum.replace(/\D/g, '')
+
+  const safeName = sanitize(cleanName)
+  const baseN    = sanitize(baseName(cleanName))
 
   let card = null
 
   try {
-    // S1: nombre exacto + número  →  name:"Oddish" number:1
-    if (num) {
-      card = await apiSearch(`name:"${safe}" number:${num}`)
+    // S1: nombre limpio + número completo (ej: number:TG30)
+    if (bestNum) {
+      card = await apiSearch(`name:"${safeName}" number:${bestNum}`)
     }
 
-    // S2: nombre exacto sin número
+    // S2: nombre limpio sin número
     if (!card) {
-      card = await apiSearch(`name:"${safe}"`)
+      card = await apiSearch(`name:"${safeName}"`)
     }
 
-    // S3: nombre base + número (quita "Team Rocket's", "Dark", etc.)
-    if (!card && base !== safe) {
-      if (num) card = await apiSearch(`name:"${base}" number:${num}`)
-      if (!card) card = await apiSearch(`name:"${base}"`)
+    // S3: nombre base (sin prefijo entrenador) + número completo
+    if (!card && baseN !== safeName) {
+      if (bestNum) card = await apiSearch(`name:"${baseN}" number:${bestNum}`)
+      if (!card)   card = await apiSearch(`name:"${baseN}"`)
     }
 
-    // S4: búsqueda wildcard — pokemontcg soporta name:Dugtrio* (sin comillas)
-    if (!card && base) {
-      // toma solo la primera palabra significativa para no ser demasiado restrictivo
-      const firstWord = base.split(' ')[0]
+    // S4: con número solo dígitos (por si el campo tiene "30" en vez de "TG30")
+    if (!card && numOnly && numOnly !== bestNum) {
+      card = await apiSearch(`name:"${safeName}" number:${numOnly}`)
+    }
+
+    // S5: wildcard con primera palabra significativa
+    if (!card && safeName) {
+      const firstWord = safeName.split(' ')[0]
       if (firstWord.length >= 4) {
-        card = await apiSearch(`name:${firstWord}* ${num ? `number:${num}` : ''}`.trim())
+        const q = `name:${firstWord}*${bestNum ? ` number:${bestNum}` : ''}`
+        card = await apiSearch(q.trim())
       }
     }
 
