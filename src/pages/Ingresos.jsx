@@ -164,12 +164,9 @@ export default function Ingresos() {
 
       if (existing?.id) {
         cardId = existing.id
-        // Actualizar imagen/precio si tenemos datos nuevos
-        const upd = {}
-        if (preview?.imagen) upd.image_url = preview.imagen
-        if (precioUsd != null) upd.price_usd = precioUsd
-        if (Object.keys(upd).length) {
-          await supabase.from('cards').update(upd).eq('id', cardId)
+        // Actualizar imagen si tenemos una nueva
+        if (preview?.imagen) {
+          await supabase.from('cards').update({ image_url: preview.imagen }).eq('id', cardId)
         }
       } else {
         // Insertar nueva carta
@@ -182,7 +179,6 @@ export default function Ingresos() {
             card_number: form.numero.trim() || null,
             language:    form.idioma        || 'en',
             image_url:   preview?.imagen    || null,
-            price_usd:   precioUsd,
           })
           .select('id')
           .single()
