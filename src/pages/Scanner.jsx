@@ -283,9 +283,9 @@ export default function Scanner() {
     cooldownRef.current    = true
     stableRef.current      = 0
     prevPixRef.current     = null
-    capturar(captureCardCrop(videoRef.current, zoom))
+    capturar(captureCardCrop(videoRef.current, zoom), idioma)
     setTimeout(() => { cooldownRef.current = false; setLockProgress(0) }, 3500)
-  }, [capturar, estado, zoom])
+  }, [capturar, estado, zoom, idioma])
 
   // ── Loop detección por movimiento (idéntico a _asCheckMotion del HTML) ────
   const detectFrame = useCallback(() => {
@@ -332,7 +332,7 @@ export default function Scanner() {
           prevPixRef.current = null
           cooldownRef.current = true
           if (navigator.vibrate) navigator.vibrate(30)
-          capturar(captureCardCrop(video, zoom))
+          capturar(captureCardCrop(video, zoom), idioma)
           setTimeout(() => { cooldownRef.current = false; setLockProgress(0) }, 3500)
         }
       } else {
@@ -343,7 +343,7 @@ export default function Scanner() {
     }
 
     prevPixRef.current = curr
-  }, [estado, capturar, autoScan, zoom, lockProgress])
+  }, [estado, capturar, autoScan, zoom, lockProgress, idioma])
 
   useEffect(() => {
     if (!camOk) return

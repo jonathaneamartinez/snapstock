@@ -12,6 +12,21 @@ function holoClass(level) {
   }
 }
 
+// Estado base: efecto visible sin interacción (posición ligeramente descentrada)
+function setDefaultVars(scene) {
+  scene.style.setProperty('--pointer-x',           '55%')
+  scene.style.setProperty('--pointer-y',           '40%')
+  scene.style.setProperty('--pointer-from-left',   '0.55')
+  scene.style.setProperty('--pointer-from-top',    '0.40')
+  scene.style.setProperty('--pointer-from-center', '0.22')
+  scene.style.setProperty('--card-opacity',        '0.65')
+  scene.style.setProperty('--rotate-x',            '3deg')
+  scene.style.setProperty('--rotate-y',            '5deg')
+  scene.style.setProperty('--background-x',        '55%')
+  scene.style.setProperty('--background-y',        '42%')
+  scene.classList.add('interacting')
+}
+
 // Actualiza todas las CSS custom properties del efecto
 function setCardVars(scene, x, y, w, h) {
   const pfl = x / w          // pointer-from-left: 0 → 1
@@ -45,18 +60,6 @@ function setCardVars(scene, x, y, w, h) {
   scene.style.setProperty('--background-y',        by  + '%')
 }
 
-function resetCardVars(scene) {
-  scene.style.setProperty('--pointer-x',           '50%')
-  scene.style.setProperty('--pointer-y',           '50%')
-  scene.style.setProperty('--pointer-from-left',   '0.5')
-  scene.style.setProperty('--pointer-from-top',    '0.5')
-  scene.style.setProperty('--pointer-from-center', '0')
-  scene.style.setProperty('--card-opacity',        '0')
-  scene.style.setProperty('--rotate-x',            '0deg')
-  scene.style.setProperty('--rotate-y',            '0deg')
-  scene.style.setProperty('--background-x',        '50%')
-  scene.style.setProperty('--background-y',        '50%')
-}
 
 export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
   const sceneRef = useRef(null)
@@ -64,6 +67,13 @@ export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
 
   const cls = holoClass(holoLevel)
   const isHolo = cls !== ''
+
+  // Mostrar efecto de base al montar la carta (sin necesitar interacción)
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene || !isHolo) return
+    setDefaultVars(scene)
+  }, [isHolo])
 
   const handleMouseMove = useCallback((e) => {
     if (!isHolo || gyroActiveRef.current) return
@@ -78,8 +88,7 @@ export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
     if (!isHolo) return
     const scene = sceneRef.current
     if (!scene) return
-    resetCardVars(scene)
-    scene.classList.remove('interacting')
+    setDefaultVars(scene)
   }, [isHolo])
 
   const handleTouchMove = useCallback((e) => {
@@ -96,8 +105,7 @@ export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
     if (!isHolo) return
     const scene = sceneRef.current
     if (!scene) return
-    resetCardVars(scene)
-    scene.classList.remove('interacting')
+    setDefaultVars(scene)
   }, [isHolo])
 
   useEffect(() => {

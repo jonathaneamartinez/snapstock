@@ -4,11 +4,11 @@ export const scannerApi = {
   health: () =>
     fetch(`${BASE}/health`).then(r => r.json()),
 
-  identificar: (imagen_base64, store_id) =>
+  identificar: (imagen_base64, store_id, idioma = 'en') =>
     fetch(`${BASE}/scanner/identificar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imagen_base64, store_id }),
+      body: JSON.stringify({ imagen_base64, store_id, idioma }),
     }).then(r => r.json()),
 
   confirmar: (payload) =>
