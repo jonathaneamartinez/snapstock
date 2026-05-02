@@ -22,10 +22,15 @@ export function useStock(filters = {}) {
           price_ars_oficial,
           buyer_name,
           buyer_contact,
-          notes,
+          comprador,
+          contacto,
+          notas,
+          sale_notes,
           reserved_at,
-          created_at,
+          fecha_reserva,
           scanned_at,
+          scan_date,
+          updated_at,
           cards (
             id,
             name,
@@ -66,11 +71,11 @@ export function useStock(filters = {}) {
         precio_venta:      r.price_ars_blue, // por defecto ARS blue
         status:            r.status || r.estado || '',
         // Reserva
-        buyer_name:        r.buyer_name || '',
-        buyer_contact:     r.buyer_contact || '',
-        notes:             r.notes || '',
-        reserved_at:       r.reserved_at || '',
-        fecha_escaneada:   r.scanned_at || r.created_at || '',
+        buyer_name:        r.buyer_name || r.comprador || '',
+        buyer_contact:     r.buyer_contact || r.contacto || '',
+        notes:             r.notas || r.sale_notes || '',
+        reserved_at:       r.reserved_at || r.fecha_reserva || '',
+        fecha_escaneada:   r.scanned_at || r.scan_date || r.updated_at || '',
       }))
 
       if (idioma)   rows = rows.filter(r => r.idioma === idioma)
