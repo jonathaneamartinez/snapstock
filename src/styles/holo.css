@@ -1,100 +1,184 @@
-/* ── Efecto holográfico para cartas Pokémon TCG ───────────────────────────── */
+/* ── Efecto holográfico — portado del scanner HTML de Railway ────────────── */
 
-.holo-card {
-  position: relative;
+.card-scene {
+  --pointer-x: 50%; --pointer-y: 50%;
+  --pointer-from-left: 0.5; --pointer-from-top: 0.5;
+  --pointer-from-center: 0; --card-opacity: 0;
+  --rotate-x: 0deg; --rotate-y: 0deg;
+  --background-x: 50%; --background-y: 50%;
+  --sunpillar-clr-1: hsl(2,100%,73%);
+  --sunpillar-clr-2: hsl(53,100%,69%);
+  --sunpillar-clr-3: hsl(93,100%,69%);
+  --sunpillar-clr-4: hsl(176,100%,76%);
+  --sunpillar-clr-5: hsl(228,100%,74%);
+  --sunpillar-clr-6: hsl(283,100%,73%);
+
+  --card-w: min(72vw, 260px);
+  --card-h: calc(var(--card-w) * 1.396);
+
+  width: var(--card-w);
+  margin: 8px auto 0;
+  perspective: calc(var(--card-w) * 3);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+.card-scene:active { cursor: grabbing; }
+
+.card-rotator {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 4.55% / 3.5%;
+  transform: rotateY(var(--rotate-x)) rotateX(var(--rotate-y));
   transform-style: preserve-3d;
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  transition: transform 0.08s ease-out, box-shadow 0.2s ease;
+  position: relative;
+  /* NO will-change: transform — rompe mix-blend-mode en mobile Chrome/Safari */
+  box-shadow:
+    -6px 10px 28px -4px rgba(0,0,0,.75),
+    0 0 36px -8px rgba(167,139,250, calc(var(--card-opacity) * .8));
 }
 
-/* Overlay del efecto holo */
-.holo-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    115deg,
-    transparent 20%,
-    rgba(255,219,77,0.15) 30%,
-    rgba(100,200,255,0.25) 40%,
-    rgba(255,100,255,0.25) 50%,
-    rgba(100,255,200,0.25) 60%,
-    rgba(255,219,77,0.15) 70%,
-    transparent 80%
-  );
-  opacity: 0;
-  mix-blend-mode: color-dodge;
-  transition: opacity 0.3s ease;
+.card-img {
+  display: block;
+  width: 100%; height: 100%;
+  border-radius: 4.55% / 3.5%;
+  object-fit: cover;
   pointer-events: none;
-  z-index: 2;
 }
 
-/* Brillo especular */
-.holo-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    ellipse at var(--mx, 50%) var(--my, 50%),
-    rgba(255,255,255,0.18) 0%,
-    transparent 60%
-  );
-  opacity: 0;
+/* ── Shine & Glare layers ──────────────────────────────────────────────────── */
+.card-shine {
+  position: absolute; inset: 0;
+  border-radius: 4.55% / 3.5%;
   pointer-events: none;
-  z-index: 3;
-  transition: opacity 0.3s ease;
+  opacity: 0;
+  transition: opacity .3s;
+  clip-path: inset(0% round 4.55%/3.5%);
+}
+.card-glare {
+  position: absolute; inset: 0;
+  border-radius: 4.55% / 3.5%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+  mix-blend-mode: overlay;
 }
 
-/* ── Nivel holo normal ────────────────────────────────────────────────────── */
-.holo-card.holo-normal { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+.card-scene:hover   .card-shine,
+.card-scene.interacting .card-shine { opacity: 1; }
 
-/* ── Nivel holo estándar ──────────────────────────────────────────────────── */
-.holo-card.holo-holo::before { opacity: 0.6; }
-.holo-card.holo-holo::after  { opacity: 0.5; }
-.holo-card.holo-holo {
-  box-shadow:
-    0 4px 30px rgba(100,180,255,0.3),
-    0 0 60px rgba(100,180,255,0.1);
+.card-scene:hover   .card-glare,
+.card-scene.interacting .card-glare {
+  opacity: calc(var(--card-opacity) * .8);
 }
 
-/* ── Nivel ultra ──────────────────────────────────────────────────────────── */
-.holo-card.holo-ultra::before { opacity: 0.9; }
-.holo-card.holo-ultra::after  { opacity: 0.7; }
-.holo-card.holo-ultra {
-  box-shadow:
-    0 6px 40px rgba(200,100,255,0.4),
-    0 0 80px rgba(100,200,255,0.2),
-    inset 0 0 30px rgba(255,255,255,0.05);
-}
-
-/* ── Nivel secret (dorado) ────────────────────────────────────────────────── */
-.holo-card.holo-secret::before {
-  opacity: 1;
-  background: linear-gradient(
-    115deg,
-    transparent 10%,
-    rgba(255,220,50,0.3)  25%,
-    rgba(255,180,0,0.4)   40%,
-    rgba(255,140,0,0.3)   50%,
-    rgba(255,200,50,0.4)  65%,
-    rgba(255,240,100,0.2) 80%,
-    transparent 90%
+/* ── Glare (todos los tipos) ──────────────────────────────────────────────── */
+.card-scene.holo         .card-glare,
+.card-scene.holo-v       .card-glare,
+.card-scene.holo-rainbow .card-glare,
+.card-scene.reverse-holo .card-glare {
+  background-image: radial-gradient(
+    farthest-corner circle at var(--pointer-x) var(--pointer-y),
+    hsla(0,0%,100%,.8) 10%,
+    hsla(0,0%,100%,.5) 20%,
+    hsla(0,0%,0%,.75)  90%
   );
-}
-.holo-card.holo-secret::after { opacity: 0.9; }
-.holo-card.holo-secret {
-  box-shadow:
-    0 6px 50px rgba(255,200,0,0.5),
-    0 0 100px rgba(255,160,0,0.2),
-    inset 0 0 40px rgba(255,220,0,0.08);
+  filter: brightness(.7) contrast(1.5);
 }
 
-/* ── Estado activo (con mouse/touch/gyro) ─────────────────────────────────── */
-.holo-card.holo-active::before,
-.holo-card.holo-active::after {
-  opacity: 1;
+/* ── Holo estándar (Rare Holo) ────────────────────────────────────────────── */
+.card-scene.holo .card-shine {
+  background-image:
+    repeating-linear-gradient(
+      110deg,
+      #f70606,#f77206,#f7e406,#07f72a,#0671f7,#9306f7,
+      #f70606,#f77206,#f7e406,#07f72a,#0671f7,#9306f7
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0,0,0,.5)     0, rgba(0,0,0,.5)     1px,
+      rgba(255,255,255,.1) 1px, rgba(255,255,255,.1) 2px
+    );
+  background-blend-mode: screen;
+  background-size: 400% 100%, 3px 3px;
+  background-position:
+    calc(var(--background-x) * 2.5) calc(var(--background-y) * 3),
+    0 0;
+  filter: brightness(.9) contrast(1.4) saturate(1.5);
+  mix-blend-mode: screen;
+  opacity: calc(var(--card-opacity) * .75);
+}
+
+/* ── Holo V / VMAX / VSTAR ────────────────────────────────────────────────── */
+.card-scene.holo-v .card-shine {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      var(--sunpillar-clr-1) 0%,  var(--sunpillar-clr-2) 5%,
+      var(--sunpillar-clr-3) 10%, var(--sunpillar-clr-4) 15%,
+      var(--sunpillar-clr-5) 20%, var(--sunpillar-clr-6) 25%,
+      var(--sunpillar-clr-1) 30%
+    ),
+    repeating-linear-gradient(
+      133deg,
+      #0e152e 0%,
+      hsl(180,10%,60%) 3.8%, hsl(180,29%,66%) 4.5%,
+      hsl(180,10%,60%) 5.2%,
+      #0e152e 10%, #0e152e 12%
+    ),
+    radial-gradient(
+      farthest-corner circle at var(--pointer-x) var(--pointer-y),
+      rgba(0,0,0,.1) 12%, rgba(0,0,0,.15) 20%, rgba(0,0,0,.25) 120%
+    );
+  background-blend-mode: screen, hue, hard-light;
+  background-size: 200% 700%, 300% 100%, 200% 100%;
+  background-position:
+    var(--background-x) calc(var(--background-y) * 3),
+    var(--background-x) var(--background-y),
+    var(--background-x) var(--background-y);
+  filter: brightness(.9) contrast(1.6) saturate(1.4);
+  mix-blend-mode: screen;
+  opacity: calc(var(--card-opacity) * .9);
+}
+
+/* ── Rainbow / Secret Rare ────────────────────────────────────────────────── */
+.card-scene.holo-rainbow .card-shine {
+  background-image:
+    linear-gradient(
+      -45deg,
+      hsl(0,57%,37%), hsl(40,53%,39%), hsl(90,60%,35%),
+      hsl(180,60%,35%), hsl(210,57%,39%), hsl(280,55%,31%), hsl(0,57%,37%)
+    ),
+    repeating-linear-gradient(
+      -30deg,
+      hsl(0,57%,50%),   hsl(40,53%,50%),  hsl(90,60%,50%),
+      hsl(180,60%,50%), hsl(210,57%,50%), hsl(280,55%,45%), hsl(0,57%,50%)
+    );
+  background-blend-mode: luminosity;
+  background-size: 200% 200%, 400% 400%;
+  background-position:
+    calc(25% + 50% * var(--pointer-from-left)) calc(25% + 50% * var(--pointer-from-top)),
+    calc(25% + var(--pointer-x) / 2)           calc(25% + var(--pointer-y) / 2);
+  filter:
+    brightness(calc(var(--pointer-from-center) * .25 + .75))
+    contrast(2)
+    saturate(.85);
+  mix-blend-mode: screen;
+  opacity: calc(var(--card-opacity) * .95);
+}
+
+/* ── Reverse Holo ─────────────────────────────────────────────────────────── */
+.card-scene.reverse-holo .card-shine {
+  background-image:
+    radial-gradient(circle at var(--pointer-x) var(--pointer-y), #fff 5%, #000 50%, #fff 80%),
+    linear-gradient(-45deg, #000 15%, #fff, #000 85%);
+  background-blend-mode: soft-light, difference;
+  background-size: 120% 120%, 200% 200%;
+  background-position:
+    center center,
+    calc(100% * var(--pointer-from-left)) calc(100% * var(--pointer-from-top));
+  filter: brightness(.6) contrast(1.5) saturate(1);
+  mix-blend-mode: screen;
+  opacity: calc(1.2 * var(--card-opacity) - var(--pointer-from-center) * .3);
 }
