@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import '../../styles/holo.css'
 
 // Mapea holoLevel del backend al class CSS
@@ -12,118 +12,93 @@ function holoClass(level) {
   }
 }
 
-// Estado base: efecto visible sin interacción (posición ligeramente descentrada)
-function setDefaultVars(scene) {
-  scene.style.setProperty('--pointer-x',           '55%')
-  scene.style.setProperty('--pointer-y',           '40%')
-  scene.style.setProperty('--pointer-from-left',   '0.55')
-  scene.style.setProperty('--pointer-from-top',    '0.40')
-  scene.style.setProperty('--pointer-from-center', '0.22')
-  scene.style.setProperty('--card-opacity',        '0.65')
-  scene.style.setProperty('--rotate-x',            '3deg')
-  scene.style.setProperty('--rotate-y',            '5deg')
-  scene.style.setProperty('--background-x',        '55%')
-  scene.style.setProperty('--background-y',        '42%')
-  scene.classList.add('interacting')
+// Vars por defecto: efecto visible sin interacción
+const DEFAULT_VARS = {
+  '--pointer-x':           '55%',
+  '--pointer-y':           '40%',
+  '--pointer-from-left':   '0.55',
+  '--pointer-from-top':    '0.40',
+  '--pointer-from-center': '0.22',
+  '--card-opacity':        '0.65',
+  '--rotate-x':            '3deg',
+  '--rotate-y':            '5deg',
+  '--background-x':        '55%',
+  '--background-y':        '42%',
 }
 
-// Actualiza todas las CSS custom properties del efecto
-function setCardVars(scene, x, y, w, h) {
-  const pfl = x / w          // pointer-from-left: 0 → 1
-  const pft = y / h          // pointer-from-top:  0 → 1
-  const px  = pfl * 100      // 0% → 100%
-  const py  = pft * 100
-
-  // Distancia desde el centro (0 = centro exacto, 1 = esquina)
+function computeVars(x, y, w, h) {
+  const pfl = x / w
+  const pft = y / h
   const dx  = (pfl - 0.5) * 2
   const dy  = (pft - 0.5) * 2
   const pfc = Math.min(1, Math.sqrt(dx * dx + dy * dy) / Math.SQRT2)
-
-  // Ángulos de rotación 3-D (±15°)
   const MAX = 15
-  const rx  =  dx * MAX   // rotateY en el CSS (tilt izquierda-derecha)
-  const ry  = -dy * MAX   // rotateX en el CSS (tilt arriba-abajo)
-
-  // Posición de fondo parallax
+  const rx  =  dx * MAX
+  const ry  = -dy * MAX
   const bx  = 50 + (pfl - 0.5) * 20
   const by  = 50 + (pft - 0.5) * 20
-
-  scene.style.setProperty('--pointer-x',           px  + '%')
-  scene.style.setProperty('--pointer-y',           py  + '%')
-  scene.style.setProperty('--pointer-from-left',   String(pfl))
-  scene.style.setProperty('--pointer-from-top',    String(pft))
-  scene.style.setProperty('--pointer-from-center', String(pfc))
-  scene.style.setProperty('--card-opacity',        '1')
-  scene.style.setProperty('--rotate-x',            rx  + 'deg')
-  scene.style.setProperty('--rotate-y',            ry  + 'deg')
-  scene.style.setProperty('--background-x',        bx  + '%')
-  scene.style.setProperty('--background-y',        by  + '%')
+  return {
+    '--pointer-x':           (pfl * 100) + '%',
+    '--pointer-y':           (pft * 100) + '%',
+    '--pointer-from-left':   String(pfl),
+    '--pointer-from-top':    String(pft),
+    '--pointer-from-center': String(pfc),
+    '--card-opacity':        '1',
+    '--rotate-x':            rx + 'deg',
+    '--rotate-y':            ry + 'deg',
+    '--background-x':        bx + '%',
+    '--background-y':        by + '%',
+  }
 }
 
-
 export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
-  const sceneRef = useRef(null)
   const gyroActiveRef = useRef(false)
 
-  const cls = holoClass(holoLevel)
+  const cls    = holoClass(holoLevel)
   const isHolo = cls !== ''
 
-  // Mostrar efecto de base al montar la carta (sin necesitar interacción)
+  // CSS vars como estado — arranca con defaults visibles para cartas holo
+  const [vars, setVars] = useState(isHolo ? DEFAULT_VARS : {})
+
+  // Sincronizar si cambia el holoLevel (ej: usuario navega entre cartas)
   useEffect(() => {
-    const scene = sceneRef.current
-    if (!scene || !isHolo) return
-    setDefaultVars(scene)
+    setVars(isHolo ? DEFAULT_VARS : {})
   }, [isHolo])
 
   const handleMouseMove = useCallback((e) => {
     if (!isHolo || gyroActiveRef.current) return
-    const scene = sceneRef.current
-    if (!scene) return
-    const r = scene.getBoundingClientRect()
-    setCardVars(scene, e.clientX - r.left, e.clientY - r.top, r.width, r.height)
-    scene.classList.add('interacting')
+    const r = e.currentTarget.getBoundingClientRect()
+    setVars(computeVars(e.clientX - r.left, e.clientY - r.top, r.width, r.height))
   }, [isHolo])
 
   const handleMouseLeave = useCallback(() => {
     if (!isHolo) return
-    const scene = sceneRef.current
-    if (!scene) return
-    setDefaultVars(scene)
+    setVars(DEFAULT_VARS)
   }, [isHolo])
 
   const handleTouchMove = useCallback((e) => {
     if (!isHolo) return
-    const scene = sceneRef.current
-    if (!scene) return
     const t = e.touches[0]
-    const r = scene.getBoundingClientRect()
-    setCardVars(scene, t.clientX - r.left, t.clientY - r.top, r.width, r.height)
-    scene.classList.add('interacting')
+    const r = e.currentTarget.getBoundingClientRect()
+    setVars(computeVars(t.clientX - r.left, t.clientY - r.top, r.width, r.height))
   }, [isHolo])
 
   const handleTouchEnd = useCallback(() => {
     if (!isHolo) return
-    const scene = sceneRef.current
-    if (!scene) return
-    setDefaultVars(scene)
+    setVars(DEFAULT_VARS)
   }, [isHolo])
 
   useEffect(() => {
     if (!isHolo) return
-
     const onGyro = (e) => {
       if (e.beta == null || e.gamma == null) return
-      const scene = sceneRef.current
-      if (!scene) return
       gyroActiveRef.current = true
-      const r = scene.getBoundingClientRect()
-      // gamma: -90 a +90 (tilt LR), beta: 0 a 180 (tilt F/B, ~45° en reposo)
+      // gamma: tilt LR (-90 a +90), beta: tilt F/B (0 a 180, ~45° en reposo)
       const gammaFrac = Math.max(0, Math.min(1, (e.gamma + 45) / 90))
       const betaFrac  = Math.max(0, Math.min(1, (e.beta  - 20) / 70))
-      setCardVars(scene, gammaFrac * r.width, betaFrac * r.height, r.width, r.height)
-      scene.classList.add('interacting')
+      // Simulamos ancho/alto fijos para el cálculo
+      setVars(computeVars(gammaFrac * 100, betaFrac * 100, 100, 100))
     }
-
     window.addEventListener('deviceorientation', onGyro)
     return () => {
       window.removeEventListener('deviceorientation', onGyro)
@@ -133,8 +108,8 @@ export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
 
   return (
     <div
-      ref={sceneRef}
-      className={`card-scene${cls ? ' ' + cls : ''}`}
+      className={`card-scene${cls ? ' ' + cls : ''}${isHolo ? ' interacting' : ''}`}
+      style={vars}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onTouchMove={handleTouchMove}

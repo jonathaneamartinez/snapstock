@@ -139,6 +139,11 @@ export default function CardResult({
           <h2 className="text-white font-bold text-xl mt-4 text-center leading-tight">
             {carta.nombre}
           </h2>
+          {/* Debug temporal — holo_level */}
+          <div className="text-[10px] text-white/30 mt-1">
+            holo: <span className="text-yellow-400">{carta.holo_level ?? 'null'}</span>
+            {' · '}rarity: <span className="text-yellow-400">{carta.rarity ?? 'null'}</span>
+          </div>
 
           {/* Set name + número */}
           <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap">
