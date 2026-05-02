@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchCardImages } from '../../lib/pokemonTcg'
 import { supabase } from '../../lib/supabase'
 
-export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, onOpen }) {
+export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, setName, onOpen }) {
   const ref                     = useRef(null)
   const [src,      setSrc]      = useState(imageUrl || null)
   const [largeSrc, setLarge]    = useState(imageUrl || null)
@@ -14,7 +14,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, on
     if (fetching || !nombre) return
     setFetching(true)
     setFailed(false)
-    const imgs = await fetchCardImages(nombre, numero, idioma)
+    const imgs = await fetchCardImages(nombre, numero, setName)
 
     if (!imgs?.small) {
       setFetching(false)

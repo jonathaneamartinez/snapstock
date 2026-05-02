@@ -3,29 +3,19 @@
 
 const BASE = 'https://api.pokemontcg.io/v2'
 
-// In-memory cache: "nombre|numero" → { small, large } | null
+// In-memory cache
 const _cache = new Map()
 
-/**
- * Extrae el sufijo de número del nombre si está incluido.
- * "Mew VMAX #TG30" → { cleanName: "Mew VMAX", extraNum: "TG30" }
- */
+/** Extrae número embebido: "Mew VMAX #TG30" → { cleanName:"Mew VMAX", extraNum:"TG30" } */
 function extractEmbeddedNumber(nombre) {
   const match = nombre.match(/\s*#([A-Za-z0-9]+)\s*$/)
   if (match) return { cleanName: nombre.slice(0, match.index).trim(), extraNum: match[1] }
   return { cleanName: nombre.trim(), extraNum: null }
 }
 
-/**
- * Normaliza el nombre:
- * - 'S  →  's  (Boss'S → Boss's)
- * - recorta espacios extra
- */
+/** Normaliza apóstrofes: Boss'S → Boss's */
 function normalize(s) {
-  return s
-    .replace(/'([A-Z])/g, (_, c) => `'${c.toLowerCase()}`)  // Boss'S → Boss's
-    .replace(/\s+/g, ' ')
-    .trim()
+  return s.replace(/'([A-Z])/g, (_, c) => `'${c.toLowerCase()}`).replace(/\s+/g, ' ').trim()
 }
 
 /** Quita prefijos de entrenador */
@@ -35,14 +25,24 @@ function baseName(nombre) {
     .trim()
 }
 
-/** Para la query: solo quita las comillas dobles (rompen el sintaxis de la API) */
-function forQuery(s) {
-  return s.replace(/"/g, '').trim()
-}
+/** Solo quita comillas dobles */
+function forQuery(s) { return s.replace(/"/g, '').trim() }
 
-/** Versión sin apóstrofes para fallback */
-function noApostrophe(s) {
-  return s.replace(/'/g, '').replace(/\s+/g, ' ').trim()
+/** Sin apóstrofes */
+function noApostrophe(s) { return s.replace(/'/g, '').replace(/\s+/g, ' ').trim() }
+
+/**
+ * Extrae palabras clave del set_name para filtrar en la API.
+ * "Pokemon Twilight Masquerade" → "Twilight Masquerade"
+ * "Team Rocket Returns" → "Team Rocket Returns"
+ */
+function setFragment(setName) {
+  if (!setName) return null
+  return setName
+    .replace(/^(Pokemon|Pokémon)\s+/i, '')
+    .replace(/['"]/g, '')
+    .trim()
+    .slice(0, 40) // máx 40 chars
 }
 
 async function apiSearch(q, pageSize = 1) {
@@ -60,75 +60,65 @@ function toResult(card) {
 
 /**
  * Busca imágenes con múltiples estrategias fallback.
- * Retorna { small, large } o null.
+ * @param {string} nombre
+ * @param {string|number} numero
+ * @param {string} [setName]  — nombre del set de Supabase (opcional, mejora precisión)
  */
-export async function fetchCardImages(nombre, numero) {
+export async function fetchCardImages(nombre, numero, setName) {
   if (!nombre) return null
 
   const key = `${nombre}|${numero}`
   if (_cache.has(key)) return _cache.get(key)
 
-  // 1. Limpiar número embebido ("Mew VMAX #TG30" → "Mew VMAX", "TG30")
   const { cleanName, extraNum } = extractEmbeddedNumber(nombre)
+  const norm     = normalize(cleanName)
+  const withAp   = forQuery(norm)           // mantiene apóstrofe, sin comillas dobles
+  const noAp     = noApostrophe(norm)       // sin apóstrofe
+  const base     = forQuery(baseName(norm)) // sin prefijo entrenador
+  const setFrag  = setFragment(setName)
 
-  // 2. Normalizar (Boss'S → Boss's)
-  const norm = normalize(cleanName)
-
-  // 3. Variantes del nombre
-  const withApostrophe    = forQuery(norm)           // "Rosa's Encouragement"
-  const withoutApostrophe = noApostrophe(norm)       // "Rosas Encouragement"
-  const base              = forQuery(baseName(norm)) // "Encouragement"
-
-  // 4. Número a usar
   const bestNum = extraNum || (numero ? String(numero) : '')
   const numOnly = bestNum.replace(/\D/g, '')
 
   let card = null
 
   try {
-    // S1: nombre con apóstrofe + número completo
-    if (bestNum) card = await apiSearch(`name:"${withApostrophe}" number:${bestNum}`)
+    // ── Búsquedas exactas con apóstrofe ──────────────────────────────────
+    // S1: nombre + número
+    if (bestNum) card = await apiSearch(`name:"${withAp}" number:${bestNum}`)
+    // S2: nombre solo
+    if (!card)   card = await apiSearch(`name:"${withAp}"`)
 
-    // S2: nombre con apóstrofe, sin número
-    if (!card) card = await apiSearch(`name:"${withApostrophe}"`)
-
-    // S3: nombre sin apóstrofe + número  (Rosas → Rosas Encouragement)
-    if (!card && withoutApostrophe !== withApostrophe) {
-      if (bestNum) card = await apiSearch(`name:"${withoutApostrophe}" number:${bestNum}`)
-      if (!card)   card = await apiSearch(`name:"${withoutApostrophe}"`)
+    // ── Sin apóstrofe (por si el parser de Lucene falla con '') ───────────
+    if (!card && noAp !== withAp) {
+      if (bestNum) card = await apiSearch(`name:"${noAp}" number:${bestNum}`)
+      if (!card)   card = await apiSearch(`name:"${noAp}"`)
     }
 
-    // S4: nombre base (sin prefijo entrenador) + número
-    if (!card && base && base !== withApostrophe) {
+    // ── Sin prefijo de entrenador ─────────────────────────────────────────
+    if (!card && base && base !== withAp) {
       if (bestNum) card = await apiSearch(`name:"${base}" number:${bestNum}`)
       if (!card)   card = await apiSearch(`name:"${base}"`)
     }
 
-    // S5: número solo dígitos si es diferente al bestNum (30 vs TG30)
+    // ── Número solo dígitos (cuando bestNum es "TG30" y la DB tiene "30") ─
     if (!card && numOnly && numOnly !== bestNum) {
-      card = await apiSearch(`name:"${withApostrophe}" number:${numOnly}`)
+      card = await apiSearch(`name:"${withAp}" number:${numOnly}`)
+      if (!card && noAp !== withAp)
+        card = await apiSearch(`name:"${noAp}" number:${numOnly}`)
     }
 
-    // S6: nombre sin comillas (algunos parsers de Lucene fallan con apóstrofe dentro de "")
-    if (!card && withApostrophe.includes("'")) {
-      if (bestNum) card = await apiSearch(`name:${withoutApostrophe} number:${bestNum}`)
-      if (!card)   card = await apiSearch(`name:${withoutApostrophe}`)
-    }
-
-    // S7: wildcard con el nombre base  →  name:*Energy* number:35
-    if (!card && base) {
-      if (bestNum) card = await apiSearch(`name:*${base}* number:${bestNum}`)
-      if (!card)   card = await apiSearch(`name:*${base}*`)
-    }
-
-    // S8: wildcard con última palabra significativa del nombre completo
+    // ── Nombre sin comillas (fix apostrofe dentro de "") + set opcional ───
     if (!card) {
-      const words  = withoutApostrophe.split(' ').filter(w => w.length >= 4)
-      const last   = words[words.length - 1]
-      if (last && last !== base) {
-        if (bestNum) card = await apiSearch(`name:*${last}* number:${bestNum}`)
-        if (!card)   card = await apiSearch(`name:*${last}*`)
-      }
+      const q = setFrag
+        ? `name:${noAp} number:${bestNum || numOnly} set.name:"${setFrag}"`
+        : `name:${noAp}${bestNum ? ` number:${bestNum}` : ''}`
+      card = await apiSearch(q.trim())
+    }
+
+    // ── Nombre base sin comillas + set ─────────────────────────────────
+    if (!card && base && setFrag) {
+      card = await apiSearch(`name:"${base}" set.name:"${setFrag}"`)
     }
 
     const result = toResult(card)

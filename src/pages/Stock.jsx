@@ -204,6 +204,7 @@ export default function Stock() {
                           nombre={r.nombre}
                           numero={r.numero}
                           idioma={r.idioma}
+                          setName={r.set_name}
                           onOpen={(imgs) => setModalCard({
                             src:         imgs.src,
                             nombre:      r.nombre,
