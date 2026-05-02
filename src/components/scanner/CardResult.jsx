@@ -139,11 +139,6 @@ export default function CardResult({
           <h2 className="text-white font-bold text-xl mt-4 text-center leading-tight">
             {carta.nombre}
           </h2>
-          {/* Debug temporal — holo_level */}
-          <div className="text-[10px] text-white/30 mt-1">
-            holo: <span className="text-yellow-400">{carta.holo_level ?? 'null'}</span>
-            {' · '}rarity: <span className="text-yellow-400">{carta.rarity ?? 'null'}</span>
-          </div>
 
           {/* Set name + número */}
           <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap">
@@ -335,9 +330,21 @@ export default function CardResult({
                              bg-white/5 border border-white/8 hover:bg-white/10 transition"
                 >
                   {op.imagen
-                    ? <img src={op.imagen} alt="" className="w-12 h-16 object-cover rounded-md" />
-                    : <div className="w-12 h-16 rounded-md bg-white/10 flex items-center justify-center text-white/20 text-xl">🃏</div>
+                    ? <img
+                        src={op.imagen}
+                        alt=""
+                        className="w-12 h-16 object-cover rounded-md"
+                        onError={e => {
+                          e.target.style.display = 'none'
+                          e.target.nextSibling.style.display = 'flex'
+                        }}
+                      />
+                    : null
                   }
+                  <div
+                    className="w-12 h-16 rounded-md bg-white/10 items-center justify-center text-white/20 text-xl"
+                    style={{ display: op.imagen ? 'none' : 'flex' }}
+                  >🃏</div>
                   <span className="text-white/50 text-xs w-16 text-center truncate leading-tight">
                     {op.set || op.set_id}
                   </span>
