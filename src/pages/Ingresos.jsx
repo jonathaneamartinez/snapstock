@@ -153,14 +153,16 @@ export default function Ingresos() {
 
       // 1. Buscar o crear la carta en `cards`
       let cardId = null
-      const { data: existing } = await supabase
+      // Buscar carta existente (cards es tabla global, sin store_id)
+      let cardQuery = supabase
         .from('cards')
         .select('id')
-        .eq('store_id', STORE_ID)
         .ilike('name', form.nombre.trim())
-        .eq('set_name', form.set.trim())
-        .eq('card_number', form.numero.trim())
-        .maybeSingle()
+
+      if (form.set.trim())    cardQuery = cardQuery.eq('set_name', form.set.trim())
+      if (form.numero.trim()) cardQuery = cardQuery.eq('card_number', form.numero.trim())
+
+      const { data: existing } = await cardQuery.maybeSingle()
 
       if (existing?.id) {
         cardId = existing.id
@@ -173,7 +175,6 @@ export default function Ingresos() {
         const { data: newCard, error: cardErr } = await supabase
           .from('cards')
           .insert({
-            store_id:    STORE_ID,
             name:        form.nombre.trim(),
             set_name:    form.set.trim()    || null,
             card_number: form.numero.trim() || null,
