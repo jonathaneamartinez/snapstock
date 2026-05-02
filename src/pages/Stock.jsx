@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStock }    from '../hooks/useStock'
 import { useMetricas } from '../hooks/useMetricas'
+import { useDolar }    from '../hooks/useDolar'
 import { supabase }    from '../lib/supabase'
 import Badge           from '../components/ui/Badge'
 import Spinner         from '../components/ui/Spinner'
@@ -22,6 +23,28 @@ const fmtFecha = (s) => {
 
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
+// Columnas con su key de ordenamiento y tipo
+const COLS = [
+  { h: 'Imagen',      key: null          },
+  { h: 'Nombre',      key: 'nombre',      type: 'str'  },
+  { h: 'Set',         key: 'set_name',    type: 'str'  },
+  { h: 'Nº',          key: 'numero',      type: 'num'  },
+  { h: 'Idioma',      key: 'idioma',      type: 'str'  },
+  { h: 'Holo',        key: 'holo',        type: 'bool' },
+  { h: 'Cond.',       key: 'condicion',   type: 'str'  },
+  { h: 'Stock',       key: 'stock',       type: 'num'  },
+  { h: 'USD',         key: 'price_usd',   type: 'num'  },
+  { h: 'ARS Ofic.',   key: '_ars_ofic',   type: 'num'  },
+  { h: 'ARS Blue',    key: '_ars_blue',   type: 'num'  },
+  { h: 'P. Venta',    key: 'precio_venta',type: 'num'  },
+  { h: 'Estado',      key: 'status',      type: 'str'  },
+  { h: 'Comprador',   key: 'buyer_name',  type: 'str'  },
+  { h: 'Contacto',    key: 'buyer_contact',type:'str'  },
+  { h: 'Notas',       key: 'notes',       type: 'str'  },
+  { h: 'F. Reserva',  key: 'reserved_at', type: 'date' },
+  { h: 'F. Escaneada',key: 'fecha_escaneada',type:'date'},
+]
+
 export default function Stock() {
   const queryClient = useQueryClient()
 
@@ -30,9 +53,12 @@ export default function Stock() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
+  const [sortCol,     setSortCol]     = useState(null)   // key de la columna
+  const [sortDir,     setSortDir]     = useState('asc')  // 'asc' | 'desc'
 
   const { data, isLoading, error } = useStock(filters)
   const { data: m } = useMetricas()
+  const { blue, oficial } = useDolar()
 
   const set = (k, v) => {
     setSelectedIds(new Set())
@@ -44,9 +70,44 @@ export default function Stock() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const rows        = data?.rows  ?? []
+  const rawRows     = data?.rows  ?? []
   const total       = data?.total ?? 0
-  const imageMap    = usePrefetchPageImages(rows)
+
+  // ── Enriquecer filas con ARS calculado cuando Supabase no lo tiene ──────
+  const rows = useMemo(() => rawRows.map(r => ({
+    ...r,
+    _ars_ofic: r.price_ars_oficial ?? (r.price_usd != null && oficial ? Math.round(r.price_usd * oficial) : null),
+    _ars_blue: r.price_ars_blue    ?? (r.price_usd != null && blue    ? Math.round(r.price_usd * blue)    : null),
+  })), [rawRows, blue, oficial])
+
+  const imageMap = usePrefetchPageImages(rows)
+
+  // ── Función para cambiar columna de sort ────────────────────────────────
+  const handleSort = (key) => {
+    if (!key) return
+    if (sortCol === key) {
+      sortDir === 'asc' ? setSortDir('desc') : (setSortCol(null), setSortDir('asc'))
+    } else {
+      setSortCol(key)
+      setSortDir('asc')
+    }
+  }
+
+  // ── Rows ordenadas ───────────────────────────────────────────────────────
+  const sortedRows = useMemo(() => {
+    if (!sortCol) return rows
+    const col = COLS.find(c => c.key === sortCol)
+    return [...rows].sort((a, b) => {
+      let va = a[sortCol], vb = b[sortCol]
+      if (col?.type === 'num')  { va = Number(va ?? -Infinity); vb = Number(vb ?? -Infinity) }
+      if (col?.type === 'date') { va = va ? new Date(va).getTime() : 0; vb = vb ? new Date(vb).getTime() : 0 }
+      if (col?.type === 'bool') { va = va ? 1 : 0; vb = vb ? 1 : 0 }
+      if (col?.type === 'str')  { va = (va ?? '').toLowerCase(); vb = (vb ?? '').toLowerCase() }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ?  1 : -1
+      return 0
+    })
+  }, [rows, sortCol, sortDir])
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
 
@@ -164,27 +225,30 @@ export default function Stock() {
             <table className="w-full text-xs">
               <thead className="bg-gray-50 text-gray-400 uppercase sticky top-0 z-10">
                 <tr>
-                  {/* Checkbox select all */}
                   <th className="pl-4 pr-2 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
-                    />
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                      className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer" />
                   </th>
-                  {[
-                    'Imagen','Nombre','Set','Nº','Idioma','Holo',
-                    'Cond.','Stock','USD','ARS Ofic.','ARS Blue',
-                    'P. Venta','Estado','Comprador','Contacto',
-                    'Notas','F. Reserva','F. Escaneada',
-                  ].map(h => (
-                    <th key={h} className="px-3 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
+                  {COLS.map(col => (
+                    <th key={col.h}
+                      onClick={() => handleSort(col.key)}
+                      className={`px-3 py-3 text-left font-semibold whitespace-nowrap select-none
+                        ${col.key ? 'cursor-pointer hover:text-gray-600 hover:bg-gray-100 transition' : ''}`}>
+                      <span className="inline-flex items-center gap-1">
+                        {col.h}
+                        {col.key && sortCol === col.key && (
+                          <span className="text-blue-500">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                        {col.key && sortCol !== col.key && (
+                          <span className="text-gray-300 opacity-0 group-hover:opacity-100">↕</span>
+                        )}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map(r => {
+                {sortedRows.map(r => {
                   const isSelected = selectedIds.has(r.inventory_id)
                   return (
                     <tr key={r.inventory_id}
@@ -231,9 +295,17 @@ export default function Stock() {
                       <td className="px-3 py-2"><Badge label={r.condicion} /></td>
                       <td className="px-3 py-2 font-semibold text-gray-700 text-center">{r.stock}</td>
                       <td className="px-3 py-2 text-emerald-600 font-semibold whitespace-nowrap">{fmtUSD(r.price_usd)}</td>
-                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtARS(r.price_ars_oficial)}</td>
-                      <td className="px-3 py-2 text-blue-600 font-semibold whitespace-nowrap">{fmtARS(r.price_ars_blue)}</td>
-                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtARS(r.precio_venta)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={r.price_ars_oficial != null ? 'text-gray-600' : 'text-gray-400'}>
+                          {fmtARS(r._ars_ofic)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={`font-semibold ${r.price_ars_blue != null ? 'text-blue-600' : 'text-blue-400'}`}>
+                          {fmtARS(r._ars_blue)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtARS(r._ars_blue ?? r.precio_venta)}</td>
                       <td className="px-3 py-2"><Badge label={r.status} /></td>
                       <td className="px-3 py-2 text-gray-600">{r.buyer_name || '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{r.buyer_contact || '—'}</td>
