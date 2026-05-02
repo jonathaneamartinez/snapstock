@@ -4,6 +4,8 @@ import { useMetricas } from '../hooks/useMetricas'
 import Badge           from '../components/ui/Badge'
 import Spinner         from '../components/ui/Spinner'
 import EmptyState      from '../components/ui/EmptyState'
+import CardImage       from '../components/ui/CardImage'
+import CardModal       from '../components/ui/CardModal'
 import { IDIOMAS, CONDICIONES, ESTADOS } from '../constants'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
@@ -16,7 +18,8 @@ const fmtFecha = (s) => {
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
 export default function Stock() {
-  const [filters, setFilters] = useState({ estado: 'disponible' })
+  const [filters,    setFilters]    = useState({ estado: 'disponible' })
+  const [modalCard,  setModalCard]  = useState(null)
   const { data, isLoading, error } = useStock(filters)
   const { data: m } = useMetricas()
 
@@ -110,10 +113,22 @@ export default function Stock() {
                   <tr key={r.inventory_id} className="hover:bg-gray-50 transition">
                     {/* Imagen */}
                     <td className="px-3 py-2">
-                      {r.image_url
-                        ? <img src={r.image_url} alt="" className="w-7 h-10 object-cover rounded" />
-                        : <div className="w-7 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-300 text-xs">?</div>
-                      }
+                      <CardImage
+                        imageUrl={r.image_url}
+                        nombre={r.nombre}
+                        numero={r.numero}
+                        idioma={r.idioma}
+                        onOpen={(imgs) => setModalCard({
+                          src:         imgs.src,
+                          nombre:      r.nombre,
+                          set:         r.set_name,
+                          numero:      r.numero,
+                          condicion:   r.condicion,
+                          statusLabel: r.status,
+                          priceUSD:    r.price_usd   != null ? `$${Number(r.price_usd).toFixed(2)}`  : null,
+                          priceARS:    r.price_ars_blue != null ? fmtARS(r.price_ars_blue) : null,
+                        })}
+                      />
                     </td>
                     {/* Nombre */}
                     <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px]">
@@ -169,6 +184,9 @@ export default function Stock() {
           </div>
         )}
       </div>
+
+      {/* Modal carta */}
+      <CardModal card={modalCard} onClose={() => setModalCard(null)} />
     </div>
   )
 }
