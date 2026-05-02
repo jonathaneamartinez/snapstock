@@ -141,36 +141,79 @@ export default function Ingresos() {
   const arsOfic = usd != null && oficial ? usd * oficial : null
   const arsBlue = usd != null && blue    ? usd * blue    : null
 
-  // ── Submit ──────────────────────────────────────────────────────────────
+  // ── Submit: escribe directo en Supabase ────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.nombre.trim()) return
     setLoading(true)
     try {
-      const res = await scannerApi.confirmar({
-        store_id: STORE_ID,
-        carta: {
-          nombre:     form.nombre,
-          set:        form.set,
-          numero:     form.numero,
-          idioma:     form.idioma,
-          precio_usd: usd ?? (parseFloat(form.precioVenta) || 0),
-          imagen:     preview?.imagen,
-        },
-        cantidad:    parseInt(form.cantidad) || 1,
-        condicion:   form.condicion,
-        precio_venta: parseFloat(form.precioVenta) || null,
-        accion:      'agregar',
-      })
-      if (res.guardado) {
-        showToast('✅ Carta agregada al stock')
-        setForm({ nombre: '', set: '', numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
-        setPreview(null)
+      const precioVenta = parseFloat(form.precioVenta) || null
+      const precioUsd   = usd ?? precioVenta ?? null
+      const cantidad    = parseInt(form.cantidad) || 1
+
+      // 1. Buscar o crear la carta en `cards`
+      let cardId = null
+      const { data: existing } = await supabase
+        .from('cards')
+        .select('id')
+        .eq('store_id', STORE_ID)
+        .ilike('name', form.nombre.trim())
+        .eq('set_name', form.set.trim())
+        .eq('card_number', form.numero.trim())
+        .maybeSingle()
+
+      if (existing?.id) {
+        cardId = existing.id
+        // Actualizar imagen/precio si tenemos datos nuevos
+        const upd = {}
+        if (preview?.imagen) upd.image_url = preview.imagen
+        if (precioUsd != null) upd.price_usd = precioUsd
+        if (Object.keys(upd).length) {
+          await supabase.from('cards').update(upd).eq('id', cardId)
+        }
       } else {
-        showToast(res.mensaje || 'Error al guardar', 'error')
+        // Insertar nueva carta
+        const { data: newCard, error: cardErr } = await supabase
+          .from('cards')
+          .insert({
+            store_id:    STORE_ID,
+            name:        form.nombre.trim(),
+            set_name:    form.set.trim()    || null,
+            card_number: form.numero.trim() || null,
+            language:    form.idioma        || 'en',
+            image_url:   preview?.imagen    || null,
+            price_usd:   precioUsd,
+          })
+          .select('id')
+          .single()
+        if (cardErr) throw cardErr
+        cardId = newCard.id
       }
-    } catch {
-      showToast('Error al conectar con el servidor', 'error')
+
+      // 2. Insertar registro(s) en `inventory`
+      const rows = Array.from({ length: cantidad }, () => ({
+        store_id:          STORE_ID,
+        card_id:           cardId,
+        quantity:          1,
+        condicion:         form.condicion,
+        condition:         form.condicion,
+        status:            'disponible',
+        estado:            'disponible',
+        price_usd:         precioUsd,
+        price_ars_oficial: arsOfic   ?? null,
+        price_ars_blue:    arsBlue   ?? null,
+        scan_date:         new Date().toISOString(),
+      }))
+
+      const { error: invErr } = await supabase.from('inventory').insert(rows)
+      if (invErr) throw invErr
+
+      showToast(`✅ ${cantidad > 1 ? `${cantidad} cartas agregadas` : 'Carta agregada'} al stock`)
+      setForm({ nombre: '', set: '', numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
+      setPreview(null)
+    } catch (err) {
+      console.error('Error al guardar carta:', err)
+      showToast(err?.message || 'Error al guardar la carta', 'error')
     } finally {
       setLoading(false)
     }
