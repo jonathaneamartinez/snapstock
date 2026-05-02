@@ -95,7 +95,7 @@ export default function Stock() {
   }
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4 pb-28">
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -244,65 +244,61 @@ export default function Stock() {
                 })}
               </tbody>
             </table>
-            {/* Paginador */}
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-              <p className="text-xs text-gray-400">
-                {total.toLocaleString('es-AR')} registros totales
-                · página {currentPage + 1} de {totalPages || 1}
-                {someSelected && <span className="ml-2 text-blue-500 font-semibold">· {selectedIds.size} seleccionadas</span>}
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => goToPage(0)}
-                  disabled={currentPage === 0}
-                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
-                             disabled:opacity-30 hover:bg-gray-50 transition">
-                  «
-                </button>
-                <button
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage === 0}
-                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
-                             disabled:opacity-30 hover:bg-gray-50 transition">
-                  ‹ Ant.
-                </button>
-
-                {/* Páginas cercanas */}
-                {Array.from({ length: totalPages }, (_, i) => i)
-                  .filter(i => Math.abs(i - currentPage) <= 2)
-                  .map(i => (
-                    <button key={i} onClick={() => goToPage(i)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
-                        ${i === currentPage
-                          ? 'bg-blue-600 text-white'
-                          : 'border border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
-                      {i + 1}
-                    </button>
-                  ))
-                }
-
-                <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage >= totalPages - 1}
-                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
-                             disabled:opacity-30 hover:bg-gray-50 transition">
-                  Sig. ›
-                </button>
-                <button
-                  onClick={() => goToPage(totalPages - 1)}
-                  disabled={currentPage >= totalPages - 1}
-                  className="px-2 py-1 rounded-lg text-xs font-medium border border-gray-200
-                             disabled:opacity-30 hover:bg-gray-50 transition">
-                  »
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>
 
       {/* Modal carta */}
       <CardModal card={modalCard} onClose={() => setModalCard(null)} />
+
+      {/* ── Paginador flotante ──────────────────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40
+                        flex items-center gap-2 px-4 py-2
+                        bg-white border border-gray-200 rounded-2xl shadow-lg
+                        text-xs text-gray-500">
+          <span className="hidden sm:block whitespace-nowrap font-medium text-gray-400 mr-1">
+            {total.toLocaleString('es-AR')} cartas
+          </span>
+          <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+
+          <button onClick={() => goToPage(0)} disabled={currentPage === 0}
+            className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition font-bold">
+            «
+          </button>
+          <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 0}
+            className="px-2 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
+            ‹
+          </button>
+
+          {Array.from({ length: totalPages }, (_, i) => i)
+            .filter(i => Math.abs(i - currentPage) <= 2)
+            .map(i => (
+              <button key={i} onClick={() => goToPage(i)}
+                className={`w-7 h-7 rounded-lg text-xs font-semibold transition
+                  ${i === currentPage
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'hover:bg-gray-100 text-gray-600'}`}>
+                {i + 1}
+              </button>
+            ))
+          }
+
+          <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages - 1}
+            className="px-2 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
+            ›
+          </button>
+          <button onClick={() => goToPage(totalPages - 1)} disabled={currentPage >= totalPages - 1}
+            className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition font-bold">
+            »
+          </button>
+
+          <div className="w-px h-4 bg-gray-200" />
+          <span className="whitespace-nowrap text-gray-400">
+            {currentPage + 1} / {totalPages}
+          </span>
+        </div>
+      )}
 
       {/* ── Barra de acciones bulk ──────────────────────────────────────────── */}
       <AnimatePresence>
