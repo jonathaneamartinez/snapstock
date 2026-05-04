@@ -6,10 +6,22 @@ import EmptyState from '../components/ui/EmptyState'
 
 const fmtARS = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 
+/* Normalizar el valor del canal a una etiqueta legible */
+const CANAL_LABEL = {
+  claims:          '🃏 Claims',
+  charly:          '👤 Charly',
+  fuera_de_evento: '📍 Fuera de evento',
+  instagram:       '📸 Instagram',
+  whatsapp:        '💬 WhatsApp',
+}
+const canalLabel = (v) => CANAL_LABEL[v] ?? v ?? '—'
+
 const CANALES_COLOR = {
-  'Charly':           '#3B6BF5',
-  'Claims':           '#10B981',
-  'Fuera de eventos': '#F59E0B',
+  claims:          '#10B981',
+  charly:          '#3B6BF5',
+  fuera_de_evento: '#F59E0B',
+  instagram:       '#E1306C',
+  whatsapp:        '#25D366',
 }
 
 export default function Ventas() {
@@ -31,10 +43,14 @@ export default function Ventas() {
   // Por canal
   const porCanal = {}
   for (const v of ventas) {
-    const c = v.channel || 'Fuera de eventos'
+    const c = v.channel || 'fuera_de_evento'
     porCanal[c] = (porCanal[c] || 0) + (v.total_ars_blue || 0)
   }
-  const canalData = Object.entries(porCanal).map(([name, monto]) => ({ name, monto }))
+  const canalData = Object.entries(porCanal).map(([key, monto]) => ({
+    key,
+    name:  canalLabel(key),
+    monto,
+  }))
 
   // Ganancia neta (simplificado: 30% margen estimado)
   const gananciaNeta = Math.round(totalFacturado * 0.3)
@@ -91,7 +107,7 @@ export default function Ventas() {
                 <Tooltip formatter={v => fmtARS(v)} />
                 <Bar dataKey="monto" radius={[6,6,0,0]}>
                   {canalData.map((entry, i) => (
-                    <Cell key={i} fill={CANALES_COLOR[entry.name] ?? '#6B7280'} />
+                    <Cell key={i} fill={CANALES_COLOR[entry.key] ?? '#6B7280'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -110,7 +126,7 @@ export default function Ventas() {
               {canalData.map(c => {
                 const pct = totalFacturado > 0 ? (c.monto / totalFacturado) * 100 : 0
                 return (
-                  <div key={c.name}>
+                  <div key={c.key}>
                     <div className="flex justify-between text-sm mb-1">
                       <span className="font-medium text-gray-700">{c.name}</span>
                       <span className="text-gray-500">{fmtARS(c.monto)} · {pct.toFixed(0)}%</span>
@@ -118,7 +134,7 @@ export default function Ventas() {
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: CANALES_COLOR[c.name] ?? '#6B7280' }}
+                        style={{ width: `${pct}%`, background: CANALES_COLOR[c.key] ?? '#6B7280' }}
                       />
                     </div>
                   </div>
@@ -151,7 +167,7 @@ export default function Ventas() {
                       {new Date(v.created_at).toLocaleDateString('es-AR')}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">{v.card_name || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{v.channel || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{canalLabel(v.channel)}</td>
                     <td className="px-4 py-3 text-gray-600">{v.buyer_name || '—'}</td>
                     <td className="px-4 py-3 text-blue-600 font-semibold whitespace-nowrap">
                       {fmtARS(v.total_ars_blue)}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useClaims } from '../hooks/useClaims'
 import { supabase }  from '../lib/supabase'
+import { STORE_ID }  from '../constants'
 import Spinner       from '../components/ui/Spinner'
 import EmptyState    from '../components/ui/EmptyState'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -20,6 +21,15 @@ const fmtARS = (n) =>
   n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
 const fmtUSD = (n) =>
   n != null ? `$${Number(n).toFixed(2)}` : null
+
+/* ─── Canales de venta disponibles ──────────────────────────────────── */
+const CANALES_VENTA = [
+  { value: 'claims',          label: '🃏 Claims'          },
+  { value: 'charly',          label: '👤 Charly'          },
+  { value: 'fuera_de_evento', label: '📍 Fuera de evento' },
+  { value: 'instagram',       label: '📸 Instagram'       },
+  { value: 'whatsapp',        label: '💬 WhatsApp'        },
+]
 
 /* ─── Visor de imagen fullscreen ────────────────────────────────────── */
 function ImagenFullscreen({ src, onClose }) {
@@ -45,18 +55,19 @@ function ImagenFullscreen({ src, onClose }) {
 }
 
 /* ─── Barra de acción bulk ───────────────────────────────────────────── */
-function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
+function BulkActionBar({ selected, cards, onSell, onReserve, onReturn, onClear }) {
   const [action,  setAction]  = useState(null) // 'vender' | 'reservar' | null
   const [buyer,   setBuyer]   = useState('')
+  const [canal,   setCanal]   = useState('claims')
   const [loading, setLoading] = useState(false)
 
-  const reset = () => { setAction(null); setBuyer('') }
+  const reset = () => { setAction(null); setBuyer(''); setCanal('claims') }
 
   const handleExecute = async () => {
     setLoading(true)
     try {
-      if (action === 'vender')   await onSell(buyer)
-      if (action === 'reservar') await onReserve(buyer)
+      if (action === 'vender')   await onSell(buyer, canal)
+      if (action === 'reservar') await onReserve(buyer, canal)
     } finally {
       setLoading(false)
       reset()
@@ -77,37 +88,56 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
-        className="flex flex-wrap items-center gap-2 mt-3 p-3 bg-violet-50 border border-violet-200 rounded-xl"
+        className="mt-3 p-3 bg-violet-50 border border-violet-200 rounded-xl space-y-2"
       >
-        <span className="text-xs font-semibold text-violet-700">
-          {action === 'vender' ? '✓ Vendida' : '📌 Reservada'}
+        <p className="text-xs font-semibold text-violet-700">
+          {action === 'vender' ? '✓ Marcar como vendida' : '📌 Marcar como reservada'}
           &nbsp;·&nbsp;{selected.size} {selected.size === 1 ? 'carta' : 'cartas'}
-        </span>
-        <input
-          autoFocus
-          type="text"
-          placeholder={action === 'vender' ? 'Comprador (opcional)' : 'Nombre comprador…'}
-          value={buyer}
-          onChange={e => setBuyer(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleExecute()}
-          className="flex-1 min-w-[140px] border border-violet-300 rounded-lg px-2.5 py-1.5
-                     text-xs focus:outline-none focus:ring-2 focus:ring-violet-200"
-        />
-        <button
-          onClick={handleExecute}
-          disabled={loading}
-          className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold
-                     rounded-lg hover:bg-violet-500 disabled:opacity-50 transition whitespace-nowrap"
-        >
-          {loading ? '…' : 'Confirmar'}
-        </button>
-        <button
-          onClick={reset}
-          className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold
-                     rounded-lg hover:bg-gray-200 transition"
-        >
-          Cancelar
-        </button>
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {/* Canal — solo para ventas */}
+          {action === 'vender' && (
+            <select
+              value={canal}
+              onChange={e => setCanal(e.target.value)}
+              className="border border-violet-300 rounded-lg px-2.5 py-1.5 text-xs
+                         bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+            >
+              {CANALES_VENTA.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Comprador */}
+          <input
+            autoFocus
+            type="text"
+            placeholder={action === 'vender' ? 'Comprador (opcional)' : 'Nombre comprador…'}
+            value={buyer}
+            onChange={e => setBuyer(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleExecute()}
+            className="flex-1 min-w-[140px] border border-violet-300 rounded-lg px-2.5 py-1.5
+                       text-xs focus:outline-none focus:ring-2 focus:ring-violet-200"
+          />
+
+          <button
+            onClick={handleExecute}
+            disabled={loading}
+            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold
+                       rounded-lg hover:bg-violet-500 disabled:opacity-50 transition whitespace-nowrap"
+          >
+            {loading ? '…' : 'Confirmar'}
+          </button>
+          <button
+            onClick={reset}
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold
+                       rounded-lg hover:bg-gray-200 transition"
+          >
+            Cancelar
+          </button>
+        </div>
       </motion.div>
     )
   }
@@ -118,8 +148,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      className="flex flex-wrap items-center gap-2 mt-3 p-2.5
-                 bg-gray-900 rounded-xl"
+      className="flex flex-wrap items-center gap-2 mt-3 p-2.5 bg-gray-900 rounded-xl"
     >
       <span className="text-xs text-white/70 font-medium px-1">
         {selected.size} {selected.size === 1 ? 'carta' : 'cartas'}
@@ -171,11 +200,8 @@ function CardTable({ cards, claimId }) {
   const someSelected  = selected.size > 0
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(allActionable.map(c => c.inventory_id)))
-    }
+    if (allSelected) setSelected(new Set())
+    else setSelected(new Set(allActionable.map(c => c.inventory_id)))
   }
   const toggleOne = (id) => {
     setSelected(prev => {
@@ -189,22 +215,48 @@ function CardTable({ cards, claimId }) {
     qc.invalidateQueries({ queryKey: ['stock'] })
     qc.invalidateQueries({ queryKey: ['metricas'] })
     qc.invalidateQueries({ queryKey: ['deudas'] })
+    qc.invalidateQueries({ queryKey: ['ventas'] })
   }
 
-  const handleSell = async (buyerName) => {
-    const ids = [...selected]
+  /* Cartas seleccionadas con todos sus datos */
+  const selectedCards = cards.filter(c => c.inventory_id && selected.has(c.inventory_id))
+
+  /* ── Vender: actualiza inventory + inserta en sales ─────────────── */
+  const handleSell = async (buyerName, channel) => {
+    const ids = selectedCards.map(c => c.inventory_id)
+
+    // 1. Marcar como vendidas en inventory
     await supabase.from('inventory')
       .update({
         status:       'vendida',
         sold_at_date: new Date().toISOString(),
-        ...(buyerName ? { buyer_name: buyerName } : {}),
+        buyer_name:   buyerName || null,
       })
       .in('id', ids)
+
+    // 2. Insertar una fila en sales por cada carta vendida
+    const salesRows = selectedCards.map(c => ({
+      store_id:       STORE_ID,
+      inventory_id:   c.inventory_id,
+      card_name:      c.name  || '',
+      channel:        channel || 'claims',
+      buyer_name:     buyerName || null,
+      total_ars_blue: c.sale  ?? c.ars ?? null,
+      total_usd:      c.usd   ?? null,
+      estado:         'entregada',
+    }))
+
+    if (salesRows.length > 0) {
+      const { error } = await supabase.from('sales').insert(salesRows)
+      if (error) console.error('[Claims] sales insert error:', error.message)
+    }
+
     refreshAll()
   }
 
+  /* ── Reservar: solo actualiza inventory ────────────────────────── */
   const handleReserve = async (buyerName) => {
-    const ids = [...selected]
+    const ids = selectedCards.map(c => c.inventory_id)
     await supabase.from('inventory')
       .update({
         status:     'reservada',
@@ -214,8 +266,9 @@ function CardTable({ cards, claimId }) {
     refreshAll()
   }
 
+  /* ── Volver al stock ────────────────────────────────────────────── */
   const handleReturn = async () => {
-    const ids = [...selected]
+    const ids = selectedCards.map(c => c.inventory_id)
     await supabase.from('inventory')
       .update({
         status:        'disponible',
@@ -264,7 +317,8 @@ function CardTable({ cards, claimId }) {
               return (
                 <tr
                   key={i}
-                  className={`transition ${isSel ? 'bg-violet-50' : 'hover:bg-gray-50'}`}
+                  className={`transition ${isSel ? 'bg-violet-50' : 'hover:bg-gray-50'}
+                    ${c.inventory_id ? 'cursor-pointer' : ''}`}
                   onClick={() => c.inventory_id && toggleOne(c.inventory_id)}
                 >
                   {hasInventoryIds && (
@@ -343,6 +397,7 @@ function CardTable({ cards, claimId }) {
           <BulkActionBar
             key="bulk"
             selected={selected}
+            cards={cards}
             onSell={handleSell}
             onReserve={handleReserve}
             onReturn={handleReturn}
@@ -363,7 +418,6 @@ function ClaimRow({ claim }) {
   const hasImages = claim.image_urls?.length > 0
   const hasCards  = claim.cards_data?.length > 0
 
-  // Normalizar cards_data al shape que espera ClaimOptionsModal
   const openRegen = () => {
     if (!hasCards) return
     const normalized = claim.cards_data.map(c => ({
@@ -455,7 +509,6 @@ function ClaimRow({ claim }) {
               >
                 <div className="px-5 py-4 bg-gray-50 border-t border-b border-gray-100 space-y-4">
 
-                  {/* Imágenes guardadas en Storage */}
                   {hasImages && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 mb-3">
@@ -494,7 +547,6 @@ function ClaimRow({ claim }) {
                     </div>
                   )}
 
-                  {/* Botón re-generar (cuando no hay imágenes en storage pero sí cards_data) */}
                   {!hasImages && hasCards && (
                     <div className="flex items-center gap-3 py-2">
                       <p className="text-xs text-gray-500 flex-1">
@@ -510,14 +562,13 @@ function ClaimRow({ claim }) {
                     </div>
                   )}
 
-                  {/* Lista de cartas + workflow post-claim */}
                   {hasCards && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 mb-2">
                         📋 Cartas del claim ({claim.cards_data.length})
                         {claim.cards_data.some(c => c.inventory_id) && (
                           <span className="ml-2 text-[10px] text-violet-500 font-normal">
-                            · Seleccioná cartas para actualizar su estado
+                            · Seleccioná para marcar vendidas/reservadas
                           </span>
                         )}
                       </p>
@@ -539,7 +590,6 @@ function ClaimRow({ claim }) {
 
       {fullImg && <ImagenFullscreen src={fullImg} onClose={() => setFullImg(null)} />}
 
-      {/* Re-generar modal */}
       {regenCards && (
         <ClaimOptionsModal
           cards={regenCards}
@@ -562,7 +612,6 @@ export default function Claims() {
   return (
     <div className="space-y-5">
 
-      {/* Header */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm
                       flex items-center justify-between">
         <div>
@@ -580,7 +629,6 @@ export default function Claims() {
         </button>
       </div>
 
-      {/* Tabla */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {isLoading && (
           <div className="flex justify-center py-12">
