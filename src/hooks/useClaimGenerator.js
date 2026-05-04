@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { fetchCardImages } from '../lib/pokemonTcg'
+import { fetchCardImages }              from '../lib/pokemonTcg'
+import { getCardImageUrl, loadBlobUrl } from '../lib/imageCache'
 
 /* ─── Configuración de estilos ──────────────────────────────────────────
    A: 6 cols × 5 rows = 30 cartas · canvas 1080 × 1350 (4:5 Instagram)
@@ -21,27 +22,14 @@ const STYLE_B = {
   headerH: 72, footerH: 48,
 }
 
-/* ─── Cargar imagen como blob URL (evita canvas taintado por CORS) ──── */
-async function loadImage(url) {
-  try {
-    const res     = await fetch(url, { mode: 'cors' })
-    const blob    = await res.blob()
-    const blobUrl = URL.createObjectURL(blob)
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.onload  = () => resolve({ img, blobUrl })
-      img.onerror = () => reject(new Error(`Error cargando imagen`))
-      img.src = blobUrl
-    })
-  } catch {
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload  = () => resolve({ img, blobUrl: null })
-      img.onerror = () => reject(new Error(`Error cargando imagen`))
-      img.src = url
-    })
-  }
+/* ─── Cargar una URL como Image desde un blobUrl (CORS-safe) ────────── */
+function blobUrlToImg(blobUrl) {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload  = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = blobUrl
+  })
 }
 
 /* ─── Dibujar imagen con cover-crop (no estira) ─────────────────────── */
@@ -191,33 +179,41 @@ export function useClaimGenerator() {
     const cfg = style === 'B' ? STYLE_B : STYLE_A
 
     try {
-      // 1. Pre-cargar imágenes en PARALELO con timeout de 12s por imagen
-      //    Fallback: si no hay image_url en DB, buscar en PokémonTCG API
+      // 1. Pre-cargar imágenes en PARALELO
+      //    Prioridad: cache en memoria (CardImage ya lo tenía) → DB → API PokémonTCG
       setProgress(5)
       const loaded = await Promise.all(
         cards.map(async (card) => {
-          // Resolver URL: usar la guardada en DB, o buscar en API
-          let url = card.image_url || null
-          if (!url && card.nombre) {
-            try {
+          try {
+            // ── A. URL: cache en memoria > campo image_url > API ──────────
+            let imageUrl = getCardImageUrl(card.card_id)  // en memoria si ya se vio en la lista
+                        || card.image_url                  // de Supabase (query fresco)
+                        || null
+
+            if (!imageUrl && card.nombre) {
+              // No hay URL guardada → buscar en PokémonTCG API
               const imgs = await Promise.race([
                 fetchCardImages(card.nombre, card.numero, card.set_name),
-                new Promise((_, reject) => setTimeout(() => reject(), 8000)),
+                new Promise(res => setTimeout(() => res(null), 8000)),
               ])
-              url = imgs?.large || imgs?.small || null
-            } catch { /* sin imagen */ }
-          }
+              imageUrl = imgs?.large || imgs?.small || null
+            }
 
-          if (!url) return { img: null, blobUrl: null, card }
+            if (!imageUrl) return { img: null, blobUrl: null, card }
 
-          try {
-            const result = await Promise.race([
-              loadImage(url),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('timeout')), 12000)
-              ),
+            // ── B. Cargar como blobUrl (CORS-safe para toDataURL) ─────────
+            const blobUrl = await Promise.race([
+              loadBlobUrl(imageUrl),
+              new Promise(res => setTimeout(() => res(null), 12000)),
             ])
-            return { ...result, card }
+
+            if (!blobUrl) return { img: null, blobUrl: null, card }
+
+            // ── C. Crear HTMLImageElement desde el blobUrl ─────────────────
+            const img = await blobUrlToImg(blobUrl)
+            if (!img) return { img: null, blobUrl: null, card }
+
+            return { img, blobUrl, card }
           } catch {
             return { img: null, blobUrl: null, card }
           }
@@ -299,11 +295,8 @@ export function useClaimGenerator() {
         })
       }
 
-      // Liberar blob URLs
-      for (const { blobUrl } of loaded) {
-        if (blobUrl) URL.revokeObjectURL(blobUrl)
-      }
-
+      // NOTA: los blobUrls están en imageCache y no se revocan aquí
+      // (se reutilizan en claims futuros)
       setImages(result)
       setProgress(100)
     } catch (err) {

@@ -16,6 +16,7 @@ import { IDIOMAS, CONDICIONES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
+import { getCardImageUrl } from '../lib/imageCache'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -199,7 +200,8 @@ export default function Stock() {
     }
     setClaimCards(disponiblesSeleccionadas.map(r => ({
       ...r,
-      image_url: freshImages[r.card_id] || r.image_url || '',
+      // Prioridad: cache en memoria (CardImage ya la cargó) → Supabase fresco → stale cache
+      image_url: getCardImageUrl(r.card_id) || freshImages[r.card_id] || r.image_url || '',
     })))
   }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchCardImages } from '../../lib/pokemonTcg'
 import { supabase } from '../../lib/supabase'
+import { setCardImage } from '../../lib/imageCache'
 
 export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, setName, onOpen }) {
   const ref                     = useRef(null)
@@ -28,6 +29,9 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     setFetching(false)
     setFailed(false)
 
+    // ← Guardar en cache en memoria para el generador de claims
+    if (cardId) setCardImage(cardId, imgs.large || imgs.small)
+
     // Persistir en Supabase
     if (cardId && imgs.large) {
       supabase
@@ -41,7 +45,11 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
   }, [nombre, numero, idioma, cardId, fetching])
 
   useEffect(() => {
-    if (imageUrl) { setSrc(imageUrl); setLarge(imageUrl); setLoaded(true); return }
+    if (imageUrl) {
+      setSrc(imageUrl); setLarge(imageUrl); setLoaded(true)
+      if (cardId) setCardImage(cardId, imageUrl)  // cachear aunque venga de DB
+      return
+    }
     if (!nombre) return
 
     // Lazy load: fetch solo cuando entra en pantalla
