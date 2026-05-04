@@ -482,7 +482,7 @@ export default function Stock() {
             className={`fixed left-1/2 -translate-x-1/2 z-50
                        flex items-center gap-3 px-5 py-3
                        bg-gray-900 text-white rounded-2xl shadow-2xl
-                       ${totalPages > 1 ? 'bottom-[72px]' : 'bottom-6'}`}
+                       ${totalPages > 1 ? 'bottom-[96px]' : 'bottom-6'}`}
           >
             <span className="text-sm font-semibold whitespace-nowrap">
               {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'}
@@ -529,7 +529,7 @@ export default function Stock() {
             className={`fixed left-1/2 -translate-x-1/2 z-50
                        flex items-center gap-3 px-5 py-3
                        bg-red-600 text-white rounded-2xl shadow-2xl
-                       ${totalPages > 1 ? 'bottom-[72px]' : 'bottom-6'}`}
+                       ${totalPages > 1 ? 'bottom-[96px]' : 'bottom-6'}`}
           >
             <span className="text-sm font-semibold whitespace-nowrap">
               ¿Eliminar {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'}? No se puede deshacer.
