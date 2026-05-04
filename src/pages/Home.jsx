@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMetricas }       from '../hooks/useMetricas'
 import { useVentas }         from '../hooks/useVentas'
 import { useDolar }          from '../hooks/useDolar'
@@ -81,12 +81,20 @@ function SparkBars({ data = [], color, dimColor }) {
 }
 
 // ── KpiCard ────────────────────────────────────────────────────────────────
-function KpiCard({ iconBg, iconEl, label, value, trendPct, trendColor, sparkData, sparkColor, sparkDimColor, loading }) {
+function KpiCard({ iconBg, iconEl, label, value, trendPct, trendColor, sparkData, sparkColor, sparkDimColor, loading, to }) {
+  const navigate = useNavigate()
   return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
-      padding: 15, display: 'flex', flexDirection: 'column', gap: 20,
-    }}>
+    <div
+      onClick={() => to && navigate(to)}
+      style={{
+        background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
+        padding: 15, display: 'flex', flexDirection: 'column', gap: 20,
+        cursor: to ? 'pointer' : 'default',
+        transition: 'box-shadow 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={e => { if (to) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(70,128,255,0.12)'; e.currentTarget.style.borderColor = C.blue20 } }}
+      onMouseLeave={e => { if (to) { e.currentTarget.style.boxShadow = ''; e.currentTarget.style.borderColor = C.border } }}
+    >
       {/* Icon + label */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{
@@ -251,7 +259,7 @@ export default function Home() {
     let tp = 0, tc = 0
 
     for (const v of ventas) {
-      const s  = semanaIdx(v.created_at || v.sold_at)
+      const s  = semanaIdx(v.fecha_venta || v.sold_at || v.created_at)
       const ch = v.channel || ''
       if (!map[s]) map[s] = { s: SEMANA_LABEL[s], Charly: 0, Claims: 0, 'Fuera de eventos': 0 }
       const monto = v.total_ars_blue || v.total_ars || 0
@@ -262,7 +270,7 @@ export default function Home() {
 
     const semanaMap = {}
     for (const v of ventas) {
-      const s = semanaIdx(v.created_at || v.sold_at)
+      const s = semanaIdx(v.fecha_venta || v.sold_at || v.created_at)
       semanaMap[s] = (semanaMap[s] || 0) + (v.total_ars_blue || v.total_ars || 0)
     }
 
@@ -327,6 +335,7 @@ export default function Home() {
       {/* ── 4 KPI Cards ──────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
         <KpiCard
+          to="/stock"
           iconBg={C.greenBg}
           iconEl={<WalletIcon color={C.green} />}
           label="Cartas Dólares"
@@ -339,6 +348,7 @@ export default function Home() {
           loading={mLoad}
         />
         <KpiCard
+          to="/stock"
           iconBg={C.orangeBg}
           iconEl={<WalletIcon color={C.orange} />}
           label="Cartas en Pesos"
@@ -351,6 +361,7 @@ export default function Home() {
           loading={mLoad}
         />
         <KpiCard
+          to="/stock"
           iconBg={C.blueBg}
           iconEl={<WalletIcon color={C.blue} />}
           label="Cartas en Blue"
@@ -363,6 +374,7 @@ export default function Home() {
           loading={mLoad}
         />
         <KpiCard
+          to="/deudas"
           iconBg={C.redBg}
           iconEl={<ArrowDownCircleIcon color={C.red} />}
           label="Deudas activas"
@@ -479,7 +491,9 @@ export default function Home() {
                     background: i % 2 === 0 ? C.card : C.inner,
                   }}>
                     <td style={{ padding: '10px 16px', color: C.sub, whiteSpace: 'nowrap' }}>
-                      {new Date(v.created_at || v.sold_at).toLocaleDateString('es-AR')}
+                      {(v.fecha_venta || v.sold_at || v.created_at)
+                        ? new Date(v.fecha_venta || v.sold_at || v.created_at).toLocaleDateString('es-AR')
+                        : '—'}
                     </td>
                     <td style={{ padding: '10px 16px', fontWeight: 500, color: C.text, maxWidth: 160 }}>
                       <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

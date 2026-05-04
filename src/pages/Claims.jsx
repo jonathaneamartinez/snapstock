@@ -236,15 +236,16 @@ function CardTable({ cards, claimId }) {
       .in('id', ids)
 
     // 2. Insertar una fila en sales por cada carta vendida
+    // La tabla sales usa: sold_at, total_ars, total_ars_blue, notes (para el nombre)
     const salesRows = selectedCards.map(c => ({
       store_id:       STORE_ID,
-      inventory_id:   c.inventory_id,
-      card_name:      c.name  || '',
-      channel:        channel || 'claims',
+      channel:        channel   || 'claims',
       buyer_name:     buyerName || null,
-      total_ars_blue: c.sale  ?? c.ars ?? null,
-      total_usd:      c.usd   ?? null,
-      estado:         'entregada',
+      notes:          c.name    || '',          // nombre de la carta va en notes
+      total_ars:      c.sale    ?? c.ars ?? null,
+      total_ars_blue: c.sale    ?? c.ars ?? null,
+      total_usd:      c.usd     ?? null,
+      sold_at:        new Date().toISOString(),
     }))
 
     if (salesRows.length > 0) {

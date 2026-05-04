@@ -164,7 +164,7 @@ export default function Ventas() {
                 {ventas.map(v => (
                   <tr key={v.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                      {new Date(v.created_at).toLocaleDateString('es-AR')}
+                      {v.fecha_venta ? new Date(v.fecha_venta).toLocaleDateString('es-AR') : '—'}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">{v.card_name || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{canalLabel(v.channel)}</td>

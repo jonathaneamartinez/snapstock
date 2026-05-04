@@ -24,23 +24,46 @@ export default function CompraDetalleModal({ purchaseId, onClose }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data, error } = await supabase
-        .from('purchases')
-        .select(`
-          id, vendor_name, purchased_at,
-          total_ars, total_usd, payment_status, notes,
-          purchase_items(
-            id, quantity, condition, price_ars, price_usd,
-            cards(name, image_url)
-          )
-        `)
-        .eq('id', purchaseId)
-        .single()
+      try {
+        // 1. Traer compra + items (sin join a cards — el FK no está en schema cache)
+        const { data: compraData, error: errC } = await supabase
+          .from('purchases')
+          .select(`
+            id, vendor_name, purchased_at,
+            total_ars, total_usd, payment_status, notes,
+            purchase_items(id, quantity, condition, price_ars, price_usd, card_id)
+          `)
+          .eq('id', purchaseId)
+          .single()
 
-      if (!cancelled) {
-        if (error) setError(error.message)
-        else setCompra(data)
-        setLoading(false)
+        if (cancelled) return
+        if (errC) { setError(errC.message); setLoading(false); return }
+
+        // 2. Buscar datos de las cartas por card_id (query separado)
+        const cardIds = (compraData.purchase_items ?? [])
+          .map(i => i.card_id).filter(Boolean)
+
+        let cardsMap = {}
+        if (cardIds.length > 0) {
+          const { data: cardsData } = await supabase
+            .from('cards')
+            .select('id, name, image_url')
+            .in('id', cardIds)
+          ;(cardsData ?? []).forEach(c => { cardsMap[c.id] = c })
+        }
+
+        // 3. Combinar items con sus cartas
+        const itemsWithCards = (compraData.purchase_items ?? []).map(item => ({
+          ...item,
+          cards: cardsMap[item.card_id] ?? null,
+        }))
+
+        if (!cancelled) {
+          setCompra({ ...compraData, purchase_items: itemsWithCards })
+          setLoading(false)
+        }
+      } catch (e) {
+        if (!cancelled) { setError(e.message); setLoading(false) }
       }
     })()
     return () => { cancelled = true }
