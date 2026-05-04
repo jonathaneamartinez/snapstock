@@ -38,13 +38,14 @@ export default function ReservaActions({ inventoryId, buyerName, onDone }) {
       if (confirm === 'cobrar') {
         await supabase
           .from('inventory')
-          .update({ status: 'vendida', sold_at_date: new Date().toISOString() })
+          .update({ status: 'vendida', estado: 'vendida', sold_at_date: new Date().toISOString() })
           .eq('id', inventoryId)
       } else if (confirm === 'liberar') {
         await supabase
           .from('inventory')
           .update({
             status:        'disponible',
+            estado:        'disponible',
             buyer_name:    null,
             buyer_contact: null,
             canal_reserva: null,

@@ -225,10 +225,11 @@ function CardTable({ cards, claimId }) {
   const handleSell = async (buyerName, channel) => {
     const ids = selectedCards.map(c => c.inventory_id)
 
-    // 1. Marcar como vendidas en inventory
+    // 1. Marcar como vendidas en inventory (status Y estado para que el filtro funcione)
     await supabase.from('inventory')
       .update({
         status:       'vendida',
+        estado:       'vendida',
         sold_at_date: new Date().toISOString(),
         buyer_name:   buyerName || null,
       })
@@ -254,12 +255,13 @@ function CardTable({ cards, claimId }) {
     refreshAll()
   }
 
-  /* ── Reservar: solo actualiza inventory ────────────────────────── */
+  /* ── Reservar: actualiza inventory ─────────────────────────────── */
   const handleReserve = async (buyerName) => {
     const ids = selectedCards.map(c => c.inventory_id)
     await supabase.from('inventory')
       .update({
         status:     'reservada',
+        estado:     'reservada',
         buyer_name: buyerName || null,
       })
       .in('id', ids)
@@ -272,6 +274,7 @@ function CardTable({ cards, claimId }) {
     await supabase.from('inventory')
       .update({
         status:        'disponible',
+        estado:        'disponible',
         buyer_name:    null,
         buyer_contact: null,
       })

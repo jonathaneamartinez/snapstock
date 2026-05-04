@@ -38,7 +38,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
       const ids = cartas.map(c => c.id)
       await supabase
         .from('inventory')
-        .update({ status: 'vendida', sold_at_date: new Date().toISOString() })
+        .update({ status: 'vendida', estado: 'vendida', sold_at_date: new Date().toISOString() })
         .in('id', ids)
       onDone?.()
       onClose()
