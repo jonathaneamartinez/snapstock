@@ -97,8 +97,8 @@
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(0,0,0,.5)     0, rgba(0,0,0,.5)     1px,
-      rgba(255,255,255,.1) 1px, rgba(255,255,255,.1) 2px
+      rgba(0,0,0,.6)       0, rgba(0,0,0,.6)       1px,
+      rgba(120,120,120,.4) 1px, rgba(120,120,120,.4) 2px
     );
   background-blend-mode: screen;
   background-size: 400% 100%, 3px 3px;
@@ -106,8 +106,8 @@
     calc(var(--background-x) * 2.5) calc(var(--background-y) * 3),
     0 0;
   filter: brightness(.9) contrast(1.4) saturate(1.5);
-  mix-blend-mode: screen;
-  opacity: calc(var(--card-opacity) * .75);
+  mix-blend-mode: color-dodge;
+  opacity: calc(var(--card-opacity) * .7);
 }
 
 /* ── Holo V / VMAX / VSTAR ────────────────────────────────────────────────── */
@@ -137,9 +137,9 @@
     var(--background-x) calc(var(--background-y) * 3),
     var(--background-x) var(--background-y),
     var(--background-x) var(--background-y);
-  filter: brightness(.9) contrast(1.6) saturate(1.4);
-  mix-blend-mode: screen;
-  opacity: calc(var(--card-opacity) * .9);
+  filter: brightness(.8) contrast(1.6) saturate(1.4);
+  mix-blend-mode: color-dodge;
+  opacity: calc(var(--card-opacity) * .85);
 }
 
 /* ── Rainbow / Secret Rare ────────────────────────────────────────────────── */
@@ -161,11 +161,11 @@
     calc(25% + 50% * var(--pointer-from-left)) calc(25% + 50% * var(--pointer-from-top)),
     calc(25% + var(--pointer-x) / 2)           calc(25% + var(--pointer-y) / 2);
   filter:
-    brightness(calc(var(--pointer-from-center) * .25 + .75))
-    contrast(2)
-    saturate(.85);
-  mix-blend-mode: screen;
-  opacity: calc(var(--card-opacity) * .95);
+    brightness(calc(var(--pointer-from-center) * .25 + .6))
+    contrast(2.2)
+    saturate(.75);
+  mix-blend-mode: color-dodge;
+  opacity: calc(var(--card-opacity) * .9);
 }
 
 /* ── Reverse Holo ─────────────────────────────────────────────────────────── */
@@ -178,7 +178,7 @@
   background-position:
     center center,
     calc(100% * var(--pointer-from-left)) calc(100% * var(--pointer-from-top));
-  filter: brightness(.6) contrast(1.5) saturate(1);
-  mix-blend-mode: screen;
-  opacity: calc(1.2 * var(--card-opacity) - var(--pointer-from-center) * .3);
+  filter: brightness(.55) contrast(1.5) saturate(1);
+  mix-blend-mode: color-dodge;
+  opacity: calc(1.5 * var(--card-opacity) - var(--pointer-from-center));
 }

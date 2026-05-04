@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, TrendingUp, Users,
-  ShoppingCart, PlusCircle, Settings, Scan, X,
+  ShoppingCart, PlusCircle, Settings, Scan, X, Layers,
 } from 'lucide-react'
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/ventas',    label: 'Ventas del mes',  icon: TrendingUp      },
   { to: '/deudas',    label: 'Deudas activas',  icon: Users           },
   { to: '/compras',   label: 'Compras',         icon: ShoppingCart    },
+  { to: '/claims',    label: 'Claims',          icon: Layers          },
   { to: '/settings',  label: 'Settings',        icon: Settings        },
 ]
 

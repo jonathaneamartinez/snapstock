@@ -9,6 +9,7 @@ import Compras  from './pages/Compras'
 import Ingresos from './pages/Ingresos'
 import Settings from './pages/Settings'
 import Scanner  from './pages/Scanner'
+import Claims   from './pages/Claims'
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/compras"   element={<Compras />}  />
             <Route path="/ingresos"  element={<Ingresos />} />
             <Route path="/settings"  element={<Settings />} />
+            <Route path="/claims"    element={<Claims />}   />
           </Route>
 
           {/* Fallback */}

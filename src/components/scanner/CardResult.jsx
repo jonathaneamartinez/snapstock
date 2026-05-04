@@ -1,6 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import HoloCard from './HoloCard'
+import { useSettings } from '../../hooks/useSettings'
 import { CONDICIONES, CONDICION_LABELS } from '../../constants'
+
+// Calcula precio sugerido: USD × blue × (1 + margen/100), redondeado a $500
+function calcPrecioSugerido(usd, blue, margen) {
+  if (usd == null || !blue) return null
+  const base = usd * blue * (1 + (margen || 0) / 100)
+  return Math.ceil(base / 500) * 500
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtUSD = (n) =>
@@ -52,10 +60,16 @@ export default function CardResult({
   const [buyerName,   setBuyerName]   = useState('')
   const [fuenteKey,   setFuenteKey]   = useState(null)
 
-  // Pre-rellenar precio de venta si el backend lo devuelve
+  const { margen } = useSettings()
+
+  // Pre-rellenar precio de venta si el backend lo devuelve; si no, usar precio sugerido
   useEffect(() => {
-    if (carta?.precio_venta != null) setPrecioVenta(String(carta.precio_venta))
-    else setPrecioVenta('')
+    if (carta?.precio_venta != null) {
+      setPrecioVenta(String(carta.precio_venta))
+    } else {
+      // sugerido se calculará después de que activeUSD y dolarRates estén disponibles
+      setPrecioVenta('')
+    }
     setFuenteKey(null)
     setAccion('agregar')
     setCantidad(1)
@@ -88,6 +102,12 @@ export default function CardResult({
     || carta.precios_condicion
     || {}
   const hasCondPrices = Object.keys(condPrices).length > 0
+
+  // Precio sugerido (Feature 3): USD × blue × (1+margen%) redondeado a $500
+  const precioSugerido = useMemo(
+    () => calcPrecioSugerido(activeUSD, dolarRates.blue, margen),
+    [activeUSD, dolarRates.blue, margen]
+  )
 
   // Rarity badge
   const rStyle = rarityStyle(carta.holo_level, carta.rarity || '')
@@ -221,13 +241,23 @@ export default function CardResult({
 
         {/* ── Precio de venta ────────────────────────────────────────────── */}
         <div className="mx-4 mt-3">
-          <label className="text-white/35 text-xs block mb-1">Precio de venta (ARS)</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-white/35 text-xs">Precio de venta (ARS)</label>
+            {precioSugerido != null && (
+              <button
+                onClick={() => setPrecioVenta(String(precioSugerido))}
+                className="text-blue-400/80 hover:text-blue-300 text-xs transition"
+              >
+                Sugerido: ${precioSugerido.toLocaleString('es-AR')} ({margen}% margen) →
+              </button>
+            )}
+          </div>
           <input
             type="number"
             inputMode="numeric"
             value={precioVenta}
             onChange={e => setPrecioVenta(e.target.value)}
-            placeholder="Sin precio fijado"
+            placeholder={precioSugerido != null ? `Sugerido: $${precioSugerido.toLocaleString('es-AR')}` : 'Sin precio fijado'}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2
                        text-white text-sm focus:outline-none focus:border-blue-500/60
                        placeholder-white/25 transition"

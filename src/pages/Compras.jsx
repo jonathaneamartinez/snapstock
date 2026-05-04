@@ -1,44 +1,55 @@
 import { useState } from 'react'
-import EmptyState from '../components/ui/EmptyState'
+import { useQueryClient } from '@tanstack/react-query'
+import { usePurchases }          from '../hooks/usePurchases'
+import Spinner                   from '../components/ui/Spinner'
+import EmptyState                from '../components/ui/EmptyState'
+import Toast                     from '../components/ui/Toast'
+import CompraDetalleModal        from '../components/compras/CompraDetalleModal'
+import RegistrarCompraModal      from '../components/compras/RegistrarCompraModal'
 
-const fmtARS = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-const fmtUSD = (n) => `$${Number(n || 0).toLocaleString('en',    { maximumFractionDigits: 0 })}`
-
-// Por ahora con datos de ejemplo hasta que se conecte la tabla purchases
-const MOCK_COMPRAS = [
-  { fecha: '12/04', vendedor: 'Colección JL',      cartas: 45,  usd: 320,  ars: 384000,  estado: 'pagada'        },
-  { fecha: '05/04', vendedor: 'TCG Argentina',     cartas: 120, usd: 850,  ars: 1020000, estado: 'deuda parcial' },
-  { fecha: '28/03', vendedor: 'Feria Palermo',     cartas: 30,  usd: 180,  ars: 216000,  estado: 'pagada'        },
-  { fecha: '20/03', vendedor: 'Hernán (Singles)',  cartas: 200, usd: 1200, ars: 1440000, estado: 'pagada'        },
-  { fecha: '10/03', vendedor: 'Import JP',         cartas: 15,  usd: 280,  ars: 336000,  estado: 'deuda'         },
-]
+const fmtARS  = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+const fmtUSD  = (n) => `U$D ${Number(n || 0).toLocaleString('en',  { maximumFractionDigits: 0 })}`
+const fmtDate = (s) => s ? new Date(s).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—'
 
 const ESTADO_CLS = {
-  'pagada':        'bg-emerald-100 text-emerald-700',
+  pagada:          'bg-emerald-100 text-emerald-700',
+  pendiente:       'bg-amber-100   text-amber-700',
   'deuda parcial': 'bg-amber-100   text-amber-700',
-  'deuda':         'bg-red-100     text-red-700',
+  deuda:           'bg-red-100     text-red-700',
 }
 
 export default function Compras() {
-  const [showForm, setShowForm] = useState(false)
+  const qc = useQueryClient()
+  const { data, isLoading, error } = usePurchases()
 
-  const comprasMes    = MOCK_COMPRAS.length
-  const cartasTotal   = MOCK_COMPRAS.reduce((s, c) => s + c.cartas, 0)
-  const invertidoUSD  = MOCK_COMPRAS.reduce((s, c) => s + c.usd,    0)
-  const roi           = 36 // % estimado
+  const [detalleId,  setDetalleId]  = useState(null)   // id de compra para modal detalle
+  const [showForm,   setShowForm]   = useState(false)
+  const [toast,      setToast]      = useState({ visible: false, mensaje: '', tipo: 'success' })
 
-  const totalInvertido = MOCK_COMPRAS.reduce((s, c) => s + c.ars, 0)
-  const totalVendido   = Math.round(totalInvertido * 1.36)
+  const showToast = (mensaje, tipo = 'success') => {
+    setToast({ visible: true, mensaje, tipo })
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+  }
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['purchases'] })
+
+  const compras = data ?? []
+
+  // ── KPIs ──────────────────────────────────────────────────────────────
+  const comprasMes   = compras.length
+  const cartasTotal  = compras.reduce((s, c) => s + (c.cartas || 0), 0)
+  const invertidoUSD = compras.reduce((s, c) => s + (c.total_usd || 0), 0)
+  const invertidoARS = compras.reduce((s, c) => s + (c.total_ars || 0), 0)
 
   return (
     <div className="space-y-5">
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Compras este mes', value: comprasMes,          sub: 'operaciones', color: 'text-blue-600'    },
-          { label: 'Cartas compradas', value: cartasTotal,         sub: 'unidades',    color: 'text-gray-800'    },
-          { label: 'Invertido USD',    value: fmtUSD(invertidoUSD), sub: 'este mes',    color: 'text-amber-500'   },
-          { label: 'ROI del mes',      value: `+${roi}%`,           sub: 'retorno',     color: 'text-emerald-600' },
+          { label: 'Compras registradas', value: comprasMes,          sub: 'operaciones', color: 'text-blue-600'    },
+          { label: 'Cartas compradas',    value: cartasTotal,          sub: 'unidades',    color: 'text-gray-800'    },
+          { label: 'Invertido USD',       value: fmtUSD(invertidoUSD), sub: 'acumulado',   color: 'text-amber-500'   },
+          { label: 'Invertido ARS',       value: fmtARS(invertidoARS), sub: 'acumulado',   color: 'text-emerald-600' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{k.label}</p>
@@ -59,51 +70,97 @@ export default function Compras() {
             + Registrar compra
           </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-              <tr>
-                {['Fecha','Vendedor','Cartas','USD','ARS','Estado',''].map((h, i) => (
-                  <th key={i} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {MOCK_COMPRAS.map((c, i) => (
-                <tr key={i} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-500">{c.fecha}</td>
-                  <td className="px-4 py-3 font-medium text-gray-800">{c.vendedor}</td>
-                  <td className="px-4 py-3 text-gray-700">{c.cartas}</td>
-                  <td className="px-4 py-3 text-emerald-600 font-semibold">{fmtUSD(c.usd)}</td>
-                  <td className="px-4 py-3 text-blue-600 font-semibold whitespace-nowrap">{fmtARS(c.ars)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_CLS[c.estado] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {c.estado}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button className="text-xs text-blue-600 hover:underline">Ver detalle</button>
-                  </td>
+
+        {isLoading && (
+          <div className="flex justify-center py-12">
+            <Spinner size={32} className="text-blue-400" />
+          </div>
+        )}
+        {error && (
+          <p className="text-red-500 text-sm p-6">{error.message}</p>
+        )}
+        {!isLoading && compras.length === 0 && (
+          <EmptyState emoji="📦" title="Sin compras registradas" sub="Registrá tu primera compra" />
+        )}
+
+        {!isLoading && compras.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                <tr>
+                  {['Fecha','Vendedor','Cartas','USD','ARS','Estado',''].map((h, i) => (
+                    <th key={i} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {compras.map(c => (
+                  <tr key={c.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-500">{fmtDate(c.purchased_at)}</td>
+                    <td className="px-4 py-3 font-medium text-gray-800">{c.vendor_name || '—'}</td>
+                    <td className="px-4 py-3 text-gray-700">{c.cartas}</td>
+                    <td className="px-4 py-3 text-emerald-600 font-semibold whitespace-nowrap">
+                      {c.total_usd ? fmtUSD(c.total_usd) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-blue-600 font-semibold whitespace-nowrap">
+                      {c.total_ars ? fmtARS(c.total_ars) : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium
+                        ${ESTADO_CLS[c.payment_status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {c.payment_status || '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setDetalleId(c.id)}
+                        className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                      >
+                        Ver detalle
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Resumen financiero */}
-      <div className="grid lg:grid-cols-3 gap-3">
-        {[
-          { label: 'Total invertido',       value: fmtARS(totalInvertido), color: 'text-red-500'     },
-          { label: 'Total vendido equiv.',  value: fmtARS(totalVendido),   color: 'text-emerald-600' },
-          { label: 'ROI acumulado',         value: `+${roi}%`,              color: 'text-blue-600'    },
-        ].map(k => (
-          <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex justify-between items-center">
-            <span className="text-sm text-gray-500">{k.label}</span>
-            <span className={`font-bold text-lg ${k.color}`}>{k.value}</span>
+      {compras.length > 0 && (
+        <div className="grid lg:grid-cols-2 gap-3">
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex justify-between items-center">
+            <span className="text-sm text-gray-500">Total invertido USD</span>
+            <span className="font-bold text-lg text-red-500">{fmtUSD(invertidoUSD)}</span>
           </div>
-        ))}
-      </div>
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex justify-between items-center">
+            <span className="text-sm text-gray-500">Total invertido ARS</span>
+            <span className="font-bold text-lg text-red-500">{fmtARS(invertidoARS)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Modal detalle */}
+      {detalleId && (
+        <CompraDetalleModal
+          purchaseId={detalleId}
+          onClose={() => setDetalleId(null)}
+        />
+      )}
+
+      {/* Modal registrar */}
+      {showForm && (
+        <RegistrarCompraModal
+          onClose={() => setShowForm(false)}
+          onDone={() => {
+            refresh()
+            showToast('Compra registrada correctamente')
+          }}
+        />
+      )}
+
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} />
     </div>
   )
 }

@@ -1,4 +1,8 @@
-import { useDolar } from '../hooks/useDolar'
+import { useState } from 'react'
+import { useDolar }    from '../hooks/useDolar'
+import { useSettings } from '../hooks/useSettings'
+import Toast           from '../components/ui/Toast'
+import Spinner         from '../components/ui/Spinner'
 
 const USUARIOS = [
   { nombre: 'Kardia',  tel: '5491122541350' },
@@ -8,8 +12,25 @@ const USUARIOS = [
 
 export default function Settings() {
   const { blue, oficial, isLoading } = useDolar()
+  const { margen, saveMargen, savingMargen } = useSettings()
+  const [margenDraft, setMargenDraft] = useState(null) // null = sin editar
+  const [toast, setToast] = useState({ visible: false, mensaje: '' })
+
+  const showToast = (msg) => {
+    setToast({ visible: true, mensaje: msg })
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+  }
+
+  const handleSaveMargen = async () => {
+    const val = parseInt(margenDraft ?? margen)
+    if (isNaN(val) || val < 0 || val > 200) return
+    await saveMargen(val)
+    setMargenDraft(null)
+    showToast('Margen guardado')
+  }
 
   return (
+    <>
     <div className="grid lg:grid-cols-2 gap-5 max-w-4xl">
 
       {/* Perfil de la tienda */}
@@ -92,6 +113,40 @@ export default function Settings() {
         <p className="text-xs text-gray-400 mt-3">Actualizado automáticamente · dolarapi.com</p>
       </div>
 
+      {/* Margen de ganancia (Feature 3) */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-800 mb-1">Margen de ganancia sugerido</h3>
+        <p className="text-xs text-gray-400 mb-4">
+          Se aplica al precio sugerido en ARS al registrar una carta nueva.
+          <br />Fórmula: USD × dólar blue × (1 + margen%) → redondeado a $500 ARS.
+        </p>
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center">
+            <input
+              type="number"
+              min="0" max="200"
+              value={margenDraft ?? margen}
+              onChange={e => setMargenDraft(e.target.value)}
+              className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm text-center
+                         focus:outline-none focus:ring-2 focus:ring-blue-200 font-bold text-gray-800"
+            />
+            <span className="absolute right-3 text-gray-400 text-sm font-semibold">%</span>
+          </div>
+          <button
+            onClick={handleSaveMargen}
+            disabled={savingMargen || margenDraft === null}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold
+                       rounded-xl transition disabled:opacity-40"
+          >
+            {savingMargen ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          Ejemplo con margen {margenDraft ?? margen}%:&nbsp;
+          USD $45 × ${blue ? Math.round(blue) : '?'} blue = ${blue ? Math.round(45 * blue * (1 + (parseInt(margenDraft ?? margen) || 0) / 100) / 500) * 500 : '?'} ARS
+        </p>
+      </div>
+
       {/* Membresía */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
         <h3 className="font-semibold text-gray-800 mb-4">Membresía</h3>
@@ -116,5 +171,8 @@ export default function Settings() {
       </div>
 
     </div>
+
+    <Toast mensaje={toast.mensaje} tipo="success" visible={toast.visible} />
+    </>
   )
 }

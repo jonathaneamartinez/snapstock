@@ -1,0 +1,380 @@
+import { useState, useRef } from 'react'
+import { supabase }   from '../../lib/supabase'
+import { scannerApi } from '../../lib/scanner'
+import { STORE_ID, CONDICIONES } from '../../constants'
+import Spinner from '../ui/Spinner'
+
+/* ─── Formato esperado de columnas (case-insensitive, flexible) ─────── */
+const COLUMN_ALIASES = {
+  nombre:     ['nombre', 'name', 'carta', 'card', 'card name'],
+  set:        ['set', 'edicion', 'edición', 'expansion', 'set_name'],
+  numero:     ['numero', 'número', 'number', 'card_number', 'nro', '#'],
+  condicion:  ['condicion', 'condición', 'condition', 'cond'],
+  idioma:     ['idioma', 'language', 'lang'],
+  cantidad:   ['cantidad', 'qty', 'quantity', 'stock'],
+  precio_usd: ['precio_usd', 'price_usd', 'usd', 'precio usd', 'price'],
+  precio_ars: ['precio_ars', 'price_ars', 'ars', 'sale_price'],
+}
+
+function matchHeader(header) {
+  const h = header.toLowerCase().trim()
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    if (aliases.includes(h)) return field
+  }
+  return null
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+  const fieldMap = headers.map(matchHeader)
+
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+    const row = {}
+    fieldMap.forEach((field, i) => {
+      if (field) row[field] = vals[i] || ''
+    })
+    return row
+  }).filter(r => r.nombre)
+}
+
+async function parseXLSX(file) {
+  const XLSX = (await import('xlsx')).default
+  const buffer = await file.arrayBuffer()
+  const wb     = XLSX.read(buffer, { type: 'array' })
+  const ws     = wb.Sheets[wb.SheetNames[0]]
+  const raw    = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+  if (raw.length < 2) return []
+  const headers  = raw[0].map(h => String(h))
+  const fieldMap = headers.map(matchHeader)
+
+  return raw.slice(1).map(row => {
+    const obj = {}
+    fieldMap.forEach((field, i) => {
+      if (field) obj[field] = String(row[i] ?? '').trim()
+    })
+    return obj
+  }).filter(r => r.nombre)
+}
+
+/* ─── Normalizar condicion ──────────────────────────────────────────── */
+const normCond = (v) => {
+  const upper = (v || 'NM').toUpperCase().trim()
+  return CONDICIONES.includes(upper) ? upper : 'NM'
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Modal principal
+════════════════════════════════════════════════════════════════════════ */
+export default function ImportarCartasModal({ onClose, onDone }) {
+  const [step,     setStep]     = useState('upload')  // upload | preview | importing | done
+  const [rows,     setRows]     = useState([])
+  const [progress, setProgress] = useState(0)
+  const [results,  setResults]  = useState({ ok: 0, error: 0 })
+  const [error,    setError]    = useState(null)
+  const fileRef = useRef(null)
+
+  /* ── Parsear archivo ─────────────────────────────────────────────── */
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError(null)
+    try {
+      let parsed = []
+      if (file.name.endsWith('.csv') || file.type === 'text/csv') {
+        const text = await file.text()
+        parsed = parseCSV(text)
+      } else {
+        parsed = await parseXLSX(file)
+      }
+      if (parsed.length === 0) {
+        setError('No se encontraron filas válidas. Asegurate de tener columna "nombre" o "name".')
+        return
+      }
+      setRows(parsed)
+      setStep('preview')
+    } catch (err) {
+      setError(err.message || 'Error al leer el archivo')
+    }
+  }
+
+  /* ── Confirmar e importar ────────────────────────────────────────── */
+  const handleImport = async () => {
+    setStep('importing')
+    setProgress(0)
+    let ok = 0, errors = 0
+
+    for (let i = 0; i < rows.length; i++) {
+      setProgress(Math.round((i / rows.length) * 100))
+      const r = rows[i]
+
+      try {
+        // 1. Buscar o crear carta en `cards`
+        let cardId = null
+        const { data: existing } = await supabase
+          .from('cards')
+          .select('id')
+          .ilike('name', r.nombre.trim())
+          .maybeSingle()
+
+        if (existing) {
+          cardId = existing.id
+        } else {
+          // Intentar obtener imagen del scanner
+          let imageUrl = null
+          try {
+            const apiRes = await scannerApi.buscar(r.nombre.trim(), r.idioma || 'en')
+            const first  = (apiRes?.opciones ?? apiRes?.results ?? [])[0]
+            if (first) imageUrl = first.imagen || first.image_url
+          } catch {}
+
+          const { data: newCard } = await supabase
+            .from('cards')
+            .insert({
+              name:        r.nombre.trim(),
+              set_name:    r.set?.trim()    || null,
+              card_number: r.numero?.trim() || null,
+              language:    r.idioma?.trim() || 'en',
+              image_url:   imageUrl         || null,
+            })
+            .select('id')
+            .single()
+
+          if (newCard) cardId = newCard.id
+        }
+
+        if (!cardId) throw new Error('No se pudo obtener card_id')
+
+        // 2. Upsert en inventory
+        const cond     = normCond(r.condicion)
+        const qty      = parseInt(r.cantidad) || 1
+        const priceUsd = r.precio_usd ? parseFloat(r.precio_usd) : null
+        const priceArs = r.precio_ars ? parseFloat(r.precio_ars) : null
+
+        const { data: existingInv } = await supabase
+          .from('inventory')
+          .select('id, quantity')
+          .eq('store_id', STORE_ID)
+          .eq('card_id',  cardId)
+          .eq('condition', cond)
+          .eq('status', 'disponible')
+          .maybeSingle()
+
+        if (existingInv) {
+          await supabase
+            .from('inventory')
+            .update({
+              quantity:       (existingInv.quantity || 1) + qty,
+              ...(priceUsd && { price_usd: priceUsd }),
+              ...(priceArs && { sale_price_ars: priceArs }),
+            })
+            .eq('id', existingInv.id)
+        } else {
+          await supabase
+            .from('inventory')
+            .insert({
+              store_id:    STORE_ID,
+              card_id:     cardId,
+              quantity:    qty,
+              condicion:   cond,
+              condition:   cond,
+              status:      'disponible',
+              estado:      'disponible',
+              price_usd:   priceUsd,
+              sale_price_ars: priceArs,
+              scan_date:   new Date().toISOString(),
+            })
+        }
+        ok++
+      } catch (err) {
+        console.warn(`[Import] fila ${i} error:`, err.message)
+        errors++
+      }
+    }
+
+    setResults({ ok, error: errors })
+    setProgress(100)
+    setStep('done')
+  }
+
+  /* ── Render ─────────────────────────────────────────────────────── */
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col max-h-[88vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <h3 className="font-bold text-gray-800">📥 Importar cartas</h3>
+            <p className="text-xs text-gray-400 mt-0.5">CSV, Excel (.xlsx) o Google Sheets exportado</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+          {/* ── STEP: upload ─────────────────────────────────────── */}
+          {step === 'upload' && (
+            <>
+              {/* Zona de drop */}
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full border-2 border-dashed border-gray-300 rounded-2xl p-8
+                           flex flex-col items-center gap-3 hover:border-blue-400 hover:bg-blue-50
+                           transition cursor-pointer text-center"
+              >
+                <span className="text-4xl">📂</span>
+                <p className="text-sm font-semibold text-gray-700">
+                  Arrastrá o hacé clic para seleccionar
+                </p>
+                <p className="text-xs text-gray-400">.csv · .xlsx · .xls</p>
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={handleFile}
+                className="hidden"
+              />
+
+              {error && (
+                <p className="text-red-500 text-sm bg-red-50 rounded-xl px-4 py-3">{error}</p>
+              )}
+
+              {/* Formato esperado */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs font-semibold text-gray-500 mb-2">Columnas reconocidas:</p>
+                <div className="grid grid-cols-2 gap-1 text-xs text-gray-500">
+                  {[
+                    ['nombre / name', 'Requerido'],
+                    ['set / edicion', 'Opcional'],
+                    ['numero / number', 'Opcional'],
+                    ['condicion / condition', 'NM por defecto'],
+                    ['cantidad / qty', '1 por defecto'],
+                    ['precio_usd / usd', 'Opcional'],
+                    ['precio_ars / ars', 'Opcional'],
+                    ['idioma / language', 'en por defecto'],
+                  ].map(([col, note]) => (
+                    <div key={col} className="flex gap-1">
+                      <code className="bg-gray-200 px-1 rounded text-gray-700">{col}</code>
+                      <span className="text-gray-400">{note}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── STEP: preview ────────────────────────────────────── */}
+          {step === 'preview' && (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-700">
+                  {rows.length} cartas detectadas
+                </p>
+                <button
+                  onClick={() => { setStep('upload'); setRows([]) }}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  ← Cambiar archivo
+                </button>
+              </div>
+
+              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-400 uppercase sticky top-0">
+                    <tr>
+                      {['Nombre', 'Set', 'Cond.', 'Qty', 'USD', 'ARS'].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.map((r, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px] truncate">{r.nombre}</td>
+                        <td className="px-3 py-2 text-gray-500 max-w-[80px] truncate">{r.set || '—'}</td>
+                        <td className="px-3 py-2">
+                          <span className="bg-gray-100 px-1.5 py-0.5 rounded font-medium text-gray-600">
+                            {normCond(r.condicion)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">{r.cantidad || 1}</td>
+                        <td className="px-3 py-2 text-emerald-600">{r.precio_usd ? `$${r.precio_usd}` : '—'}</td>
+                        <td className="px-3 py-2 text-blue-600">{r.precio_ars ? `$${r.precio_ars}` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {/* ── STEP: importing ──────────────────────────────────── */}
+          {step === 'importing' && (
+            <div className="py-8 space-y-4 text-center">
+              <Spinner size={36} className="text-blue-500 mx-auto" />
+              <p className="text-sm font-semibold text-gray-700">
+                Importando {rows.length} cartas…
+              </p>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-400">{progress}%</p>
+            </div>
+          )}
+
+          {/* ── STEP: done ───────────────────────────────────────── */}
+          {step === 'done' && (
+            <div className="py-8 text-center space-y-4">
+              <div className="text-5xl">{results.error === 0 ? '✅' : '⚠️'}</div>
+              <p className="text-lg font-bold text-gray-800">
+                {results.ok} cartas importadas
+              </p>
+              {results.error > 0 && (
+                <p className="text-sm text-amber-600">
+                  {results.error} filas tuvieron errores y fueron salteadas
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex justify-between gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-xl
+                       hover:bg-gray-200 transition"
+          >
+            {step === 'done' ? 'Cerrar' : 'Cancelar'}
+          </button>
+
+          {step === 'preview' && (
+            <button
+              onClick={handleImport}
+              className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl
+                         hover:bg-blue-500 transition"
+            >
+              Importar {rows.length} cartas →
+            </button>
+          )}
+          {step === 'done' && results.ok > 0 && (
+            <button
+              onClick={() => { onDone?.(); onClose() }}
+              className="px-5 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl
+                         hover:bg-emerald-400 transition"
+            >
+              ✓ Ver en stock
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -12,38 +12,36 @@ function holoClass(level) {
   }
 }
 
-// Vars por defecto: efecto visible sin interacción
-const DEFAULT_VARS = {
-  '--pointer-x':           '55%',
-  '--pointer-y':           '40%',
-  '--pointer-from-left':   '0.55',
-  '--pointer-from-top':    '0.40',
-  '--pointer-from-center': '0.22',
-  '--card-opacity':        '0.65',
-  '--rotate-x':            '3deg',
-  '--rotate-y':            '5deg',
-  '--background-x':        '55%',
-  '--background-y':        '42%',
+// Vars que dejan el efecto en estado neutral (sin interacción activa)
+const IDLE_VARS = {
+  '--pointer-x':           '50%',
+  '--pointer-y':           '50%',
+  '--pointer-from-left':   '0.5',
+  '--pointer-from-top':    '0.5',
+  '--pointer-from-center': '0',
+  '--card-opacity':        '0',
+  '--rotate-x':            '0deg',
+  '--rotate-y':            '0deg',
+  '--background-x':        '50%',
+  '--background-y':        '50%',
 }
 
-function computeVars(x, y, w, h) {
-  const pfl = x / w
-  const pft = y / h
-  const dx  = (pfl - 0.5) * 2
-  const dy  = (pft - 0.5) * 2
-  const pfc = Math.min(1, Math.sqrt(dx * dx + dy * dy) / Math.SQRT2)
-  const MAX = 15
-  const rx  =  dx * MAX
-  const ry  = -dy * MAX
-  const bx  = 50 + (pfl - 0.5) * 20
-  const by  = 50 + (pft - 0.5) * 20
+// Igual que setCardVars en el HTML original
+function computeVarsFromPercent(px, py, op) {
+  const pfl = px / 100
+  const pft = py / 100
+  const pfc = Math.min(1, Math.sqrt((pfl - 0.5) ** 2 + (pft - 0.5) ** 2) / 0.7071)
+  const rx  = ((px - 50) / 3.5).toFixed(2)
+  const ry  = (-(py - 50) / 3.5).toFixed(2)
+  const bx  = (37 + pfl * 26).toFixed(1)
+  const by  = (33 + pft * 34).toFixed(1)
   return {
-    '--pointer-x':           (pfl * 100) + '%',
-    '--pointer-y':           (pft * 100) + '%',
-    '--pointer-from-left':   String(pfl),
-    '--pointer-from-top':    String(pft),
-    '--pointer-from-center': String(pfc),
-    '--card-opacity':        '1',
+    '--pointer-x':           px.toFixed(1) + '%',
+    '--pointer-y':           py.toFixed(1) + '%',
+    '--pointer-from-left':   pfl.toFixed(3),
+    '--pointer-from-top':    pft.toFixed(3),
+    '--pointer-from-center': pfc.toFixed(3),
+    '--card-opacity':        op.toFixed(3),
     '--rotate-x':            rx + 'deg',
     '--rotate-y':            ry + 'deg',
     '--background-x':        bx + '%',
@@ -51,54 +49,113 @@ function computeVars(x, y, w, h) {
   }
 }
 
+// Calcula vars desde coordenadas en píxeles dentro del elemento
+function computeVarsFromPixels(x, y, w, h) {
+  return computeVarsFromPercent((x / w) * 100, (y / h) * 100, 1)
+}
+
 export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
-  const gyroActiveRef = useRef(false)
+  const gyroActiveRef    = useRef(false)
+  const animFrameRef     = useRef(null)
+  const interactingRef   = useRef(false)
 
   const cls    = holoClass(holoLevel)
   const isHolo = cls !== ''
 
-  // CSS vars como estado — arranca con defaults visibles para cartas holo
-  const [vars, setVars] = useState(isHolo ? DEFAULT_VARS : {})
+  const [vars,        setVars]        = useState(IDLE_VARS)
+  const [interacting, setInteracting] = useState(false)
 
-  // Sincronizar si cambia el holoLevel (ej: usuario navega entre cartas)
+  // ── Animación de entrada (igual al triggerEntryAnimation del HTML) ────────
+  const triggerEntry = useCallback(() => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    setInteracting(true)
+    interactingRef.current = true
+
+    const start = performance.now()
+    const total = 1200
+
+    const frame = (now) => {
+      const t     = Math.min((now - start) / total, 1)
+      const angle = Math.sin(t * Math.PI * 2) * 15
+      const op    = Math.sin(t * Math.PI)
+      setVars(computeVarsFromPercent(50 + angle, 50 + angle * 0.5, op))
+      if (t < 1) {
+        animFrameRef.current = requestAnimationFrame(frame)
+      } else {
+        // Al terminar: volver a idle pero mantener un leve efecto visible
+        setVars(computeVarsFromPercent(55, 40, 0.65))
+        setInteracting(true)
+        interactingRef.current = true
+      }
+    }
+    animFrameRef.current = requestAnimationFrame(frame)
+  }, [])
+
+  // Disparar animación de entrada cuando cambia la carta/holoLevel
   useEffect(() => {
-    setVars(isHolo ? DEFAULT_VARS : {})
-  }, [isHolo])
+    if (!isHolo) {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+      setVars(IDLE_VARS)
+      setInteracting(false)
+      interactingRef.current = false
+      return
+    }
+    const timer = setTimeout(triggerEntry, 80)
+    return () => {
+      clearTimeout(timer)
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holoLevel, imagen])
 
+  // ── Mouse ─────────────────────────────────────────────────────────────────
   const handleMouseMove = useCallback((e) => {
     if (!isHolo || gyroActiveRef.current) return
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
     const r = e.currentTarget.getBoundingClientRect()
-    setVars(computeVars(e.clientX - r.left, e.clientY - r.top, r.width, r.height))
+    setVars(computeVarsFromPixels(e.clientX - r.left, e.clientY - r.top, r.width, r.height))
+    if (!interactingRef.current) { setInteracting(true); interactingRef.current = true }
   }, [isHolo])
 
   const handleMouseLeave = useCallback(() => {
     if (!isHolo) return
-    setVars(DEFAULT_VARS)
+    setTimeout(() => {
+      setVars(computeVarsFromPercent(55, 40, 0.65))
+    }, 300)
   }, [isHolo])
 
+  // ── Touch ─────────────────────────────────────────────────────────────────
   const handleTouchMove = useCallback((e) => {
     if (!isHolo) return
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
     const t = e.touches[0]
     const r = e.currentTarget.getBoundingClientRect()
-    setVars(computeVars(t.clientX - r.left, t.clientY - r.top, r.width, r.height))
+    setVars(computeVarsFromPixels(t.clientX - r.left, t.clientY - r.top, r.width, r.height))
+    if (!interactingRef.current) { setInteracting(true); interactingRef.current = true }
   }, [isHolo])
 
   const handleTouchEnd = useCallback(() => {
     if (!isHolo) return
-    setVars(DEFAULT_VARS)
+    setTimeout(() => {
+      setVars(computeVarsFromPercent(55, 40, 0.65))
+    }, 400)
   }, [isHolo])
 
+  // ── Giroscopio ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isHolo) return
+    let gyroBase = null
+
     const onGyro = (e) => {
-      if (e.beta == null || e.gamma == null) return
+      if (e.gamma === null || e.beta === null) return
       gyroActiveRef.current = true
-      // gamma: tilt LR (-90 a +90), beta: tilt F/B (0 a 180, ~45° en reposo)
-      const gammaFrac = Math.max(0, Math.min(1, (e.gamma + 45) / 90))
-      const betaFrac  = Math.max(0, Math.min(1, (e.beta  - 20) / 70))
-      // Simulamos ancho/alto fijos para el cálculo
-      setVars(computeVars(gammaFrac * 100, betaFrac * 100, 100, 100))
+      if (!gyroBase) gyroBase = { gamma: e.gamma, beta: e.beta }
+      const dx = Math.max(-30, Math.min(30, e.gamma - gyroBase.gamma))
+      const dy = Math.max(-20, Math.min(20, (e.beta  - gyroBase.beta) * 0.5))
+      setVars(computeVarsFromPercent(50 + (dx / 30) * 40, 50 + (dy / 20) * 30, 0.9))
+      if (!interactingRef.current) { setInteracting(true); interactingRef.current = true }
     }
+
     window.addEventListener('deviceorientation', onGyro)
     return () => {
       window.removeEventListener('deviceorientation', onGyro)
@@ -108,7 +165,7 @@ export default function HoloCard({ imagen, holoLevel = 'normal', alt = '' }) {
 
   return (
     <div
-      className={`card-scene${cls ? ' ' + cls : ''}${isHolo ? ' interacting' : ''}`}
+      className={`card-scene${cls ? ' ' + cls : ''}${interacting ? ' interacting' : ''}`}
       style={vars}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}

@@ -9,10 +9,13 @@ import Spinner         from '../components/ui/Spinner'
 import EmptyState      from '../components/ui/EmptyState'
 import CardImage       from '../components/ui/CardImage'
 import CardModal       from '../components/ui/CardModal'
+import InlineEdit      from '../components/ui/InlineEdit'
+import Toast           from '../components/ui/Toast'
 import { AnimatePresence, motion } from 'framer-motion'
 import { IDIOMAS, CONDICIONES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
+import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -55,6 +58,8 @@ export default function Stock() {
   const [confirmDel,  setConfirmDel]  = useState(false)
   const [sortCol,     setSortCol]     = useState(null)   // key de la columna
   const [sortDir,     setSortDir]     = useState('asc')  // 'asc' | 'desc'
+  const [toast,       setToast]       = useState({ visible: false, mensaje: '', tipo: 'success' })
+  const [claimCards,  setClaimCards]  = useState(null)   // array de cartas para claim
 
   const { data, isLoading, error } = useStock(filters)
   const { data: m } = useMetricas()
@@ -131,6 +136,36 @@ export default function Stock() {
     })
   }
 
+  // ── Toast helper ────────────────────────────────────────────────────────
+  const showToast = (mensaje, tipo = 'success') => {
+    setToast({ visible: true, mensaje, tipo })
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+  }
+
+  // ── Guardar comprador inline (Feature 1) ─────────────────────────────────
+  const saveBuyerName = async (inventoryId, nuevoNombre) => {
+    const { error } = await supabase
+      .from('inventory')
+      .update({ buyer_name: nuevoNombre })
+      .eq('id', inventoryId)
+    if (!error) {
+      queryClient.invalidateQueries({ queryKey: ['stock'] })
+      showToast('Comprador actualizado')
+    }
+  }
+
+  // ── Guardar precio de venta inline (Feature 2) ──────────────────────────
+  const saveSalePrice = async (inventoryId, nuevoPrecio) => {
+    const { error } = await supabase
+      .from('inventory')
+      .update({ sale_price_ars: nuevoPrecio })
+      .eq('id', inventoryId)
+    if (!error) {
+      queryClient.invalidateQueries({ queryKey: ['stock'] })
+      showToast('Precio de venta actualizado')
+    }
+  }
+
   // ── Acción: marcar como vendidas ────────────────────────────────────────
   const handleMarkSold = async () => {
     setBulkLoading(true)
@@ -143,6 +178,18 @@ export default function Stock() {
     queryClient.invalidateQueries({ queryKey: ['metricas'] })
     setSelectedIds(new Set())
     setBulkLoading(false)
+  }
+
+  // ── Acción: preparar claim (solo cartas disponibles) ───────────────────
+  const handleClaim = () => {
+    const disponiblesSeleccionadas = sortedRows.filter(
+      r => selectedIds.has(r.inventory_id) && r.status === 'disponible'
+    )
+    if (disponiblesSeleccionadas.length === 0) {
+      showToast('Seleccioná cartas disponibles para el claim', 'error')
+      return
+    }
+    setClaimCards(disponiblesSeleccionadas)
   }
 
   // ── Acción: eliminar ────────────────────────────────────────────────────
@@ -305,9 +352,29 @@ export default function Stock() {
                           {fmtARS(r._ars_blue)}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtARS(r._ars_blue ?? r.precio_venta)}</td>
+                      {/* P. Venta editable (Feature 2) */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <InlineEdit
+                          value={r.sale_price_ars ?? r.precio_venta ?? null}
+                          type="number"
+                          placeholder="Sin precio"
+                          formatDisplay={v => v != null ? fmtARS(v) : null}
+                          onSave={v => saveSalePrice(r.inventory_id, v)}
+                        />
+                      </td>
                       <td className="px-3 py-2"><Badge label={r.status} /></td>
-                      <td className="px-3 py-2 text-gray-600">{r.buyer_name || '—'}</td>
+                      {/* Comprador editable solo si está reservada (Feature 1) */}
+                      <td className="px-3 py-2 text-gray-600">
+                        {r.status === 'reservada'
+                          ? <InlineEdit
+                              value={r.buyer_name ?? null}
+                              type="text"
+                              placeholder="Sin nombre"
+                              onSave={v => saveBuyerName(r.inventory_id, v)}
+                            />
+                          : (r.buyer_name || '—')
+                        }
+                      </td>
                       <td className="px-3 py-2 text-gray-500">{r.buyer_contact || '—'}</td>
                       <td className="px-3 py-2 text-gray-400 max-w-[100px]">
                         <span className="truncate block">{r.notes || '—'}</span>
@@ -325,6 +392,21 @@ export default function Stock() {
 
       {/* Modal carta */}
       <CardModal card={modalCard} onClose={() => setModalCard(null)} />
+
+      {/* Modal claim */}
+      {claimCards && (
+        <ClaimOptionsModal
+          cards={claimCards}
+          onClose={() => setClaimCards(null)}
+          onConfirmed={() => {
+            setClaimCards(null)
+            showToast('Claim guardado correctamente')
+          }}
+        />
+      )}
+
+      {/* Toast */}
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} />
 
       {/* ── Paginador flotante ──────────────────────────────────────────────── */}
       {totalPages > 1 && (
@@ -398,6 +480,13 @@ export default function Stock() {
               className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
                          disabled:opacity-50 rounded-xl text-xs font-semibold transition whitespace-nowrap">
               {bulkLoading ? '…' : '✓ Marcar vendidas'}
+            </button>
+            <button
+              onClick={handleClaim}
+              disabled={bulkLoading}
+              className="px-3 py-1.5 bg-violet-500 hover:bg-violet-400
+                         disabled:opacity-50 rounded-xl text-xs font-semibold transition whitespace-nowrap">
+              🃏 Claim
             </button>
             <button
               onClick={() => setConfirmDel(true)}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { scannerApi } from '../lib/scanner'
 import { fetchCardImages } from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
@@ -7,11 +7,14 @@ import { useDolar } from '../hooks/useDolar'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
 import Toast from '../components/ui/Toast'
 import Spinner from '../components/ui/Spinner'
+import ImportarCartasModal from '../components/ingresos/ImportarCartasModal'
 
 const fmtARS = (n) => n != null ? `$${Math.round(n).toLocaleString('es-AR')}` : '—'
 
 export default function Ingresos() {
+  const navigate = useNavigate()
   const { blue, oficial } = useDolar()
+  const [showImport, setShowImport] = useState(false)
 
   const [form, setForm] = useState({
     nombre: '', set: '', numero: '', cantidad: 1,
@@ -187,23 +190,47 @@ export default function Ingresos() {
         cardId = newCard.id
       }
 
-      // 2. Insertar registro(s) en `inventory`
-      const rows = Array.from({ length: cantidad }, () => ({
-        store_id:          STORE_ID,
-        card_id:           cardId,
-        quantity:          1,
-        condicion:         form.condicion,
-        condition:         form.condicion,
-        status:            'disponible',
-        estado:            'disponible',
-        price_usd:         precioUsd,
-        price_ars_oficial: arsOfic   ?? null,
-        price_ars_blue:    arsBlue   ?? null,
-        scan_date:         new Date().toISOString(),
-      }))
+      // 2. Upsert en inventory: si ya existe la carta con misma condición, suma el quantity
+      const { data: existingInv } = await supabase
+        .from('inventory')
+        .select('id, quantity')
+        .eq('store_id', STORE_ID)
+        .eq('card_id',  cardId)
+        .eq('condition', form.condicion)
+        .eq('status', 'disponible')
+        .maybeSingle()
 
-      const { error: invErr } = await supabase.from('inventory').insert(rows)
-      if (invErr) throw invErr
+      if (existingInv) {
+        const { error: invErr } = await supabase
+          .from('inventory')
+          .update({
+            quantity:          (existingInv.quantity || 1) + cantidad,
+            price_usd:         precioUsd,
+            price_ars_oficial: arsOfic   ?? null,
+            price_ars_blue:    arsBlue   ?? null,
+            sale_price_ars:    form.precioVenta ? parseFloat(form.precioVenta) : null,
+          })
+          .eq('id', existingInv.id)
+        if (invErr) throw invErr
+      } else {
+        const { error: invErr } = await supabase
+          .from('inventory')
+          .insert({
+            store_id:          STORE_ID,
+            card_id:           cardId,
+            quantity:          cantidad,
+            condicion:         form.condicion,
+            condition:         form.condicion,
+            status:            'disponible',
+            estado:            'disponible',
+            price_usd:         precioUsd,
+            price_ars_oficial: arsOfic   ?? null,
+            price_ars_blue:    arsBlue   ?? null,
+            sale_price_ars:    form.precioVenta ? parseFloat(form.precioVenta) : null,
+            scan_date:         new Date().toISOString(),
+          })
+        if (invErr) throw invErr
+      }
 
       showToast(`✅ ${cantidad > 1 ? `${cantidad} cartas agregadas` : 'Carta agregada'} al stock`)
       setForm({ nombre: '', set: '', numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
@@ -231,7 +258,16 @@ export default function Ingresos() {
 
           {/* ── Formulario (izq) ────────────────────────────────────────── */}
           <div className="flex-1 p-6">
-            <h3 className="font-semibold text-gray-800 mb-5">Registrar nuevas cartas</h3>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold text-gray-800">Registrar nuevas cartas</h3>
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200
+                           text-gray-600 text-xs font-semibold rounded-xl transition"
+              >
+                📥 Importar CSV / Excel
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
 
@@ -428,6 +464,13 @@ export default function Ingresos() {
       </div>
 
       <Toast mensaje={toast.msg} tipo={toast.tipo} visible={toast.visible} />
+
+      {showImport && (
+        <ImportarCartasModal
+          onClose={() => setShowImport(false)}
+          onDone={() => navigate('/stock')}
+        />
+      )}
     </div>
   )
 }
