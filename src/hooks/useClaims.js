@@ -8,7 +8,7 @@ export function useClaims() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('claims')
-        .select('id, title, style, dark, card_count, images_count, image_urls, created_at')
+        .select('id, title, style, dark, card_count, images_count, image_urls, cards_data, created_at')
         .eq('store_id', STORE_ID)
         .order('created_at', { ascending: false })
       if (error) throw error

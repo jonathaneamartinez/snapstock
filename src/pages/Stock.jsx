@@ -16,7 +16,8 @@ import { IDIOMAS, CONDICIONES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
-import { getCardImageUrl } from '../lib/imageCache'
+import ClaimCartModal    from '../components/stock/ClaimCartModal'
+import { getCardImageUrl, warmBlobUrls } from '../lib/imageCache'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -57,10 +58,13 @@ export default function Stock() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
-  const [sortCol,     setSortCol]     = useState(null)   // key de la columna
-  const [sortDir,     setSortDir]     = useState('asc')  // 'asc' | 'desc'
+  const [sortCol,     setSortCol]     = useState(null)
+  const [sortDir,     setSortDir]     = useState('asc')
   const [toast,       setToast]       = useState({ visible: false, mensaje: '', tipo: 'success' })
-  const [claimCards,  setClaimCards]  = useState(null)   // array de cartas para claim
+  const [claimCards,   setClaimCards]   = useState(null)    // array para modal de generación
+  const [showCartModal, setShowCartModal] = useState(false) // carrito review modal
+  // ── Carrito de claim persistente (sobrevive cambios de página) ──────────
+  const [claimCart,   setClaimCart]   = useState(new Map()) // inventory_id → row data
 
   const { data, isLoading, error } = useStock(filters)
   const { data: m } = useMetricas()
@@ -71,7 +75,7 @@ export default function Stock() {
     setFilters(f => ({ ...f, [k]: v || undefined, page: 0 }))
   }
   const goToPage = (p) => {
-    setSelectedIds(new Set())
+    // NO reseteamos selectedIds → la selección es acumulativa entre páginas
     setFilters(f => ({ ...f, page: p }))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -117,6 +121,7 @@ export default function Stock() {
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
 
+  // allSelected = todas las cartas de la página actual están seleccionadas
   const allSelected  = rows.length > 0 && rows.every(r => selectedIds.has(r.inventory_id))
   const someSelected = selectedIds.size > 0
 
@@ -125,8 +130,21 @@ export default function Stock() {
   const valorUSD    = rows.reduce((s, r) => s + (r.price_usd || 0) * (r.stock || 1), 0)
 
   const toggleAll = () => {
-    if (allSelected) setSelectedIds(new Set())
-    else setSelectedIds(new Set(rows.map(r => r.inventory_id)))
+    if (allSelected) {
+      // Desseleccionar solo las de esta página (las de otras páginas quedan)
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        rows.forEach(r => next.delete(r.inventory_id))
+        return next
+      })
+    } else {
+      // Agregar todas las de esta página a la selección existente
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        rows.forEach(r => next.add(r.inventory_id))
+        return next
+      })
+    }
   }
 
   const toggleOne = (id) => {
@@ -181,28 +199,71 @@ export default function Stock() {
     setBulkLoading(false)
   }
 
-  // ── Acción: preparar claim (solo cartas disponibles) ───────────────────
-  const handleClaim = async () => {
-    const disponiblesSeleccionadas = sortedRows.filter(
-      r => selectedIds.has(r.inventory_id) && r.status === 'disponible'
+  // ── Agregar al carrito de claim (solo disponibles de la página actual) ───
+  const handleAddToClaim = () => {
+    const toAdd = sortedRows.filter(r =>
+      selectedIds.has(r.inventory_id) && r.status === 'disponible'
     )
-    if (disponiblesSeleccionadas.length === 0) {
-      showToast('Seleccioná cartas disponibles para el claim', 'error')
+
+    if (!toAdd.length) {
+      showToast('Seleccioná cartas disponibles para agregar al claim', 'error')
       return
     }
-    // Refrescar image_urls desde Supabase (CardImage puede haberlas guardado
-    // después de que se cargó el cache de useStock)
-    const cardIds = [...new Set(disponiblesSeleccionadas.map(r => r.card_id).filter(Boolean))]
-    let freshImages = {}
-    if (cardIds.length > 0) {
-      const { data } = await supabase.from('cards').select('id, image_url').in('id', cardIds)
-      if (data) data.forEach(c => { if (c.image_url) freshImages[c.id] = c.image_url })
-    }
-    setClaimCards(disponiblesSeleccionadas.map(r => ({
+
+    setClaimCart(prev => {
+      const next = new Map(prev)
+      toAdd.forEach(r => {
+        next.set(r.inventory_id, {
+          ...r,
+          // Capturar la mejor URL disponible en este momento (blob ya cacheado mientras estaba visible)
+          image_url: getCardImageUrl(r.card_id) || r.image_url || imageMap[r.card_id] || '',
+        })
+      })
+      return next
+    })
+
+    // Deseleccionar las cartas de esta página
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      sortedRows.forEach(r => next.delete(r.inventory_id))
+      return next
+    })
+
+    // Pre-calentar blobs en background (fire-and-forget, 6 a la vez)
+    // Así cuando el usuario configure y genere el claim, muchos/todos ya están en cache
+    const urlsToWarm = toAdd
+      .map(r => getCardImageUrl(r.card_id) || r.image_url || imageMap[r.card_id] || '')
+      .filter(Boolean)
+    warmBlobUrls(urlsToWarm)   // sin await, corre en background
+
+    showToast(`${toAdd.length} carta${toAdd.length === 1 ? '' : 's'} agregada${toAdd.length === 1 ? '' : 's'} al claim 🃏`)
+  }
+
+  // ── Abrir carrito review → luego el usuario puede continuar al generador ─
+  const handleOpenClaim = () => {
+    if (!claimCart.size) return
+    setShowCartModal(true)
+  }
+
+  // ── Desde el carrito review, continuar a ClaimOptionsModal ───────────────
+  const handleContinueToGenerator = () => {
+    if (!claimCart.size) return
+    const cards = [...claimCart.values()].map(r => ({
       ...r,
-      // Prioridad: cache en memoria (CardImage ya la cargó) → Supabase fresco → stale cache
-      image_url: getCardImageUrl(r.card_id) || freshImages[r.card_id] || r.image_url || '',
-    })))
+      image_url: getCardImageUrl(r.card_id) || r.image_url || '',
+    }))
+    warmBlobUrls(cards.map(c => c.image_url).filter(Boolean))
+    setClaimCards(cards)
+    setShowCartModal(false)
+  }
+
+  // ── Quitar una carta individual del carrito ──────────────────────────────
+  const handleRemoveFromCart = (inventoryId) => {
+    setClaimCart(prev => {
+      const next = new Map(prev)
+      next.delete(inventoryId)
+      return next
+    })
   }
 
   // ── Acción: eliminar ────────────────────────────────────────────────────
@@ -235,6 +296,39 @@ export default function Stock() {
           </div>
         ))}
       </div>
+
+      {/* ── Carrito de claim ─────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {claimCart.size > 0 && (
+          <motion.div
+            key="claim-cart-bar"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{    opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="flex items-center gap-2"
+          >
+            <button
+              onClick={handleOpenClaim}
+              className="flex-1 flex items-center justify-center gap-2
+                         py-3 px-5 bg-violet-600 hover:bg-violet-500
+                         text-white font-bold text-sm rounded-2xl shadow-md transition"
+            >
+              🃏 Para claimear · {claimCart.size} {claimCart.size === 1 ? 'carta' : 'cartas'}
+              <span className="text-violet-300 text-xs font-normal ml-1">ver carrito →</span>
+            </button>
+            <button
+              onClick={() => setClaimCart(new Map())}
+              title="Vaciar carrito"
+              className="p-3 bg-white border border-gray-200 hover:bg-red-50
+                         hover:border-red-200 text-gray-400 hover:text-red-400
+                         rounded-2xl shadow-sm transition text-sm"
+            >
+              🗑
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Filtros */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
@@ -406,14 +500,26 @@ export default function Stock() {
       {/* Modal carta */}
       <CardModal card={modalCard} onClose={() => setModalCard(null)} />
 
-      {/* Modal claim */}
+      {/* Carrito review modal */}
+      {showCartModal && (
+        <ClaimCartModal
+          cart={claimCart}
+          onClose={() => setShowCartModal(false)}
+          onContinue={handleContinueToGenerator}
+          onRemove={handleRemoveFromCart}
+          onClear={() => setClaimCart(new Map())}
+        />
+      )}
+
+      {/* Modal claim (generación) */}
       {claimCards && (
         <ClaimOptionsModal
           cards={claimCards}
           onClose={() => setClaimCards(null)}
           onConfirmed={() => {
             setClaimCards(null)
-            showToast('Claim guardado correctamente')
+            setClaimCart(new Map())   // vaciar carrito después de confirmar
+            showToast('Claim guardado correctamente ✓')
           }}
         />
       )}
@@ -496,11 +602,11 @@ export default function Stock() {
               {bulkLoading ? '…' : '✓ Marcar vendidas'}
             </button>
             <button
-              onClick={handleClaim}
+              onClick={handleAddToClaim}
               disabled={bulkLoading}
               className="px-3 py-1.5 bg-violet-500 hover:bg-violet-400
                          disabled:opacity-50 rounded-xl text-xs font-semibold transition whitespace-nowrap">
-              🃏 Claim
+              🃏 Agregar al Claim
             </button>
             <button
               onClick={() => setConfirmDel(true)}

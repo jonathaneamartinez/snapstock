@@ -4,6 +4,17 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  server: {
+    // En dev mode, redirige /api/* al deployment de Vercel (donde sí existe la serverless function)
+    // Así el proxy de imágenes funciona igual que en producción.
+    proxy: {
+      '/api': {
+        target: 'https://snapstock-wheat.vercel.app',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

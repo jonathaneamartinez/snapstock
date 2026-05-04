@@ -10,8 +10,11 @@
 // cardId (string) → imageUrl original
 const _urlByCardId = new Map()
 
-// imageUrl → blobUrl CORS-safe | null (falló)
+// imageUrl → blobUrl CORS-safe (solo se guarda cuando tuvo ÉXITO)
 const _blobByUrl = new Map()
+
+// En-flight: imageUrl → Promise<blobUrl|null> (evita fetch duplicado)
+const _inflight = new Map()
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -41,28 +44,58 @@ export function getCardImageUrl(cardId) {
 }
 
 /**
- * Carga imageUrl como blob URL CORS-safe (usable en canvas.toDataURL).
- * Usa el proxy /api/img-proxy para evitar restricciones CORS del browser.
- * Cachea resultado. Devuelve null si falla.
+ * Pre-calienta un array de URLs como blobs con concurrencia limitada.
+ * Fire-and-forget: no hace falta await. Los resultados se guardan en _blobByUrl
+ * para que loadBlobUrl() los devuelva instantáneamente más tarde.
+ */
+export function warmBlobUrls(urls, concurrency = 6) {
+  const queue = [...new Set(urls.filter(Boolean))]  // deduplicar
+  let active = 0
+
+  function next() {
+    while (active < concurrency && queue.length > 0) {
+      const url = queue.shift()
+      active++
+      loadBlobUrl(url).finally(() => { active--; next() })
+    }
+  }
+  next()
+}
+
+/**
+ * Carga imageUrl como blob CORS-safe (usable en canvas.toDataURL).
+ * - Si ya está cacheado, devuelve instantáneamente.
+ * - Si hay un fetch en vuelo para la misma URL, comparte ese Promise.
+ * - NO cachea fallos, siempre reintenta.
  */
 export async function loadBlobUrl(imageUrl) {
   if (!imageUrl) return null
 
-  // Resultado ya cacheado (null = fallo conocido, no reintentar)
+  // Éxito ya cacheado → reusar directamente
   if (_blobByUrl.has(imageUrl)) return _blobByUrl.get(imageUrl)
+
+  // Fetch en vuelo → esperar al mismo Promise
+  if (_inflight.has(imageUrl)) return _inflight.get(imageUrl)
 
   const fetchTarget = proxyUrl(imageUrl)
 
-  try {
-    const res = await fetch(fetchTarget)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const blob    = await res.blob()
-    const blobUrl = URL.createObjectURL(blob)
-    _blobByUrl.set(imageUrl, blobUrl)
-    return blobUrl
-  } catch (err) {
-    console.warn('[imageCache] loadBlobUrl failed for', imageUrl, err?.message)
-    _blobByUrl.set(imageUrl, null)
-    return null
-  }
+  const promise = (async () => {
+    try {
+      const res = await fetch(fetchTarget)
+      if (!res.ok) throw new Error(`HTTP ${res.status} para ${fetchTarget}`)
+      const blob    = await res.blob()
+      if (!blob.size) throw new Error('Blob vacío')
+      const blobUrl = URL.createObjectURL(blob)
+      _blobByUrl.set(imageUrl, blobUrl)   // cachear solo en éxito
+      return blobUrl
+    } catch (err) {
+      console.warn('[imageCache] loadBlobUrl falló:', imageUrl, '→', err?.message)
+      return null   // NO cachear el fallo → se podrá reintentar
+    } finally {
+      _inflight.delete(imageUrl)          // limpiar in-flight siempre
+    }
+  })()
+
+  _inflight.set(imageUrl, promise)
+  return promise
 }

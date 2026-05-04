@@ -48,6 +48,7 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
     return (
       <ClaimViewer
         images={images}
+        cards={cards}
         style={style}
         dark={dark}
         cardCount={cards.length}

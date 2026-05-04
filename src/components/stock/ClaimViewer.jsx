@@ -31,12 +31,13 @@ async function downloadAllAsZip(images, title) {
 /* ═══════════════════════════════════════════════════════════════════════
    ClaimViewer
 ════════════════════════════════════════════════════════════════════════ */
-export default function ClaimViewer({ images, style, dark, cardCount, title, onBack, onClose, onConfirmed }) {
+export default function ClaimViewer({ images, cards, style, dark, cardCount, title, onBack, onClose, onConfirmed }) {
   const queryClient = useQueryClient()
   const [current,    setCurrent]    = useState(0)
   const [dir,        setDir]        = useState(1)
-  const [confirming, setConfirming] = useState(false)
-  const [confirmed,  setConfirmed]  = useState(false)
+  const [confirming,    setConfirming]    = useState(false)
+  const [confirmed,     setConfirmed]     = useState(false)
+  const [confirmError,  setConfirmError]  = useState(null)
 
   const go = (delta) => {
     const next = current + delta
@@ -57,8 +58,23 @@ export default function ClaimViewer({ images, style, dark, cardCount, title, onB
   /* ── Confirmar y guardar claim ─────────────────────────────────── */
   const handleConfirm = async () => {
     setConfirming(true)
+    setConfirmError(null)
     try {
-      // 1. Crear registro en claims para obtener el ID
+      // 1. Insertar en claims (con cards_data para historial)
+      const cardsData = cards?.map(c => ({
+        id:           c.card_id      || null,
+        inventory_id: c.inventory_id || null,   // ← necesario para workflow post-claim
+        name:         c.nombre       || '',
+        set:          c.set_name     || '',
+        num:          c.numero       || '',
+        cond:         c.condicion    || '',
+        holo:         c.holo         || false,
+        usd:          c.price_usd    ?? null,
+        ars:          c.price_ars_blue ?? c._ars_blue ?? null,
+        sale:         c.sale_price_ars ?? null,
+        img:          c.image_url    || '',
+      })) ?? []
+
       const { data: claim, error: errC } = await supabase
         .from('claims')
         .insert({
@@ -68,47 +84,49 @@ export default function ClaimViewer({ images, style, dark, cardCount, title, onB
           dark,
           card_count:   cardCount,
           images_count: images.length,
+          cards_data:   cardsData,
         })
         .select('id')
         .single()
 
-      if (errC) throw errC
+      if (errC) throw new Error(`Error guardando claim: ${errC.message}`)
 
-      // 2. Subir cada imagen a Supabase Storage
+      // 2. Intentar subir imágenes a Storage (no crítico — puede fallar)
       const imageUrls = []
       for (let i = 0; i < images.length; i++) {
-        const blob = dataUrlToBlob(images[i].dataUrl)
-        const path = `${STORE_ID}/${claim.id}/img_${String(i + 1).padStart(2, '0')}.png`
-
-        const { error: errU } = await supabase.storage
-          .from('claims')
-          .upload(path, blob, { contentType: 'image/png', upsert: true })
-
-        if (!errU) {
-          const { data: { publicUrl } } = supabase.storage
+        try {
+          const blob = dataUrlToBlob(images[i].dataUrl)
+          const path = `${STORE_ID}/${claim.id}/img_${String(i + 1).padStart(2, '0')}.png`
+          const { error: errU } = await supabase.storage
             .from('claims')
-            .getPublicUrl(path)
-          imageUrls.push(publicUrl)
+            .upload(path, blob, { contentType: 'image/png', upsert: true })
+          if (!errU) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('claims').getPublicUrl(path)
+            imageUrls.push(publicUrl)
+          } else {
+            console.warn('[ClaimViewer] storage upload failed:', errU.message)
+          }
+        } catch (storageErr) {
+          console.warn('[ClaimViewer] storage error:', storageErr?.message)
         }
       }
 
-      // 3. Actualizar el claim con las URLs
+      // 3. Guardar URLs si se subieron (opcional)
       if (imageUrls.length > 0) {
-        await supabase
-          .from('claims')
+        await supabase.from('claims')
           .update({ image_urls: imageUrls })
           .eq('id', claim.id)
       }
 
-      // Invalidar cache de claims para que la sección Claims se actualice
+      // 4. Actualizar cache → sección Claims se refresca
       await queryClient.invalidateQueries({ queryKey: ['claims'] })
       setConfirmed(true)
-      setTimeout(() => {
-        onConfirmed?.()
-        onClose()
-      }, 1000)
+      setTimeout(() => { onConfirmed?.(); onClose() }, 1200)
+
     } catch (err) {
       console.error('[ClaimViewer] confirm error', err)
+      setConfirmError(err.message || 'Error al guardar el claim')
       setConfirming(false)
     }
   }
@@ -174,6 +192,13 @@ export default function ClaimViewer({ images, style, dark, cardCount, title, onB
               <img src={im.dataUrl} alt="" className="w-full h-full object-cover" />
             </button>
           ))}
+        </div>
+      )}
+
+      {/* ── Error de confirmación ────────────────────────────────── */}
+      {confirmError && (
+        <div className="mx-4 mb-2 px-3 py-2 bg-red-500/20 border border-red-500/40 rounded-xl text-red-300 text-xs text-center">
+          {confirmError}
         </div>
       )}
 

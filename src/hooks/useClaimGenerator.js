@@ -161,6 +161,28 @@ function drawHeader(ctx, { canvasW, headerH, dark, pageNum, totalPages, title })
   }
 }
 
+/* ─── Concurrencia limitada ─────────────────────────────────────────── */
+/**
+ * Ejecuta fn(item) para cada item, con como máximo `concurrency` en vuelo.
+ * Igual que Promise.all pero sin reventar el proxy con 100+ requests.
+ */
+async function withConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length)
+  let nextIdx = 0
+
+  async function worker() {
+    while (nextIdx < items.length) {
+      const idx = nextIdx++
+      results[idx] = await fn(items[idx], idx)
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker)
+  )
+  return results
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Hook principal
 ════════════════════════════════════════════════════════════════════════ */
@@ -179,46 +201,70 @@ export function useClaimGenerator() {
     const cfg = style === 'B' ? STYLE_B : STYLE_A
 
     try {
-      // 1. Pre-cargar imágenes en PARALELO
-      //    Prioridad: cache en memoria (CardImage ya lo tenía) → DB → API PokémonTCG
       setProgress(5)
-      const loaded = await Promise.all(
-        cards.map(async (card) => {
-          try {
-            // ── A. URL: cache en memoria > campo image_url > API ──────────
-            let imageUrl = getCardImageUrl(card.card_id)  // en memoria si ya se vio en la lista
-                        || card.image_url                  // de Supabase (query fresco)
-                        || null
 
-            if (!imageUrl && card.nombre) {
-              // No hay URL guardada → buscar en PokémonTCG API
-              const imgs = await Promise.race([
-                fetchCardImages(card.nombre, card.numero, card.set_name),
-                new Promise(res => setTimeout(() => res(null), 8000)),
-              ])
-              imageUrl = imgs?.large || imgs?.small || null
-            }
+      let imgOk = 0, imgFail = 0
+      let done  = 0
 
-            if (!imageUrl) return { img: null, blobUrl: null, card }
+      // 1. Pre-cargar imágenes con concurrencia limitada (máx 6 a la vez)
+      //    Así no reventamos el proxy Vercel con 100+ requests simultáneos.
+      //    Prioridad: blob ya cacheado → URL del carrito → API PokémonTCG
+      const loaded = await withConcurrency(cards, 6, async (card) => {
+        try {
+          // ── A. URL: blob cacheado (ya precalentado) > image_url del carrito > API ──
+          let imageUrl = getCardImageUrl(card.card_id)
+                      || card.image_url
+                      || null
 
-            // ── B. Cargar como blobUrl (CORS-safe para toDataURL) ─────────
-            const blobUrl = await Promise.race([
-              loadBlobUrl(imageUrl),
-              new Promise(res => setTimeout(() => res(null), 12000)),
+          if (!imageUrl && card.nombre) {
+            // No hay URL → buscar en PokémonTCG API (también con timeout)
+            const imgs = await Promise.race([
+              fetchCardImages(card.nombre, card.numero, card.set_name),
+              new Promise(res => setTimeout(() => res(null), 8000)),
             ])
+            imageUrl = imgs?.large || imgs?.small || null
+          }
 
-            if (!blobUrl) return { img: null, blobUrl: null, card }
-
-            // ── C. Crear HTMLImageElement desde el blobUrl ─────────────────
-            const img = await blobUrlToImg(blobUrl)
-            if (!img) return { img: null, blobUrl: null, card }
-
-            return { img, blobUrl, card }
-          } catch {
+          if (!imageUrl) {
+            imgFail++
+            done++
+            setProgress(5 + Math.round((done / cards.length) * 40))
             return { img: null, blobUrl: null, card }
           }
-        })
-      )
+
+          // ── B. Blob CORS-safe vía proxy (retorna instantáneo si ya fue precalentado) ──
+          const blobUrl = await Promise.race([
+            loadBlobUrl(imageUrl),
+            new Promise(res => setTimeout(() => res(null), 12000)),
+          ])
+
+          done++
+          setProgress(5 + Math.round((done / cards.length) * 40))
+
+          if (!blobUrl) {
+            console.warn('[claim] sin blobUrl para', card.nombre, imageUrl)
+            imgFail++
+            return { img: null, blobUrl: null, card }
+          }
+
+          // ── C. HTMLImageElement desde el blobUrl ──────────────────────────
+          const img = await blobUrlToImg(blobUrl)
+          if (!img) {
+            imgFail++
+            return { img: null, blobUrl: null, card }
+          }
+
+          imgOk++
+          return { img, blobUrl, card }
+        } catch (err) {
+          console.warn('[claim] error cargando', card.nombre, err?.message)
+          imgFail++
+          done++
+          return { img: null, blobUrl: null, card }
+        }
+      })
+
+      console.info(`[claim] imágenes: ${imgOk} ok / ${imgFail} fallidas de ${cards.length}`)
       setProgress(50)
 
       // 2. Paginar
@@ -289,9 +335,41 @@ export function useClaimGenerator() {
         ctx.textBaseline = 'middle'
         ctx.fillText('Consultá disponibilidad · Buenos Aires', cfg.canvasW / 2, footerY)
 
+        let dataUrl
+        try {
+          dataUrl = canvas.toDataURL('image/png')
+        } catch (canvasErr) {
+          console.error('[claim] canvas.toDataURL falló (canvas tainted?):', canvasErr?.message)
+          // Reintentar sin imágenes (solo texto/placeholders)
+          const fallbackCanvas  = document.createElement('canvas')
+          fallbackCanvas.width  = cfg.canvasW
+          fallbackCanvas.height = cfg.canvasH
+          const fCtx = fallbackCanvas.getContext('2d')
+          fCtx.fillStyle = dark ? '#0f0f1a' : '#f3f4f6'
+          fCtx.fillRect(0, 0, cfg.canvasW, cfg.canvasH)
+          drawHeader(fCtx, {
+            canvasW: cfg.canvasW, headerH: cfg.headerH,
+            dark, pageNum: pi + 1, totalPages: pages.length,
+            title: title || 'Disponibles',
+          })
+          for (let ci = 0; ci < page.length; ci++) {
+            const col = ci % cfg.cols
+            const row = Math.floor(ci / cfg.cols)
+            const cx  = cfg.padX + col * (cardW + cfg.gap)
+            const cy  = cfg.headerH + cfg.padY + row * (cardH + cfg.gap)
+            // Dibujar sin imagen para evitar taint
+            drawCard(fCtx, {
+              img: null, card: page[ci].card,
+              x: cx, y: cy, w: cardW, h: cardH,
+              dark, showPrice,
+            })
+          }
+          dataUrl = fallbackCanvas.toDataURL('image/png')
+        }
+
         result.push({
-          dataUrl: canvas.toDataURL('image/png'),
-          label:   pages.length > 1 ? `Imagen ${pi + 1} de ${pages.length}` : 'Imagen del claim',
+          dataUrl,
+          label: pages.length > 1 ? `Imagen ${pi + 1} de ${pages.length}` : 'Imagen del claim',
         })
       }
 

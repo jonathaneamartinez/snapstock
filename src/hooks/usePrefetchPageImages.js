@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchCardImages } from '../lib/pokemonTcg'
+import { setCardImage, loadBlobUrl } from '../lib/imageCache'
 
 const CONCURRENCY = 5   // máx llamadas paralelas a la API
 
@@ -39,8 +40,14 @@ export function usePrefetchPageImages(rows) {
           .then(imgs => {
             if (abortRef.current || !imgs?.small) return
 
+            const bestUrl = imgs.large || imgs.small
+
             // Mostrar en UI inmediatamente
-            setImageMap(prev => ({ ...prev, [row.card_id]: imgs.large || imgs.small }))
+            setImageMap(prev => ({ ...prev, [row.card_id]: bestUrl }))
+
+            // Guardar en cache de memoria y pre-calentar blob CORS-safe para claims
+            setCardImage(row.card_id, bestUrl)
+            loadBlobUrl(bestUrl)   // fire-and-forget: precachea mientras navega
 
             // Acumular para guardar en Supabase
             if (imgs.large) {
