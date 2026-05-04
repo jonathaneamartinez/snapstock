@@ -7,17 +7,32 @@ import Spinner from '../ui/Spinner'
 /* ─── Formato esperado de columnas (case-insensitive, flexible) ─────── */
 const COLUMN_ALIASES = {
   nombre:     ['nombre', 'name', 'carta', 'card', 'card name'],
-  set:        ['set', 'edicion', 'edición', 'expansion', 'set_name'],
+  set:        ['set', 'edicion', 'edición', 'expansion', 'expansión', 'set_name', 'edition'],
   numero:     ['numero', 'número', 'number', 'card_number', 'nro', '#'],
   condicion:  ['condicion', 'condición', 'condition', 'cond'],
   idioma:     ['idioma', 'language', 'lang'],
-  cantidad:   ['cantidad', 'qty', 'quantity', 'stock'],
-  precio_usd: ['precio_usd', 'price_usd', 'usd', 'precio usd', 'price'],
-  precio_ars: ['precio_ars', 'price_ars', 'ars', 'sale_price'],
+  cantidad:   ['cantidad', 'qty', 'quantity', 'stock', 'unidades', 'units', 'qty.'],
+  precio_usd: ['precio_usd', 'price_usd', 'usd', 'precio usd', 'price',
+               'pricecharting', 'costo x unidad', 'precio usd mercado', 'market price'],
+  precio_ars: ['precio_ars', 'price_ars', 'ars', 'sale_price', 'final',
+               'precio de venta', 'precio venta', 'sale price'],
 }
 
-function matchHeader(header) {
+// Errores típicos de fórmulas rotas en Excel
+const EXCEL_ERRORS = new Set(['#REF!','#VALUE!','#N/A','#DIV/0!','#NAME?','#NULL!','#NUM!'])
+
+/** Decodifica entidades HTML: &#39; → ' , &amp; → & */
+function decodeHtml(str) {
+  return str
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g,  '>').replace(/&quot;/g,'"')
+}
+
+function matchHeader(header, colIndex = -1) {
   const h = header.toLowerCase().trim()
+  // Primera columna sin nombre → asumir que es el nombre de la carta
+  if (h === '' && colIndex === 0) return 'nombre'
   for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
     if (aliases.includes(h)) return field
   }
@@ -28,7 +43,7 @@ function parseCSV(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim())
   if (lines.length < 2) return []
   const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
-  const fieldMap = headers.map(matchHeader)
+  const fieldMap = headers.map((h, i) => matchHeader(h, i))
 
   return lines.slice(1).map(line => {
     const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
@@ -40,23 +55,46 @@ function parseCSV(text) {
   }).filter(r => r.nombre)
 }
 
+/** Parsea TODAS las hojas del Excel y combina las que tengan datos de cartas */
 async function parseXLSX(file) {
   const XLSX = (await import('xlsx')).default
   const buffer = await file.arrayBuffer()
   const wb     = XLSX.read(buffer, { type: 'array' })
-  const ws     = wb.Sheets[wb.SheetNames[0]]
-  const raw    = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-  if (raw.length < 2) return []
-  const headers  = raw[0].map(h => String(h))
-  const fieldMap = headers.map(matchHeader)
 
-  return raw.slice(1).map(row => {
-    const obj = {}
-    fieldMap.forEach((field, i) => {
-      if (field) obj[field] = String(row[i] ?? '').trim()
-    })
-    return obj
-  }).filter(r => r.nombre)
+  const allRows = []
+
+  for (const sheetName of wb.SheetNames) {
+    const ws  = wb.Sheets[sheetName]
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+    if (raw.length < 2) continue
+
+    const headers  = raw[0].map(h => String(h))
+    const fieldMap = headers.map((h, i) => matchHeader(h, i))
+
+    // Skip hojas sin columna de nombre o sin datos de stock
+    if (!fieldMap.includes('nombre')) continue
+    // Skip hojas que solo tienen nombre (ej: Ventas, Compras): requieren al menos set, numero o cantidad
+    const hasStockData = fieldMap.includes('cantidad') || fieldMap.includes('set') || fieldMap.includes('numero')
+    if (!hasStockData) continue
+
+    const rows = raw.slice(1).map(row => {
+      const obj = {}
+      fieldMap.forEach((field, i) => {
+        if (!field) return
+        const v = String(row[i] ?? '').trim()
+        // Ignorar errores de Excel
+        if (EXCEL_ERRORS.has(v)) return
+        obj[field] = v
+      })
+      // Decodificar HTML entities en el nombre
+      if (obj.nombre) obj.nombre = decodeHtml(obj.nombre)
+      return obj
+    }).filter(r => r.nombre && r.nombre.trim())
+
+    if (rows.length > 0) allRows.push(...rows)
+  }
+
+  return allRows
 }
 
 /* ─── Normalizar condicion ──────────────────────────────────────────── */
@@ -249,12 +287,12 @@ export default function ImportarCartasModal({ onClose, onDone }) {
                 <div className="grid grid-cols-2 gap-1 text-xs text-gray-500">
                   {[
                     ['nombre / name', 'Requerido'],
-                    ['set / edicion', 'Opcional'],
+                    ['expansion / set', 'Opcional'],
                     ['numero / number', 'Opcional'],
                     ['condicion / condition', 'NM por defecto'],
-                    ['cantidad / qty', '1 por defecto'],
-                    ['precio_usd / usd', 'Opcional'],
-                    ['precio_ars / ars', 'Opcional'],
+                    ['unidades / qty / cantidad', '1 por defecto'],
+                    ['pricecharting / precio_usd', 'Opcional'],
+                    ['final / precio_ars', 'Opcional'],
                     ['idioma / language', 'en por defecto'],
                   ].map(([col, note]) => (
                     <div key={col} className="flex gap-1">
