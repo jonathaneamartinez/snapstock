@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { fetchCardImages } from '../lib/pokemonTcg'
 
 /* ─── Configuración de estilos ──────────────────────────────────────────
    A: 6 cols × 5 rows = 30 cartas · canvas 1080 × 1350 (4:5 Instagram)
@@ -191,13 +192,27 @@ export function useClaimGenerator() {
 
     try {
       // 1. Pre-cargar imágenes en PARALELO con timeout de 12s por imagen
+      //    Fallback: si no hay image_url en DB, buscar en PokémonTCG API
       setProgress(5)
       const loaded = await Promise.all(
         cards.map(async (card) => {
-          if (!card.image_url) return { img: null, blobUrl: null, card }
+          // Resolver URL: usar la guardada en DB, o buscar en API
+          let url = card.image_url || null
+          if (!url && card.nombre) {
+            try {
+              const imgs = await Promise.race([
+                fetchCardImages(card.nombre, card.numero, card.set_name),
+                new Promise((_, reject) => setTimeout(() => reject(), 8000)),
+              ])
+              url = imgs?.large || imgs?.small || null
+            } catch { /* sin imagen */ }
+          }
+
+          if (!url) return { img: null, blobUrl: null, card }
+
           try {
             const result = await Promise.race([
-              loadImage(card.image_url),
+              loadImage(url),
               new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('timeout')), 12000)
               ),

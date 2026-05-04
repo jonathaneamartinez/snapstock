@@ -110,7 +110,7 @@ export default function ClaimViewer({ images, style, dark, cardCount, title, onB
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-black flex flex-col">
 
       {/* ── Top bar ──────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
