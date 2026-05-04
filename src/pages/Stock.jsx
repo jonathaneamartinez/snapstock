@@ -479,9 +479,10 @@ export default function Stock() {
             animate={{ y: 0,  opacity: 1 }}
             exit={{    y: 80, opacity: 0 }}
             transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50
+            className={`fixed left-1/2 -translate-x-1/2 z-50
                        flex items-center gap-3 px-5 py-3
-                       bg-gray-900 text-white rounded-2xl shadow-2xl"
+                       bg-gray-900 text-white rounded-2xl shadow-2xl
+                       ${totalPages > 1 ? 'bottom-[72px]' : 'bottom-6'}`}
           >
             <span className="text-sm font-semibold whitespace-nowrap">
               {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'}
@@ -525,9 +526,10 @@ export default function Stock() {
             animate={{ y: 0,  opacity: 1 }}
             exit={{    y: 80, opacity: 0 }}
             transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50
+            className={`fixed left-1/2 -translate-x-1/2 z-50
                        flex items-center gap-3 px-5 py-3
-                       bg-red-600 text-white rounded-2xl shadow-2xl"
+                       bg-red-600 text-white rounded-2xl shadow-2xl
+                       ${totalPages > 1 ? 'bottom-[72px]' : 'bottom-6'}`}
           >
             <span className="text-sm font-semibold whitespace-nowrap">
               ¿Eliminar {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'}? No se puede deshacer.
