@@ -53,6 +53,46 @@ async function apiSearch(q, pageSize = 1) {
   return json.data?.[0] ?? null
 }
 
+/** Extrae el precio de mercado más relevante de tcgplayer */
+function extractPrice(card) {
+  const p = card.tcgplayer?.prices
+  if (!p) return null
+  const grades = ['holofoil', 'normal', 'reverseHolofoil', '1stEditionHolofoil', 'unlimitedHolofoil']
+  for (const g of grades) {
+    const v = p[g]?.market ?? p[g]?.mid ?? p[g]?.low
+    if (v != null && v > 0) return Number(v.toFixed(2))
+  }
+  return null
+}
+
+/**
+ * Busca múltiples cartas por nombre parcial en la PokémonTCG API.
+ * Ideal para autocomplete: devuelve hasta `limit` resultados con set, imagen y precio.
+ */
+export async function searchCardsByName(nombre, limit = 20) {
+  if (!nombre || nombre.length < 2) return []
+  const { cleanName } = extractEmbeddedNumber(nombre)
+  const q = `name:*${noApostrophe(normalize(cleanName)).replace(/\s+/g, '*')}*`
+  try {
+    const params = new URLSearchParams({ q, pageSize: limit, orderBy: 'name' })
+    const res  = await fetch(`${BASE}/cards?${params}`)
+    if (!res.ok) return []
+    const json = await res.json()
+    return (json.data ?? []).map(c => ({
+      id:          null,
+      name:        c.name,
+      set_name:    c.set?.name  || null,
+      card_number: c.number     || null,
+      image_url:   c.images?.small || c.images?.large || null,
+      price_usd:   extractPrice(c),
+      source:      'market',
+    }))
+  } catch (err) {
+    console.warn('[pokemonTcg] searchCardsByName error:', err?.message)
+    return []
+  }
+}
+
 function toResult(card) {
   if (!card) return null
   return { small: card.images?.small ?? null, large: card.images?.large ?? null }

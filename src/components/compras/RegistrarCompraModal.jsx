@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { supabase }    from '../../lib/supabase'
-import { scannerApi }  from '../../lib/scanner'
-import { useDolar }    from '../../hooks/useDolar'
+import { supabase }           from '../../lib/supabase'
+import { searchCardsByName }  from '../../lib/pokemonTcg'
+import { useDolar }           from '../../hooks/useDolar'
 import { STORE_ID, CONDICIONES } from '../../constants'
 import Spinner from '../ui/Spinner'
 
@@ -61,13 +61,13 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     const e = {}
     if (!vendor.trim()) e.vendor = 'Requerido'
     if (!fecha)         e.fecha  = 'Requerido'
-    const hasCard = rows.some(r => r.card_id)
+    const hasCard = rows.some(r => r.card_id || r._market)
     if (!hasCard) e.rows = 'Agregá al menos una carta con nombre válido'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  /* ── Buscar cartas (API de mercado + Supabase) ──────────────────────── */
+  /* ── Buscar cartas (PokémonTCG API + Supabase stock) ───────────────── */
   const searchCards = async (query, key) => {
     if (!query || query.length < 2) {
       updateRow(key, { suggestions: [], searching: false })
@@ -75,41 +75,35 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     }
     updateRow(key, { searching: true })
 
-    const [apiRes, dbRes] = await Promise.allSettled([
-      scannerApi.buscar(query, 'en'),
-      supabase.from('cards').select('id, name, image_url').ilike('name', `%${query}%`).limit(6),
+    const [tcgCards, dbRes] = await Promise.allSettled([
+      searchCardsByName(query, 25),   // hasta 25 resultados de la API pública
+      supabase.from('cards').select('id, name, image_url, set_name').ilike('name', `%${query}%`).limit(8),
     ])
 
-    const fromApi = apiRes.status === 'fulfilled'
-      ? (apiRes.value?.opciones ?? apiRes.value?.results ?? []).map(c => ({
-          id:        null,           // se resuelve al confirmar
-          name:      c.nombre || c.name,
-          image_url: c.imagen || c.image_url,
-          price_usd: c.precio_usd || c.price_usd || null,
-          set_name:  c.set || c.set_name,
-          card_number: c.numero || c.number,
-          source:    'market',
-        }))
-      : []
+    // Resultados de PokémonTCG (muchos, con set + precio)
+    const fromTcg = tcgCards.status === 'fulfilled' ? (tcgCards.value ?? []) : []
 
+    // Resultados del stock propio (ya tienen card_id en Supabase)
     const fromDb = dbRes.status === 'fulfilled'
       ? (dbRes.value?.data ?? []).map(c => ({
           id:        c.id,
           name:      c.name,
+          set_name:  c.set_name || null,
           image_url: c.image_url,
           price_usd: null,
           source:    'stock',
         }))
       : []
 
-    // Deduplicar: prioridad API (tiene precio)
+    // Unir: primero stock propio (ya tenemos el id), luego API
+    // Deduplicar por nombre+set para no repetir
     const seen = new Set()
-    const merged = [...fromApi, ...fromDb].filter(c => {
-      const k = c.name?.toLowerCase()
+    const merged = [...fromDb, ...fromTcg].filter(c => {
+      const k = `${c.name?.toLowerCase()}|${(c.set_name || '').toLowerCase()}`
       if (seen.has(k)) return false
       seen.add(k)
       return true
-    }).slice(0, 8)
+    })
 
     updateRow(key, { suggestions: merged, searching: false })
   }
@@ -378,7 +372,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
             <div className="text-center">
               <p className="text-xs text-gray-400 mb-0.5">Cartas</p>
               <p className="font-bold text-gray-800">
-                {rows.filter(r => r.card_id).reduce((s, r) => s + (r.quantity || 1), 0)}
+                {rows.filter(r => r.card_id || r._market).reduce((s, r) => s + (r.quantity || 1), 0)}
               </p>
             </div>
             <div className="text-center">
@@ -487,32 +481,42 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
 
         {/* Dropdown sugerencias */}
         {row.suggestions.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl
-                          shadow-xl z-50 max-h-52 overflow-y-auto">
+          <div className="absolute top-full left-0 z-[70] mt-1 bg-white border border-gray-200 rounded-xl
+                          shadow-xl max-h-64 overflow-y-auto"
+               style={{ minWidth: '260px', width: 'max-content', maxWidth: '380px' }}>
             {row.suggestions.map((card, idx) => (
               <button
-                key={card.id ?? idx}
+                key={`${card.name}|${card.set_name}|${idx}`}
                 onClick={() => onSelect(card)}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition"
               >
-                {card.image_url && (
+                {card.image_url ? (
                   <img
                     src={card.image_url}
                     alt={card.name}
                     className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0"
                   />
+                ) : (
+                  <div className="w-6 h-8 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300 text-xs">🃏</div>
                 )}
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
+                  <span className="block text-gray-400 leading-tight truncate">
+                    {[card.set_name, card.card_number ? `#${card.card_number}` : null].filter(Boolean).join(' · ')}
+                  </span>
                   {card.price_usd && (
-                    <span className="block text-emerald-600 font-bold mt-0.5">
+                    <span className="text-emerald-600 font-bold">
                       U$D {parseFloat(card.price_usd).toFixed(2)}
                     </span>
                   )}
                 </div>
-                {card.source === 'market' && (
+                {card.source === 'stock' ? (
+                  <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-semibold shrink-0">
+                    stock
+                  </span>
+                ) : (
                   <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold shrink-0">
-                    mercado
+                    tcg
                   </span>
                 )}
               </button>
