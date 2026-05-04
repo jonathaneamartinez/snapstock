@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { STORE_ID } from '../../constants'
 
@@ -31,6 +32,7 @@ async function downloadAllAsZip(images, title) {
    ClaimViewer
 ════════════════════════════════════════════════════════════════════════ */
 export default function ClaimViewer({ images, style, dark, cardCount, title, onBack, onClose, onConfirmed }) {
+  const queryClient = useQueryClient()
   const [current,    setCurrent]    = useState(0)
   const [dir,        setDir]        = useState(1)
   const [confirming, setConfirming] = useState(false)
@@ -98,6 +100,8 @@ export default function ClaimViewer({ images, style, dark, cardCount, title, onB
           .eq('id', claim.id)
       }
 
+      // Invalidar cache de claims para que la sección Claims se actualice
+      await queryClient.invalidateQueries({ queryKey: ['claims'] })
       setConfirmed(true)
       setTimeout(() => {
         onConfirmed?.()

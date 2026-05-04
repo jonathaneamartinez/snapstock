@@ -4,6 +4,7 @@ import { scannerApi } from '../lib/scanner'
 import { fetchCardImages } from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
 import { useDolar } from '../hooks/useDolar'
+import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
 import Toast from '../components/ui/Toast'
 import Spinner from '../components/ui/Spinner'
@@ -14,6 +15,7 @@ const fmtARS = (n) => n != null ? `$${Math.round(n).toLocaleString('es-AR')}` : 
 export default function Ingresos() {
   const navigate = useNavigate()
   const { blue, oficial } = useDolar()
+  const { margen } = useSettings()
   const [showImport, setShowImport] = useState(false)
 
   const [form, setForm] = useState({
@@ -94,11 +96,21 @@ export default function Ingresos() {
 
   // ── Seleccionar sugerencia ─────────────────────────────────────────────
   const selectSuggestion = useCallback((sug) => {
+    // Auto-calcular precio de venta con margen si tenemos precio USD y dólar blue
+    let autoPrice = ''
+    if (sug.precio_usd && blue) {
+      const m = margen ?? 0
+      const raw = sug.precio_usd * blue * (1 + m / 100)
+      // Redondear a los 500 ARS más cercanos
+      autoPrice = String(Math.round(raw / 500) * 500)
+    }
+
     setForm(f => ({
       ...f,
-      nombre:  sug.nombre || '',
-      set:     sug.set    || '',
-      numero:  sug.numero || '',
+      nombre:      sug.nombre || '',
+      set:         sug.set    || '',
+      numero:      sug.numero || '',
+      precioVenta: autoPrice  || f.precioVenta,
     }))
     setShowSug(false)
     setSuggestions([])
@@ -106,7 +118,7 @@ export default function Ingresos() {
     setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd })
     // Si no tiene imagen, buscar
     if (!sug.imagen) fetchPreviewImage(sug.nombre, sug.numero, sug.set)
-  }, [])
+  }, [blue, margen])
 
   // ── Preview: busca imagen si no viene en la sugerencia ─────────────────
   const fetchPreviewImage = async (nombre, numero, setName) => {

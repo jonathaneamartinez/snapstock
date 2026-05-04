@@ -181,7 +181,7 @@ export default function Stock() {
   }
 
   // ── Acción: preparar claim (solo cartas disponibles) ───────────────────
-  const handleClaim = () => {
+  const handleClaim = async () => {
     const disponiblesSeleccionadas = sortedRows.filter(
       r => selectedIds.has(r.inventory_id) && r.status === 'disponible'
     )
@@ -189,7 +189,18 @@ export default function Stock() {
       showToast('Seleccioná cartas disponibles para el claim', 'error')
       return
     }
-    setClaimCards(disponiblesSeleccionadas)
+    // Refrescar image_urls desde Supabase (CardImage puede haberlas guardado
+    // después de que se cargó el cache de useStock)
+    const cardIds = [...new Set(disponiblesSeleccionadas.map(r => r.card_id).filter(Boolean))]
+    let freshImages = {}
+    if (cardIds.length > 0) {
+      const { data } = await supabase.from('cards').select('id, image_url').in('id', cardIds)
+      if (data) data.forEach(c => { if (c.image_url) freshImages[c.id] = c.image_url })
+    }
+    setClaimCards(disponiblesSeleccionadas.map(r => ({
+      ...r,
+      image_url: freshImages[r.card_id] || r.image_url || '',
+    })))
   }
 
   // ── Acción: eliminar ────────────────────────────────────────────────────
