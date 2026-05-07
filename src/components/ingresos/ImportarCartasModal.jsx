@@ -11,11 +11,13 @@ const COLUMN_ALIASES = {
   numero:     ['numero', 'número', 'number', 'card_number', 'nro', '#'],
   condicion:  ['condicion', 'condición', 'condition', 'cond'],
   idioma:     ['idioma', 'language', 'lang'],
-  cantidad:   ['cantidad', 'qty', 'quantity', 'stock', 'unidades', 'units', 'qty.'],
+  cantidad:   ['cantidad', 'qty', 'quantity', 'stock', 'unidades', 'units', 'qty.', 'cantidad total'],
   precio_usd: ['precio_usd', 'price_usd', 'usd', 'precio usd', 'price',
-               'pricecharting', 'costo x unidad', 'precio usd mercado', 'market price'],
+               'pricecharting', 'costo x unidad', 'precio usd mercado', 'market price',
+               'precio', 'costo'],
   precio_ars: ['precio_ars', 'price_ars', 'ars', 'sale_price', 'final',
-               'precio de venta', 'precio venta', 'sale price'],
+               'precio de venta', 'precio venta', 'sale price',
+               'costo x unidad ars', 'precio ars', 'precio_ars_blue'],
 }
 
 // Errores típicos de fórmulas rotas en Excel
@@ -55,11 +57,22 @@ function parseCSV(text) {
   }).filter(r => r.nombre)
 }
 
+/** Limpia número de carta: "1.0" → "1", "TG30" → "TG30" */
+function cleanCardNumber(v) {
+  if (!v) return ''
+  const s = String(v).trim()
+  // Si es un decimal entero (ej: "1.0", "25.0") → quitar decimales
+  if (/^\d+\.0+$/.test(s)) return String(parseInt(s, 10))
+  return s
+}
+
 /** Parsea TODAS las hojas del Excel y combina las que tengan datos de cartas */
 async function parseXLSX(file) {
-  const XLSX = (await import('xlsx')).default
-  const buffer = await file.arrayBuffer()
-  const wb     = XLSX.read(buffer, { type: 'array' })
+  // Fix: algunos bundlers no exponen .default en import dinámico de xlsx
+  const xlsxMod = await import('xlsx')
+  const XLSX    = xlsxMod.default ?? xlsxMod
+  const buffer  = await file.arrayBuffer()
+  const wb      = XLSX.read(buffer, { type: 'array' })
 
   const allRows = []
 
@@ -71,23 +84,24 @@ async function parseXLSX(file) {
     const headers  = raw[0].map(h => String(h))
     const fieldMap = headers.map((h, i) => matchHeader(h, i))
 
-    // Skip hojas sin columna de nombre o sin datos de stock
+    // Necesita al menos la columna de nombre para ser útil
     if (!fieldMap.includes('nombre')) continue
-    // Skip hojas que solo tienen nombre (ej: Ventas, Compras): requieren al menos set, numero o cantidad
-    const hasStockData = fieldMap.includes('cantidad') || fieldMap.includes('set') || fieldMap.includes('numero')
-    if (!hasStockData) continue
 
     const rows = raw.slice(1).map(row => {
       const obj = {}
       fieldMap.forEach((field, i) => {
         if (!field) return
         const v = String(row[i] ?? '').trim()
-        // Ignorar errores de Excel
+        // Ignorar errores de fórmulas de Excel
         if (EXCEL_ERRORS.has(v)) return
         obj[field] = v
       })
-      // Decodificar HTML entities en el nombre
+      // Limpiar nombre (HTML entities)
       if (obj.nombre) obj.nombre = decodeHtml(obj.nombre)
+      // Limpiar número de carta (1.0 → 1)
+      if (obj.numero) obj.numero = cleanCardNumber(obj.numero)
+      // Cantidad: si viene como decimal entero limpiarla también
+      if (obj.cantidad) obj.cantidad = cleanCardNumber(obj.cantidad)
       return obj
     }).filter(r => r.nombre && r.nombre.trim())
 
@@ -107,11 +121,12 @@ const normCond = (v) => {
    Modal principal
 ════════════════════════════════════════════════════════════════════════ */
 export default function ImportarCartasModal({ onClose, onDone }) {
-  const [step,     setStep]     = useState('upload')  // upload | preview | importing | done
-  const [rows,     setRows]     = useState([])
-  const [progress, setProgress] = useState(0)
-  const [results,  setResults]  = useState({ ok: 0, error: 0 })
-  const [error,    setError]    = useState(null)
+  const [step,       setStep]       = useState('upload')  // upload | preview | importing | done
+  const [rows,       setRows]       = useState([])
+  const [progress,   setProgress]   = useState(0)
+  const [results,    setResults]    = useState({ ok: 0, error: 0 })
+  const [failedRows, setFailedRows] = useState([])   // [{ row, motivo }]
+  const [error,      setError]      = useState(null)
   const fileRef = useRef(null)
 
   /* ── Parsear archivo ─────────────────────────────────────────────── */
@@ -128,7 +143,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
         parsed = await parseXLSX(file)
       }
       if (parsed.length === 0) {
-        setError('No se encontraron filas válidas. Asegurate de tener columna "nombre" o "name".')
+        setError('No se encontraron filas válidas. El archivo necesita al menos una columna llamada "nombre" o "name". El resto de los datos (set, precio, condición) son opcionales y se pueden completar después.')
         return
       }
       setRows(parsed)
@@ -139,14 +154,16 @@ export default function ImportarCartasModal({ onClose, onDone }) {
   }
 
   /* ── Confirmar e importar ────────────────────────────────────────── */
-  const handleImport = async () => {
+  const handleImport = async (rowsToImport = rows) => {
     setStep('importing')
     setProgress(0)
-    let ok = 0, errors = 0
+    setFailedRows([])
+    let ok = 0
+    const failed = []
 
-    for (let i = 0; i < rows.length; i++) {
-      setProgress(Math.round((i / rows.length) * 100))
-      const r = rows[i]
+    for (let i = 0; i < rowsToImport.length; i++) {
+      setProgress(Math.round((i / rowsToImport.length) * 100))
+      const r = rowsToImport[i]
 
       try {
         // 1. Buscar o crear carta en `cards`
@@ -228,13 +245,21 @@ export default function ImportarCartasModal({ onClose, onDone }) {
         ok++
       } catch (err) {
         console.warn(`[Import] fila ${i} error:`, err.message)
-        errors++
+        failed.push({ row: r, motivo: err.message || 'Error desconocido' })
       }
     }
 
-    setResults({ ok, error: errors })
+    setResults({ ok, error: failed.length })
+    setFailedRows(failed)
     setProgress(100)
     setStep('done')
+  }
+
+  /* ── Reintentar solo las fallidas ───────────────────────────────── */
+  const handleRetry = () => {
+    const toRetry = failedRows.map(f => f.row)
+    setRows(toRetry)
+    handleImport(toRetry)
   }
 
   /* ── Render ─────────────────────────────────────────────────────── */
@@ -369,15 +394,47 @@ export default function ImportarCartasModal({ onClose, onDone }) {
 
           {/* ── STEP: done ───────────────────────────────────────── */}
           {step === 'done' && (
-            <div className="py-8 text-center space-y-4">
-              <div className="text-5xl">{results.error === 0 ? '✅' : '⚠️'}</div>
-              <p className="text-lg font-bold text-gray-800">
-                {results.ok} cartas importadas
-              </p>
-              {results.error > 0 && (
-                <p className="text-sm text-amber-600">
-                  {results.error} filas tuvieron errores y fueron salteadas
+            <div className="space-y-4">
+              {/* Resumen */}
+              <div className="text-center py-4 space-y-1">
+                <div className="text-4xl">{results.error === 0 ? '✅' : '⚠️'}</div>
+                <p className="text-lg font-bold text-gray-800 mt-2">
+                  {results.ok} cartas importadas
                 </p>
+                {results.error > 0 && (
+                  <p className="text-sm text-amber-600">
+                    {results.error} {results.error === 1 ? 'fila no se pudo importar' : 'filas no se pudieron importar'}
+                  </p>
+                )}
+              </div>
+
+              {/* Detalle de fallidas */}
+              {failedRows.length > 0 && (
+                <div className="border border-red-100 rounded-xl overflow-hidden">
+                  <div className="bg-red-50 px-4 py-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold text-red-700">
+                      Cartas descartadas
+                    </p>
+                    <span className="text-xs text-red-400">{failedRows.length} fila{failedRows.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto divide-y divide-red-50">
+                    {failedRows.map((f, i) => (
+                      <div key={i} className="px-4 py-2.5 flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">
+                            {f.row.nombre || '(sin nombre)'}
+                          </p>
+                          {f.row.set && (
+                            <p className="text-xs text-gray-400 truncate">{f.row.set}</p>
+                          )}
+                        </div>
+                        <span className="text-xs text-red-500 shrink-0 max-w-[140px] text-right leading-tight">
+                          {f.motivo}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -402,14 +459,27 @@ export default function ImportarCartasModal({ onClose, onDone }) {
               Importar {rows.length} cartas →
             </button>
           )}
-          {step === 'done' && results.ok > 0 && (
-            <button
-              onClick={() => { onDone?.(); onClose() }}
-              className="px-5 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl
-                         hover:bg-emerald-400 transition"
-            >
-              ✓ Ver en stock
-            </button>
+          {step === 'done' && (
+            <div className="flex gap-2">
+              {failedRows.length > 0 && (
+                <button
+                  onClick={handleRetry}
+                  className="px-4 py-2 bg-amber-500 text-white text-sm font-bold rounded-xl
+                             hover:bg-amber-400 transition"
+                >
+                  🔄 Reintentar {failedRows.length} fallida{failedRows.length > 1 ? 's' : ''}
+                </button>
+              )}
+              {results.ok > 0 && (
+                <button
+                  onClick={() => { onDone?.(); onClose() }}
+                  className="px-5 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl
+                             hover:bg-emerald-400 transition"
+                >
+                  ✓ Ver en stock
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

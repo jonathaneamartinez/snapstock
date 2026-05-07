@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useScanner } from '../hooks/useScanner'
 import CardResult from '../components/scanner/CardResult'
 import Toast from '../components/ui/Toast'
@@ -118,6 +119,7 @@ export default function Scanner() {
   const [searchLoading, setSearchLoading] = useState(false)
   const searchTimer = useRef(null)
 
+  const queryClient = useQueryClient()
   const { estado, opciones, carta, error, sesion, capturar, confirmar, reset, forceCard } = useScanner()
 
   // ── Cámara ────────────────────────────────────────────────────────────────
@@ -369,6 +371,10 @@ export default function Scanner() {
   // ── Confirmar / volver ────────────────────────────────────────────────────
   const handleConfirmar = async (params) => {
     await confirmar(params)
+    // Invalidar cache del dashboard para que se refleje inmediatamente
+    queryClient.invalidateQueries({ queryKey: ['stock'] })
+    queryClient.invalidateQueries({ queryKey: ['metricas'] })
+    queryClient.invalidateQueries({ queryKey: ['ventas'] })
     showToast('✅ Carta guardada')
     setTimeout(() => {
       reset(); resetScanState(); setShowResult(false)
@@ -616,6 +622,7 @@ export default function Scanner() {
         {carta && (
           <CardResult
             carta={carta} opciones={opciones} dolarRates={dolarRates}
+            idioma={idioma}
             onConfirmar={handleConfirmar} onVolver={handleVolver}
             onSelectOpcion={forceCard} loading={estado === 'confirming'}
           />

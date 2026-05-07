@@ -191,7 +191,8 @@ function BulkActionBar({ selected, cards, onSell, onReserve, onReturn, onClear }
 /* ─── Tabla de cartas del claim (con workflow post-claim) ────────────── */
 function CardTable({ cards, claimId }) {
   const qc = useQueryClient()
-  const [selected, setSelected] = useState(new Set())
+  const [selected,    setSelected]    = useState(new Set())
+  const [sellError,   setSellError]   = useState(null)
 
   const hasInventoryIds = cards.some(c => c.inventory_id)
 
@@ -236,21 +237,25 @@ function CardTable({ cards, claimId }) {
       .in('id', ids)
 
     // 2. Insertar una fila en sales por cada carta vendida
-    // La tabla sales usa: sold_at, total_ars, total_ars_blue, notes (para el nombre)
     const salesRows = selectedCards.map(c => ({
-      store_id:       STORE_ID,
-      channel:        channel   || 'claims',
-      buyer_name:     buyerName || null,
-      notes:          c.name    || '',          // nombre de la carta va en notes
-      total_ars:      c.sale    ?? c.ars ?? null,
-      total_ars_blue: c.sale    ?? c.ars ?? null,
-      total_usd:      c.usd     ?? null,
-      sold_at:        new Date().toISOString(),
+      store_id:     STORE_ID,
+      channel:      channel      || 'claims',
+      buyer_name:   buyerName    || null,
+      notes:        c.name       || '',
+      total_ars:    c.sale       ?? c.ars ?? null,
+      sold_at:      new Date().toISOString(),
+      estado:       'pendiente',
+      inventory_id: c.inventory_id || null,
     }))
 
     if (salesRows.length > 0) {
       const { error } = await supabase.from('sales').insert(salesRows)
-      if (error) console.error('[Claims] sales insert error:', error.message)
+      if (error) {
+        setSellError(`Error al registrar en ventas: ${error.message}`)
+        console.error('[Claims] sales insert error:', error.message, error)
+      } else {
+        setSellError(null)
+      }
     }
 
     refreshAll()
@@ -393,6 +398,21 @@ function CardTable({ cards, claimId }) {
         <p className="text-[10px] text-gray-400 text-center pb-1">
           Este claim fue generado antes de la actualización — las acciones de inventario no están disponibles.
         </p>
+      )}
+
+      {/* Error al registrar venta */}
+      {sellError && (
+        <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-start gap-2">
+          <span>⚠️</span>
+          <div>
+            <p className="font-bold mb-0.5">No se pudo registrar en Ventas</p>
+            <p>{sellError}</p>
+            <p className="mt-1 text-red-500">
+              Probablemente faltan permisos en Supabase (RLS). Pedile al admin que ejecute el SQL de políticas.
+            </p>
+          </div>
+          <button onClick={() => setSellError(null)} className="ml-auto text-red-400 hover:text-red-600 text-base leading-none">×</button>
+        </div>
       )}
 
       {/* Barra de acción bulk */}

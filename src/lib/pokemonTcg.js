@@ -78,15 +78,23 @@ export async function searchCardsByName(nombre, limit = 20) {
     const res  = await fetch(`${BASE}/cards?${params}`)
     if (!res.ok) return []
     const json = await res.json()
-    return (json.data ?? []).map(c => ({
-      id:          null,
-      name:        c.name,
-      set_name:    c.set?.name  || null,
-      card_number: c.number     || null,
-      image_url:   c.images?.small || c.images?.large || null,
-      price_usd:   extractPrice(c),
-      source:      'market',
-    }))
+    return (json.data ?? []).map(c => {
+      const prices = c.tcgplayer?.prices ?? {}
+      const has1stEd = !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal'] || prices['1stEditionNormal'])
+      const subtypes = c.subtypes ?? []
+      return {
+        id:               null,
+        name:             c.name,
+        set_name:         c.set?.name   || null,
+        set_series:       c.set?.series || null,   // 'Base', 'Neo', 'EX', etc.
+        card_number:      c.number      || null,
+        image_url:        c.images?.small || c.images?.large || null,
+        price_usd:        extractPrice(c),
+        subtypes,                                   // puede incluir '1st Edition'
+        has_first_ed_price: has1stEd,               // tiene precio de 1ª ed en TCGplayer
+        source:           'market',
+      }
+    })
   } catch (err) {
     console.warn('[pokemonTcg] searchCardsByName error:', err?.message)
     return []

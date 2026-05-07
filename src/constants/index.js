@@ -22,3 +22,18 @@ export const IDIOMAS = [
 export const ESTADOS     = ['disponible', 'reservada', 'vendida']
 export const CANALES     = ['Charly', 'Claims', 'Fuera de eventos']
 export const HOLO_LEVELS = ['normal', 'holo', 'ultra', 'secret']
+
+export const CANALES_VENTA = [
+  { value: 'fuera_de_evento', label: '📍 Fuera de evento' },
+  { value: 'instagram',       label: '📸 Instagram'       },
+  { value: 'whatsapp',        label: '💬 WhatsApp'        },
+  { value: 'claims',          label: '🃏 Claims'          },
+  { value: 'charly',          label: '👤 Charly'          },
+]
+
+// Sets que tuvieron impresión de 1ª edición (WotC era)
+export const FIRST_ED_SETS = [
+  'Base Set', 'Jungle', 'Fossil', 'Base Set 2', 'Team Rocket',
+  'Gym Heroes', 'Gym Challenge', 'Neo Genesis', 'Neo Discovery',
+  'Neo Revelation', 'Neo Destiny',
+]

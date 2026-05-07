@@ -12,7 +12,7 @@ import CardModal       from '../components/ui/CardModal'
 import InlineEdit      from '../components/ui/InlineEdit'
 import Toast           from '../components/ui/Toast'
 import { AnimatePresence, motion } from 'framer-motion'
-import { IDIOMAS, CONDICIONES } from '../constants'
+import { IDIOMAS, CONDICIONES, STORE_ID, CANALES_VENTA } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
@@ -27,6 +27,7 @@ const fmtFecha = (s) => {
 }
 
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
+
 
 // Columnas con su key de ordenamiento y tipo
 const COLS = [
@@ -58,6 +59,9 @@ export default function Stock() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
+  const [confirmSell, setConfirmSell] = useState(false)
+  const [bulkChannel, setBulkChannel] = useState('fuera_de_evento')
+  const [bulkBuyer,   setBulkBuyer]   = useState('')
   const [sortCol,     setSortCol]     = useState(null)
   const [sortDir,     setSortDir]     = useState('asc')
   const [toast,       setToast]       = useState({ visible: false, mensaje: '', tipo: 'success' })
@@ -185,17 +189,50 @@ export default function Stock() {
     }
   }
 
-  // ── Acción: marcar como vendidas ────────────────────────────────────────
-  const handleMarkSold = async () => {
+  // ── Acción: marcar como vendidas + registrar en sales ───────────────────
+  const handleMarkSold = async (buyer, channel) => {
     setBulkLoading(true)
     const ids = [...selectedIds]
+    const now = new Date().toISOString()
+
+    // 1. Actualizar inventory (status + estado + comprador)
     await supabase
       .from('inventory')
-      .update({ status: 'vendida', estado: 'vendida' })
+      .update({
+        status:     'vendida',
+        estado:     'vendida',
+        buyer_name: buyer || null,
+      })
       .in('id', ids)
+
+    // 2. Insertar en sales — una fila por carta
+    const selectedRows = sortedRows.filter(r => ids.includes(r.inventory_id))
+    const salesRows = selectedRows.map(r => ({
+      store_id:     STORE_ID,
+      channel:      channel      || 'fuera_de_evento',
+      buyer_name:   buyer        || null,
+      notes:        r.nombre     || '',
+      total_ars:    r._ars_blue  ?? r._ars_ofic ?? null,
+      sold_at:      now,
+      estado:       'pendiente',
+      inventory_id: r.inventory_id || null,
+    }))
+
+    if (salesRows.length > 0) {
+      const { error: salesErr } = await supabase.from('sales').insert(salesRows)
+      if (salesErr) {
+        showToast(`Error al registrar en ventas: ${salesErr.message}`, 'error')
+      } else {
+        showToast(`${ids.length} carta${ids.length === 1 ? '' : 's'} vendida${ids.length === 1 ? '' : 's'} ✓`)
+      }
+    }
+
     queryClient.invalidateQueries({ queryKey: ['stock'] })
     queryClient.invalidateQueries({ queryKey: ['metricas'] })
+    queryClient.invalidateQueries({ queryKey: ['ventas'] })
     setSelectedIds(new Set())
+    setConfirmSell(false)
+    setBulkBuyer('')
     setBulkLoading(false)
   }
 
@@ -534,7 +571,7 @@ export default function Stock() {
                         bg-white border border-gray-200 rounded-2xl shadow-lg
                         text-xs text-gray-500">
           <span className="hidden sm:block whitespace-nowrap font-medium text-gray-400 mr-1">
-            {total.toLocaleString('es-AR')} cartas
+            {(m?.totalCartas ?? total).toLocaleString('es-AR')} cartas
           </span>
           <div className="w-px h-4 bg-gray-200 hidden sm:block" />
 
@@ -595,11 +632,11 @@ export default function Stock() {
             </span>
             <div className="w-px h-5 bg-white/20" />
             <button
-              onClick={handleMarkSold}
+              onClick={() => setConfirmSell(true)}
               disabled={bulkLoading}
               className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
                          disabled:opacity-50 rounded-xl text-xs font-semibold transition whitespace-nowrap">
-              {bulkLoading ? '…' : '✓ Marcar vendidas'}
+              ✓ Marcar vendidas
             </button>
             <button
               onClick={handleAddToClaim}
@@ -620,6 +657,61 @@ export default function Stock() {
               className="w-6 h-6 flex items-center justify-center rounded-full
                          bg-white/10 hover:bg-white/20 text-white/70 text-base transition">
               ×
+            </button>
+          </motion.div>
+        )}
+
+        {/* Confirmación venta — canal + comprador */}
+        {confirmSell && (
+          <motion.div
+            key="confirm-sell-bar"
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0,  opacity: 1 }}
+            exit={{    y: 80, opacity: 0 }}
+            transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+            className={`fixed left-1/2 -translate-x-1/2 z-50
+                       flex flex-wrap items-center gap-2 px-4 py-3
+                       bg-emerald-700 text-white rounded-2xl shadow-2xl
+                       ${totalPages > 1 ? 'bottom-[96px]' : 'bottom-6'}`}
+          >
+            <span className="text-xs font-semibold whitespace-nowrap">
+              ✓ {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'} vendida{selectedIds.size === 1 ? '' : 's'} ·
+            </span>
+            <select
+              value={bulkChannel}
+              onChange={e => setBulkChannel(e.target.value)}
+              className="border border-emerald-500 rounded-lg px-2 py-1 text-xs
+                         bg-emerald-600 text-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            >
+              {CANALES_VENTA.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Comprador (opcional)"
+              value={bulkBuyer}
+              onChange={e => setBulkBuyer(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleMarkSold(bulkBuyer, bulkChannel)}
+              className="border border-emerald-500 rounded-lg px-2.5 py-1 text-xs
+                         bg-emerald-600 text-white placeholder-emerald-300
+                         focus:outline-none focus:ring-2 focus:ring-emerald-300 min-w-[130px]"
+            />
+            <button
+              onClick={() => handleMarkSold(bulkBuyer, bulkChannel)}
+              disabled={bulkLoading}
+              className="px-3 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50
+                         disabled:opacity-50 rounded-xl text-xs font-bold transition whitespace-nowrap"
+            >
+              {bulkLoading ? '…' : 'Confirmar'}
+            </button>
+            <button
+              onClick={() => { setConfirmSell(false); setBulkBuyer('') }}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500
+                         rounded-xl text-xs font-semibold transition"
+            >
+              Cancelar
             </button>
           </motion.div>
         )}

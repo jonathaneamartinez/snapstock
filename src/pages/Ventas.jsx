@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useVentas } from '../hooks/useVentas'
+import { supabase }  from '../lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer } from 'recharts'
-import Spinner from '../components/ui/Spinner'
+import Spinner    from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
 
 const fmtARS = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 
-/* Normalizar el valor del canal a una etiqueta legible */
 const CANAL_LABEL = {
   claims:          '🃏 Claims',
   charly:          '👤 Charly',
@@ -24,39 +25,200 @@ const CANALES_COLOR = {
   whatsapp:        '#25D366',
 }
 
+// ── Configuración de estados ──────────────────────────────────────────────────
+const ESTADOS = {
+  pendiente: { label: 'Pendiente',      cls: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-400' },
+  pagada:    { label: 'Pagada',         cls: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  deuda:     { label: 'Fue a deuda',    cls: 'bg-red-100 text-red-700',       dot: 'bg-red-500'   },
+  cancelada: { label: 'Volvió al stock',cls: 'bg-gray-100 text-gray-500',     dot: 'bg-gray-400'  },
+}
+
+const estadoCfg = (e) => ESTADOS[e] ?? ESTADOS.pendiente
+
+// ── Dropdown de estado inline ─────────────────────────────────────────────────
+function EstadoDropdown({ venta, onEstadoChange, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const cfg = estadoCfg(venta.estado)
+
+  // Cerrar al clickear afuera
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const opciones = [
+    {
+      value: 'pagada',
+      label: '✅ Pagada',
+      sub:   'Confirmar cobro',
+      cls:   'hover:bg-emerald-50',
+    },
+    {
+      value: 'pendiente',
+      label: '⏳ Pendiente',
+      sub:   'Sin confirmar aún',
+      cls:   'hover:bg-amber-50',
+    },
+    {
+      value: 'deuda',
+      label: '🏦 Fue a deuda',
+      sub:   'No pagó — registrar deuda',
+      cls:   'hover:bg-red-50',
+    },
+    ...(venta.inventory_id ? [{
+      value: 'cancelada',
+      label: '↩ Volver al stock',
+      sub:   'Devolver carta al inventario',
+      cls:   'hover:bg-blue-50',
+    }] : []),
+  ]
+
+  const handleSelect = async (valor) => {
+    setOpen(false)
+    if (valor === venta.estado) return
+    await onEstadoChange(venta, valor)
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => !loading && setOpen(o => !o)}
+        disabled={loading}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
+          transition cursor-pointer select-none ${cfg.cls}
+          ${loading ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-80'}`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+        {loading ? '…' : cfg.label}
+        <svg className="w-3 h-3 ml-0.5 opacity-60" viewBox="0 0 12 12" fill="currentColor">
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-gray-100
+                        min-w-[190px] py-1 overflow-hidden">
+          {opciones.map(op => (
+            <button
+              key={op.value}
+              onClick={() => handleSelect(op.value)}
+              className={`w-full text-left px-4 py-2.5 transition ${op.cls}
+                ${op.value === venta.estado ? 'opacity-40 cursor-default pointer-events-none' : ''}`}
+            >
+              <p className="text-sm font-medium text-gray-800">{op.label}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{op.sub}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
 export default function Ventas() {
+  const qc  = useQueryClient()
   const now = new Date()
-  const [year,  setYear]  = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year,     setYear]     = useState(now.getFullYear())
+  const [month,    setMonth]    = useState(now.getMonth() + 1)
+  const [loadingId, setLoadingId] = useState(null)
+  const [toast,    setToast]    = useState(null)
+
   const { data, isLoading } = useVentas(year, month)
 
   const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
   const ventas = data ?? []
 
-  // KPIs
-  const vendidas       = ventas.length
-  const totalFacturado = ventas.reduce((s, v) => s + (v.total_ars_blue || 0), 0)
-  const cobrado        = ventas.filter(v => v.estado === 'entregada' || v.paid).reduce((s, v) => s + (v.total_ars_blue || 0), 0)
-  const deudaPendiente = totalFacturado - cobrado
+  const showToast = (msg, tipo = 'success') => {
+    setToast({ msg, tipo })
+    setTimeout(() => setToast(null), 2800)
+  }
 
-  // Por canal
+  // ── Cambiar estado de una venta ────────────────────────────────────────────
+  const handleEstadoChange = async (venta, nuevoEstado) => {
+    setLoadingId(venta.id)
+    try {
+      // 1. Actualizar el estado en sales
+      const { error } = await supabase
+        .from('sales')
+        .update({ estado: nuevoEstado })
+        .eq('id', venta.id)
+
+      if (error) {
+        showToast(`Error: ${error.message}`, 'error')
+        return
+      }
+
+      // 2. Si "cancelada" → volver la carta al stock
+      if (nuevoEstado === 'cancelada' && venta.inventory_id) {
+        const { error: invErr } = await supabase
+          .from('inventory')
+          .update({
+            status:     'disponible',
+            estado:     'disponible',
+            buyer_name: null,
+          })
+          .eq('id', venta.inventory_id)
+
+        if (invErr) {
+          showToast(`Venta cancelada, pero error al restaurar stock: ${invErr.message}`, 'error')
+        } else {
+          showToast('Carta devuelta al stock ↩')
+        }
+        qc.invalidateQueries({ queryKey: ['stock'] })
+        qc.invalidateQueries({ queryKey: ['metricas'] })
+      } else if (nuevoEstado === 'pagada') {
+        showToast('Venta marcada como pagada ✅')
+      } else if (nuevoEstado === 'deuda') {
+        showToast('Registrada como deuda 🏦')
+        qc.invalidateQueries({ queryKey: ['deudas'] })
+      } else {
+        showToast('Estado actualizado')
+      }
+
+      // Refrescar ventas
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
+  // ── KPIs ───────────────────────────────────────────────────────────────────
+  const totalFacturado = ventas.reduce((s, v) => s + (v.total_ars || 0), 0)
+  const cobrado        = ventas.filter(v => v.estado === 'pagada').reduce((s, v) => s + (v.total_ars || 0), 0)
+  const enDeuda        = ventas.filter(v => v.estado === 'deuda').reduce((s, v) => s + (v.total_ars || 0), 0)
+  const pendiente      = totalFacturado - cobrado - enDeuda
+
+  // ── Por canal ──────────────────────────────────────────────────────────────
   const porCanal = {}
   for (const v of ventas) {
     const c = v.channel || 'fuera_de_evento'
-    porCanal[c] = (porCanal[c] || 0) + (v.total_ars_blue || 0)
+    porCanal[c] = (porCanal[c] || 0) + (v.total_ars || 0)
   }
   const canalData = Object.entries(porCanal).map(([key, monto]) => ({
-    key,
-    name:  canalLabel(key),
-    monto,
+    key, name: canalLabel(key), monto,
   }))
 
-  // Ganancia neta (simplificado: 30% margen estimado)
   const gananciaNeta = Math.round(totalFacturado * 0.3)
 
   return (
     <div className="space-y-5">
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-5 right-5 z-[100] px-4 py-3 rounded-xl shadow-lg text-sm font-medium
+          transition-all ${toast.tipo === 'error'
+            ? 'bg-red-600 text-white'
+            : 'bg-gray-900 text-white'}`}>
+          {toast.msg}
+        </div>
+      )}
+
       {/* Selector mes/año */}
       <div className="flex items-center gap-3 flex-wrap">
         <h2 className="font-extrabold text-gray-900 text-xl flex-1">Ventas del mes</h2>
@@ -71,10 +233,10 @@ export default function Ventas() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Vendidas este mes', value: vendidas,                    sub: 'cartas',        color: 'text-blue-600'    },
-          { label: 'Total facturado',   value: fmtARS(totalFacturado),      sub: 'ARS',           color: 'text-gray-800'    },
-          { label: 'Cobrado',           value: fmtARS(cobrado),             sub: 'ARS',           color: 'text-emerald-600' },
-          { label: 'Deuda pendiente',   value: fmtARS(deudaPendiente),      sub: 'ARS',           color: 'text-amber-500'   },
+          { label: 'Vendidas este mes', value: ventas.length,      sub: 'cartas',   color: 'text-blue-600'    },
+          { label: 'Total facturado',   value: fmtARS(totalFacturado), sub: 'ARS', color: 'text-gray-800'    },
+          { label: 'Cobrado',           value: fmtARS(cobrado),    sub: 'ARS',      color: 'text-emerald-600' },
+          { label: 'Pendiente / Deuda', value: fmtARS(pendiente + enDeuda), sub: `${fmtARS(enDeuda)} en deuda`, color: 'text-amber-500' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{k.label}</p>
@@ -84,7 +246,11 @@ export default function Ventas() {
         ))}
       </div>
 
-      {isLoading && <div className="flex justify-center py-12"><Spinner size={32} className="text-blue-400" /></div>}
+      {isLoading && (
+        <div className="flex justify-center py-12">
+          <Spinner size={32} className="text-blue-400" />
+        </div>
+      )}
 
       {!isLoading && ventas.length === 0 && (
         <EmptyState emoji="📊" title="Sin ventas este mes" sub="Las ventas registradas aparecerán acá" />
@@ -94,11 +260,9 @@ export default function Ventas() {
         <div className="grid lg:grid-cols-2 gap-5">
           {/* Gráfico por canal */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-semibold text-gray-800">Ventas por canal</h3>
-                <p className="text-xs text-gray-400">{MESES[month-1]} {year}</p>
-              </div>
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-800">Ventas por canal</h3>
+              <p className="text-xs text-gray-400">{MESES[month-1]} {year}</p>
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={canalData} barSize={40}>
@@ -112,14 +276,13 @@ export default function Ventas() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-            {/* Ganancia neta */}
             <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-sm text-gray-500">Ganancia neta estimada</span>
-              <span className="text-emerald-600 font-bold">+{fmtARS(gananciaNeta)} ARS</span>
+              <span className="text-sm text-gray-500">Ganancia neta estimada (30%)</span>
+              <span className="text-emerald-600 font-bold">+{fmtARS(gananciaNeta)}</span>
             </div>
           </div>
 
-          {/* Resumen por canal */}
+          {/* Detalle por canal */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
             <h3 className="font-semibold text-gray-800 mb-4">Detalle por canal</h3>
             <div className="space-y-3">
@@ -132,10 +295,8 @@ export default function Ventas() {
                       <span className="text-gray-500">{fmtARS(c.monto)} · {pct.toFixed(0)}%</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: CANALES_COLOR[c.key] ?? '#6B7280' }}
-                      />
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: CANALES_COLOR[c.key] ?? '#6B7280' }} />
                     </div>
                   </div>
                 )
@@ -145,12 +306,24 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* Detalle ventas */}
+      {/* Tabla detalle */}
       {!isLoading && ventas.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h3 className="font-semibold text-gray-800">Detalle ventas — {MESES[month-1]} {year}</h3>
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-800">
+              Detalle ventas — {MESES[month-1]} {year}
+            </h3>
+            {/* Leyenda de estados */}
+            <div className="hidden sm:flex items-center gap-3 text-xs text-gray-400">
+              {Object.entries(ESTADOS).map(([key, cfg]) => (
+                <span key={key} className="flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                  {cfg.label}
+                </span>
+              ))}
+            </div>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
@@ -162,25 +335,57 @@ export default function Ventas() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {ventas.map(v => (
-                  <tr key={v.id} className="hover:bg-gray-50">
+                  <tr key={v.id} className={`transition ${
+                    v.estado === 'pagada'    ? 'bg-emerald-50/30' :
+                    v.estado === 'deuda'     ? 'bg-red-50/30' :
+                    v.estado === 'cancelada' ? 'bg-gray-50' :
+                    'hover:bg-gray-50'
+                  }`}>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                      {v.fecha_venta ? new Date(v.fecha_venta).toLocaleDateString('es-AR') : '—'}
+                      {v.fecha_venta
+                        ? new Date(v.fecha_venta).toLocaleDateString('es-AR')
+                        : '—'}
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-800">{v.card_name || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{canalLabel(v.channel)}</td>
-                    <td className="px-4 py-3 text-gray-600">{v.buyer_name || '—'}</td>
-                    <td className="px-4 py-3 text-blue-600 font-semibold whitespace-nowrap">
-                      {fmtARS(v.total_ars_blue)}
+                    <td className="px-4 py-3 font-medium text-gray-800">
+                      {v.card_name || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {canalLabel(v.channel)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {v.buyer_name || '—'}
+                    </td>
+                    <td className={`px-4 py-3 font-semibold whitespace-nowrap ${
+                      v.estado === 'cancelada' ? 'line-through text-gray-400' : 'text-blue-600'
+                    }`}>
+                      {fmtARS(v.total_ars)}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium
-                        ${v.estado === 'entregada' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {v.estado || 'pendiente'}
-                      </span>
+                      <EstadoDropdown
+                        venta={v}
+                        onEstadoChange={handleEstadoChange}
+                        loading={loadingId === v.id}
+                      />
                     </td>
                   </tr>
                 ))}
               </tbody>
+
+              {/* Totales por estado */}
+              <tfoot className="bg-gray-50 border-t-2 border-gray-200 text-xs font-semibold text-gray-600">
+                <tr>
+                  <td colSpan={4} className="px-4 py-3">
+                    Total ({ventas.length} ventas)
+                  </td>
+                  <td className="px-4 py-3 text-blue-600 whitespace-nowrap">
+                    {fmtARS(totalFacturado)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-emerald-600">{fmtARS(cobrado)} cobrado</span>
+                    {enDeuda > 0 && <span className="text-red-500 ml-2">{fmtARS(enDeuda)} deuda</span>}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

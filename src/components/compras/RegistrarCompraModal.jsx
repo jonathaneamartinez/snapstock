@@ -2,30 +2,48 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase }           from '../../lib/supabase'
 import { searchCardsByName }  from '../../lib/pokemonTcg'
 import { useDolar }           from '../../hooks/useDolar'
-import { STORE_ID, CONDICIONES } from '../../constants'
+import { STORE_ID, CONDICIONES, IDIOMAS, FIRST_ED_SETS } from '../../constants'
 import Spinner from '../ui/Spinner'
 
-/* ─── Formatters ──────────────────────────────────────────────────────── */
+/* ─── Formatters ─────────────────────────────────────────────────────────── */
 const fmtARS = (n) =>
   n != null && n !== '' ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
 const fmtUSD = (n) =>
   n != null && n !== '' ? `U$D ${Number(n).toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}` : '—'
 
-/* ─── Fila vacía ──────────────────────────────────────────────────────── */
+
+const detectFirstEdition = (card) => {
+  // Subtipo explícito en la API
+  if (card.subtypes?.includes('1st Edition'))
+    return { detected: true, possible: true, reason: 'Detectado por la API ✓' }
+  // TCGplayer tiene precio específico de 1ª ed
+  if (card.has_first_ed_price)
+    return { detected: false, possible: true, reason: 'Set con 1ª edición disponible' }
+  // Set WotC clásico
+  if (FIRST_ED_SETS.some(s => (card.set_name || '').includes(s)))
+    return { detected: false, possible: true, reason: 'Set que tuvo 1ª edición' }
+  return { detected: false, possible: false, reason: '' }
+}
+
+/* ─── Fila vacía ──────────────────────────────────────────────────────────── */
 const emptyRow = () => ({
-  _key:      crypto.randomUUID(),
-  card_id:   null,
-  card_name: '',
-  quantity:  1,
-  condition: 'NM',
-  price_usd: '',
-  price_ars: '',
-  // autocomplete state
-  suggestions: [],
-  searching:   false,
+  _key:             crypto.randomUUID(),
+  card_id:          null,
+  card_name:        '',
+  set_name:         '',
+  language:         'en',
+  is_first_edition: false,
+  can_be_first_ed:  false,
+  first_ed_reason:  '',
+  quantity:         1,
+  condition:        'NM',
+  price_usd:        '',
+  price_ars:        '',
+  suggestions:      [],
+  searching:        false,
 })
 
-/* ─── Debounce helper ─────────────────────────────────────────────────── */
+/* ─── Debounce ────────────────────────────────────────────────────────────── */
 function useDebounce(fn, delay) {
   const timer = useRef(null)
   return useCallback((...args) => {
@@ -34,29 +52,23 @@ function useDebounce(fn, delay) {
   }, [fn, delay])
 }
 
-/* ═══════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════ */
 export default function RegistrarCompraModal({ onClose, onDone }) {
   const { blue } = useDolar()
 
-  /* ── Campos del encabezado ─────────────────────────────────────────── */
   const [vendor,    setVendor]    = useState('')
   const [fecha,     setFecha]     = useState(new Date().toISOString().slice(0, 10))
   const [estado,    setEstado]    = useState('pagada')
   const [notas,     setNotas]     = useState('')
+  const [rows,      setRows]      = useState([emptyRow()])
+  const [saving,    setSaving]    = useState(false)
+  const [errors,    setErrors]    = useState({})
+  const [showConfirm, setShowConfirm] = useState(false)
 
-  /* ── Filas de cartas ───────────────────────────────────────────────── */
-  const [rows, setRows] = useState([emptyRow()])
-
-  /* ── UI state ──────────────────────────────────────────────────────── */
-  const [saving,       setSaving]       = useState(false)
-  const [errors,       setErrors]       = useState({})
-  const [showConfirm,  setShowConfirm]  = useState(false)
-
-  /* ── Totales calculados ────────────────────────────────────────────── */
   const totalUSD = rows.reduce((s, r) => s + (parseFloat(r.price_usd) || 0) * (r.quantity || 1), 0)
   const totalARS = rows.reduce((s, r) => s + (parseFloat(r.price_ars) || 0) * (r.quantity || 1), 0)
 
-  /* ── Validación ────────────────────────────────────────────────────── */
+  /* ── Validación ────────────────────────────────────────────────────────── */
   const validate = () => {
     const e = {}
     if (!vendor.trim()) e.vendor = 'Requerido'
@@ -67,7 +79,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     return Object.keys(e).length === 0
   }
 
-  /* ── Buscar cartas (PokémonTCG API + Supabase stock) ───────────────── */
+  /* ── Buscar cartas ─────────────────────────────────────────────────────── */
   const searchCards = async (query, key) => {
     if (!query || query.length < 2) {
       updateRow(key, { suggestions: [], searching: false })
@@ -76,27 +88,19 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     updateRow(key, { searching: true })
 
     const [tcgCards, dbRes] = await Promise.allSettled([
-      searchCardsByName(query, 25),   // hasta 25 resultados de la API pública
+      searchCardsByName(query, 25),
       supabase.from('cards').select('id, name, image_url, set_name').ilike('name', `%${query}%`).limit(8),
     ])
 
-    // Resultados de PokémonTCG (muchos, con set + precio)
     const fromTcg = tcgCards.status === 'fulfilled' ? (tcgCards.value ?? []) : []
-
-    // Resultados del stock propio (ya tienen card_id en Supabase)
-    const fromDb = dbRes.status === 'fulfilled'
+    const fromDb  = dbRes.status === 'fulfilled'
       ? (dbRes.value?.data ?? []).map(c => ({
-          id:        c.id,
-          name:      c.name,
-          set_name:  c.set_name || null,
-          image_url: c.image_url,
-          price_usd: null,
-          source:    'stock',
+          id: c.id, name: c.name, set_name: c.set_name || null,
+          image_url: c.image_url, price_usd: null, source: 'stock',
+          subtypes: [], has_first_ed_price: false,
         }))
       : []
 
-    // Unir: primero stock propio (ya tenemos el id), luego API
-    // Deduplicar por nombre+set para no repetir
     const seen = new Set()
     const merged = [...fromDb, ...fromTcg].filter(c => {
       const k = `${c.name?.toLowerCase()}|${(c.set_name || '').toLowerCase()}`
@@ -110,7 +114,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 
   const debouncedSearch = useDebounce(searchCards, 300)
 
-  /* ── Helpers de filas ──────────────────────────────────────────────── */
+  /* ── Helpers de filas ──────────────────────────────────────────────────── */
   const updateRow = (key, patch) =>
     setRows(prev => prev.map(r => r._key === key ? { ...r, ...patch } : r))
 
@@ -123,17 +127,22 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   const selectCard = (key, card) => {
     const usd = card.price_usd ? parseFloat(card.price_usd).toFixed(2) : ''
     const ars = usd && blue ? String(Math.round(parseFloat(usd) * blue)) : ''
+    const firstEd = detectFirstEdition(card)
     updateRow(key, {
-      card_id:     card.id,    // puede ser null si viene de API, se resuelve al guardar
-      card_name:   card.name,
-      _market:     card,       // guardar para resolver card_id al guardar
-      price_usd:   usd,
-      price_ars:   ars,
-      suggestions: [],
+      card_id:          card.id,
+      card_name:        card.name,
+      set_name:         card.set_name || '',
+      _market:          card,
+      price_usd:        usd,
+      price_ars:        ars,
+      is_first_edition: firstEd.detected,
+      can_be_first_ed:  firstEd.possible,
+      first_ed_reason:  firstEd.reason,
+      suggestions:      [],
     })
   }
 
-  /* ── Submit ────────────────────────────────────────────────────────── */
+  /* ── Submit ────────────────────────────────────────────────────────────── */
   const handleSubmit = async () => {
     if (!validate()) return
     setSaving(true)
@@ -155,29 +164,30 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 
       if (errP) throw errP
 
-      // 1b. Resolver card_id para filas que vinieron de la API (no tienen id en Supabase aún)
+      // 2. Resolver card_id para filas que vinieron de la API
       for (const r of rows) {
         if (!r.card_id && r._market) {
           const m = r._market
-          // Buscar si ya existe
+
           const { data: existing } = await supabase
             .from('cards')
             .select('id')
             .ilike('name', m.name)
+            .eq('set_name', m.set_name || '')
             .maybeSingle()
 
           if (existing) {
             r.card_id = existing.id
           } else {
-            // Crear la carta
             const { data: newCard } = await supabase
               .from('cards')
               .insert({
                 name:        m.name,
-                set_name:    m.set_name   || null,
+                set_name:    m.set_name    || null,
                 card_number: m.card_number || null,
-                image_url:   m.image_url  || null,
-                language:    'en',
+                image_url:   m.image_url   || null,
+                language:    r.language    || 'en',
+                variant:     r.is_first_edition ? 'Primera Edición' : null,
               })
               .select('id')
               .single()
@@ -186,7 +196,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
         }
       }
 
-      // 2. Insertar purchase_items (solo filas con card_id)
+      // 3. Insertar purchase_items
       const validRows = rows.filter(r => r.card_id)
       if (validRows.length > 0) {
         const items = validRows.map(r => ({
@@ -198,15 +208,11 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
           price_ars:   parseFloat(r.price_ars) || null,
         }))
 
-        const { error: errI } = await supabase
-          .from('purchase_items')
-          .insert(items)
-
+        const { error: errI } = await supabase.from('purchase_items').insert(items)
         if (errI) throw errI
 
-        // 3. Upsert inventory: agregar al stock como "disponible"
+        // 4. Upsert inventory
         for (const r of validRows) {
-          // Buscar si ya existe en inventory con mismo card_id, store, condition
           const { data: existing } = await supabase
             .from('inventory')
             .select('id, quantity')
@@ -217,13 +223,11 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
             .maybeSingle()
 
           if (existing) {
-            // Sumar al quantity existente
             await supabase
               .from('inventory')
               .update({ quantity: (existing.quantity || 1) + (r.quantity || 1) })
               .eq('id', existing.id)
           } else {
-            // Crear nueva fila
             await supabase
               .from('inventory')
               .insert({
@@ -232,7 +236,9 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                 quantity:       r.quantity || 1,
                 condition:      r.condition || 'NM',
                 status:         'disponible',
+                estado:         'disponible',
                 price_ars_blue: parseFloat(r.price_ars) || null,
+                idioma:         r.language || 'en',
               })
           }
         }
@@ -247,30 +253,28 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     }
   }
 
-  /* ── Render ────────────────────────────────────────────────────────── */
+  /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
 
-        {/* ── Header ─────────────────────────────────────────────────── */}
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h3 className="font-bold text-gray-800">📦 Registrar compra</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
         </div>
 
-        {/* ── Scroll body ─────────────────────────────────────────────── */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
-          {/* Campos del encabezado */}
+          {/* Encabezado */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {/* Vendedor */}
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-gray-500 mb-1">
                 Vendedor / Origen <span className="text-red-400">*</span>
               </label>
               <input
-                type="text"
-                value={vendor}
+                type="text" value={vendor}
                 onChange={e => { setVendor(e.target.value); setErrors(x => ({...x, vendor: null})) }}
                 placeholder="Ej: TCG Argentina"
                 className={`w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300
@@ -279,29 +283,20 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
               {errors.vendor && <p className="text-red-500 text-xs mt-0.5">{errors.vendor}</p>}
             </div>
 
-            {/* Fecha */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">
                 Fecha <span className="text-red-400">*</span>
               </label>
-              <input
-                type="date"
-                value={fecha}
-                onChange={e => setFecha(e.target.value)}
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-300"
-              />
+                           focus:outline-none focus:ring-2 focus:ring-blue-300" />
             </div>
 
-            {/* Estado de pago */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Estado de pago</label>
-              <select
-                value={estado}
-                onChange={e => setEstado(e.target.value)}
+              <select value={estado} onChange={e => setEstado(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"
-              >
+                           focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
                 <option value="pagada">Pagada</option>
                 <option value="pendiente">Pendiente</option>
                 <option value="deuda parcial">Deuda parcial</option>
@@ -313,61 +308,49 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
           {/* Notas */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">Notas (opcional)</label>
-            <textarea
-              value={notas}
-              onChange={e => setNotas(e.target.value)}
-              rows={2}
-              placeholder="Observaciones, condiciones del vendedor, etc."
+            <textarea value={notas} onChange={e => setNotas(e.target.value)}
+              rows={2} placeholder="Observaciones, condiciones del vendedor, etc."
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white
-                         focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
-            />
+                         focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
           </div>
 
-          {/* ── Tabla de cartas ─────────────────────────────────────── */}
+          {/* Tabla de cartas */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-semibold text-gray-500">
                 Cartas compradas <span className="text-red-400">*</span>
               </label>
-              <button
-                onClick={addRow}
-                className="text-xs text-blue-600 font-semibold hover:underline"
-              >
+              <button onClick={addRow} className="text-xs text-blue-600 font-semibold hover:underline">
                 + Añadir fila
               </button>
             </div>
             {errors.rows && <p className="text-red-500 text-xs mb-2">{errors.rows}</p>}
 
-            <div className="border border-gray-200 rounded-xl overflow-visible">
-              {/* Header de tabla */}
-              <div className="grid grid-cols-[2fr_80px_80px_90px_90px_32px] gap-2 bg-gray-50 px-3 py-2
-                              text-xs font-semibold text-gray-400 uppercase border-b border-gray-200">
-                <span>Carta</span>
-                <span>Cond.</span>
-                <span>Qty</span>
-                <span>USD</span>
-                <span>ARS</span>
-                <span></span>
+            <div className="border border-gray-200 rounded-xl overflow-visible divide-y divide-gray-100">
+              {/* Encabezados de columnas */}
+              <div className="grid grid-cols-[2fr_72px_64px_88px_88px_28px] gap-2 px-3 py-1.5 bg-gray-50 rounded-t-xl">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Carta</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Cond.</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-center">Cant.</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">USD</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">ARS</span>
+                <span />
               </div>
-
-              {/* Filas */}
-              <div className="divide-y divide-gray-100">
-                {rows.map((row, idx) => (
-                  <CardRow
-                    key={row._key}
-                    row={row}
-                    isLast={rows.length === 1}
-                    onChange={patch => updateRow(row._key, patch)}
-                    onSearch={q => debouncedSearch(q, row._key)}
-                    onSelect={card => selectCard(row._key, card)}
-                    onRemove={() => removeRow(row._key)}
-                  />
-                ))}
-              </div>
+              {rows.map((row) => (
+                <CardRow
+                  key={row._key}
+                  row={row}
+                  isLast={rows.length === 1}
+                  onChange={patch => updateRow(row._key, patch)}
+                  onSearch={q => debouncedSearch(q, row._key)}
+                  onSelect={card => selectCard(row._key, card)}
+                  onRemove={() => removeRow(row._key)}
+                />
+              ))}
             </div>
           </div>
 
-          {/* ── Resumen ─────────────────────────────────────────────── */}
+          {/* Resumen */}
           <div className="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4">
             <div className="text-center">
               <p className="text-xs text-gray-400 mb-0.5">Cartas</p>
@@ -385,51 +368,37 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
             </div>
           </div>
 
-          {/* Error de submit */}
           {errors.submit && (
             <p className="text-red-500 text-sm bg-red-50 rounded-xl px-4 py-3">{errors.submit}</p>
           )}
         </div>
 
-        {/* ── Footer ─────────────────────────────────────────────────── */}
+        {/* Footer */}
         <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex items-center justify-between gap-3">
-          <button
-            onClick={onClose}
-            disabled={saving}
+          <button onClick={onClose} disabled={saving}
             className="px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-xl
-                       hover:bg-gray-200 transition disabled:opacity-50"
-          >
+                       hover:bg-gray-200 transition disabled:opacity-50">
             Cancelar
           </button>
 
           {showConfirm ? (
             <div className="flex items-center gap-3">
-              <p className="text-sm text-gray-600 font-medium">
-                ¿Confirmar registro de compra?
-              </p>
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-200 transition"
-              >
+              <p className="text-sm text-gray-600 font-medium">¿Confirmar registro?</p>
+              <button onClick={() => setShowConfirm(false)}
+                className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-200 transition">
                 No
               </button>
-              <button
-                onClick={handleSubmit}
-                disabled={saving}
+              <button onClick={handleSubmit} disabled={saving}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl
-                           hover:bg-blue-500 disabled:opacity-50 transition flex items-center gap-2"
-              >
+                           hover:bg-blue-500 disabled:opacity-50 transition flex items-center gap-2">
                 {saving && <Spinner size={14} className="text-white" />}
                 {saving ? 'Guardando…' : 'Sí, registrar'}
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => { if (validate()) setShowConfirm(true) }}
-              disabled={saving}
+            <button onClick={() => { if (validate()) setShowConfirm(true) }} disabled={saving}
               className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl
-                         hover:bg-blue-500 disabled:opacity-50 transition"
-            >
+                         hover:bg-blue-500 disabled:opacity-50 transition">
               Registrar compra →
             </button>
           )}
@@ -439,146 +408,174 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   )
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   CardRow — fila individual de carta con autocomplete
-════════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════
+   CardRow — fila con autocomplete + set + idioma + 1ª edición
+══════════════════════════════════════════════════════════════════════════ */
+const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
+
 function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
   const wrapRef = useRef(null)
 
-  // Cerrar dropdown al click afuera
   useEffect(() => {
     const close = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target))
         onChange({ suggestions: [] })
-      }
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [])
 
   return (
-    <div className="grid grid-cols-[2fr_80px_80px_90px_90px_32px] gap-2 px-3 py-2 items-center">
+    <div className="px-3 py-2.5 space-y-2">
 
-      {/* Nombre de carta con autocomplete */}
-      <div ref={wrapRef} className="relative">
-        <div className="flex items-center gap-1.5">
-          {row.card_id && (
-            <span className="text-emerald-500 text-xs">✓</span>
+      {/* ── Fila 1: Carta | Cond | Qty | USD | ARS | × ─────────────────── */}
+      <div className="grid grid-cols-[2fr_72px_64px_88px_88px_28px] gap-2 items-center">
+
+        {/* Carta con autocomplete */}
+        <div ref={wrapRef} className="relative">
+          <div className="flex items-center gap-1.5">
+            {row.card_id && <span className="text-emerald-500 text-xs shrink-0">✓</span>}
+            <input
+              type="text" value={row.card_name}
+              onChange={e => { onChange({ card_name: e.target.value, card_id: null }); onSearch(e.target.value) }}
+              placeholder="Buscar carta…"
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
+                         focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            {row.searching && <Spinner size={12} className="text-gray-400 shrink-0" />}
+          </div>
+
+          {row.suggestions.length > 0 && (
+            <div className="absolute top-full left-0 z-[70] mt-1 bg-white border border-gray-200
+                            rounded-xl shadow-xl max-h-64 overflow-y-auto"
+                 style={{ minWidth: '260px', width: 'max-content', maxWidth: '400px' }}>
+              {row.suggestions.map((card, idx) => {
+                const fe = detectFirstEdition(card)
+                return (
+                  <button key={`${card.name}|${card.set_name}|${idx}`}
+                    onClick={() => onSelect(card)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
+                    {card.image_url
+                      ? <img src={card.image_url} alt={card.name} className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
+                      : <div className="w-6 h-8 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300">🃏</div>
+                    }
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
+                      <span className="block text-gray-400 leading-tight truncate">
+                        {[card.set_name, card.card_number ? `#${card.card_number}` : null].filter(Boolean).join(' · ')}
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {card.price_usd && (
+                          <span className="text-emerald-600 font-bold">U$D {parseFloat(card.price_usd).toFixed(2)}</span>
+                        )}
+                        {fe.possible && (
+                          <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-semibold">
+                            {fe.detected ? '★ 1ª Ed' : '1ª Ed posible'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0
+                      ${card.source === 'stock' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
+                      {card.source === 'stock' ? 'stock' : 'tcg'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           )}
-          <input
-            type="text"
-            value={row.card_name}
-            onChange={e => {
-              onChange({ card_name: e.target.value, card_id: null })
-              onSearch(e.target.value)
-            }}
-            placeholder="Buscar carta…"
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
-                       focus:outline-none focus:ring-2 focus:ring-blue-200"
-          />
-          {row.searching && <Spinner size={12} className="text-gray-400 shrink-0" />}
         </div>
 
-        {/* Dropdown sugerencias */}
-        {row.suggestions.length > 0 && (
-          <div className="absolute top-full left-0 z-[70] mt-1 bg-white border border-gray-200 rounded-xl
-                          shadow-xl max-h-64 overflow-y-auto"
-               style={{ minWidth: '260px', width: 'max-content', maxWidth: '380px' }}>
-            {row.suggestions.map((card, idx) => (
-              <button
-                key={`${card.name}|${card.set_name}|${idx}`}
-                onClick={() => onSelect(card)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition"
-              >
-                {card.image_url ? (
-                  <img
-                    src={card.image_url}
-                    alt={card.name}
-                    className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0"
-                  />
-                ) : (
-                  <div className="w-6 h-8 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300 text-xs">🃏</div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
-                  <span className="block text-gray-400 leading-tight truncate">
-                    {[card.set_name, card.card_number ? `#${card.card_number}` : null].filter(Boolean).join(' · ')}
-                  </span>
-                  {card.price_usd && (
-                    <span className="text-emerald-600 font-bold">
-                      U$D {parseFloat(card.price_usd).toFixed(2)}
-                    </span>
-                  )}
-                </div>
-                {card.source === 'stock' ? (
-                  <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-semibold shrink-0">
-                    stock
-                  </span>
-                ) : (
-                  <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold shrink-0">
-                    tcg
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Condición */}
+        <select value={row.condition} onChange={e => onChange({ condition: e.target.value })}
+          className="border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer">
+          {CONDICIONES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        {/* Cantidad */}
+        <input type="number" min="1" value={row.quantity}
+          onChange={e => onChange({ quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-center
+                     focus:outline-none focus:ring-2 focus:ring-blue-200" />
+
+        {/* USD */}
+        <input type="number" min="0" step="0.01" value={row.price_usd}
+          onChange={e => onChange({ price_usd: e.target.value })}
+          placeholder="0.00"
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right
+                     focus:outline-none focus:ring-2 focus:ring-blue-200" />
+
+        {/* ARS */}
+        <input type="number" min="0" value={row.price_ars}
+          onChange={e => onChange({ price_ars: e.target.value })}
+          placeholder="0"
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right
+                     focus:outline-none focus:ring-2 focus:ring-blue-200" />
+
+        {/* Eliminar */}
+        <button onClick={onRemove} disabled={isLast}
+          className="text-gray-300 hover:text-red-400 transition disabled:opacity-20 text-sm leading-none">
+          ✕
+        </button>
       </div>
 
-      {/* Condición */}
-      <select
-        value={row.condition}
-        onChange={e => onChange({ condition: e.target.value })}
-        className="border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs bg-white
-                   focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
-      >
-        {CONDICIONES.map(c => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-      </select>
+      {/* ── Fila 2: Set | Idioma | 1ª Edición ──────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 pl-1">
 
-      {/* Cantidad */}
-      <input
-        type="number"
-        min="1"
-        value={row.quantity}
-        onChange={e => onChange({ quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-center
-                   focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
+        {/* Set / Expansión */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+          <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Set</span>
+          <input
+            type="text"
+            value={row.set_name}
+            onChange={e => onChange({ set_name: e.target.value })}
+            placeholder="Ej: Scarlet & Violet, Base Set…"
+            className="flex-1 border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs
+                       focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition"
+          />
+        </div>
 
-      {/* Precio USD */}
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={row.price_usd}
-        onChange={e => onChange({ price_usd: e.target.value })}
-        placeholder="0.00"
-        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right
-                   focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
+        {/* Idioma */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Idioma</span>
+          <select
+            value={row.language}
+            onChange={e => onChange({ language: e.target.value })}
+            className="border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs
+                       focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
+          >
+            {IDIOMAS.map(i => (
+              <option key={i.code} value={i.code}>{IDIOMA_FLAG[i.code]} {i.label}</option>
+            ))}
+          </select>
+        </div>
 
-      {/* Precio ARS */}
-      <input
-        type="number"
-        min="0"
-        value={row.price_ars}
-        onChange={e => onChange({ price_ars: e.target.value })}
-        placeholder="0"
-        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right
-                   focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
+        {/* 1ª Edición — solo si el set lo permite o está detectado */}
+        {(row.can_be_first_ed || row.is_first_edition) && (
+          <button
+            type="button"
+            onClick={() => onChange({ is_first_edition: !row.is_first_edition })}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
+              border transition select-none
+              ${row.is_first_edition
+                ? 'bg-yellow-400 border-yellow-500 text-yellow-900'
+                : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-yellow-50 hover:border-yellow-300'}`}
+            title={row.first_ed_reason}
+          >
+            ★ 1ª Edición
+            {row.is_first_edition
+              ? <span className="text-yellow-800 text-[10px]">✓</span>
+              : <span className="text-gray-400 text-[10px]">○</span>
+            }
+          </button>
+        )}
 
-      {/* Eliminar */}
-      <button
-        onClick={onRemove}
-        disabled={isLast}
-        className="text-gray-300 hover:text-red-400 transition disabled:opacity-20 text-sm leading-none"
-        title="Eliminar fila"
-      >
-        ✕
-      </button>
+        {/* Indicador de detección automática */}
+        {row.is_first_edition && row.first_ed_reason && (
+          <span className="text-[10px] text-yellow-600 italic">{row.first_ed_reason}</span>
+        )}
+      </div>
     </div>
   )
 }

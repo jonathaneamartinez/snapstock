@@ -1,16 +1,17 @@
 import { useState, useRef, useCallback } from 'react'
 import { scannerApi } from '../lib/scanner'
-import { STORE_ID } from '../constants'
+import { supabase }   from '../lib/supabase'
+import { STORE_ID }   from '../constants'
 
 // Estados del flujo del scanner
 // idle → detecting → identified → confirming → success | error
 
 export function useScanner() {
-  const [estado,   setEstado]  = useState('idle')
+  const [estado,   setEstado]   = useState('idle')
   const [opciones, setOpciones] = useState([])
-  const [carta,    setCarta]   = useState(null)
-  const [error,    setError]   = useState(null)
-  const [sesion,   setSesion]  = useState({ cartas: 0, totalUSD: 0 })
+  const [carta,    setCarta]    = useState(null)
+  const [error,    setError]    = useState(null)
+  const [sesion,   setSesion]   = useState({ cartas: 0, totalUSD: 0 })
   const procesandoRef = useRef(false)
 
   const capturar = useCallback(async (base64, idioma = 'en') => {
@@ -29,23 +30,20 @@ export function useScanner() {
           await new Promise(res => setTimeout(res, 900))
           setError(null)
         }
-        // Backend devuelve { carta, candidatas } — NO tiene campo "encontrado"
+
         const res = await scannerApi.identificar(base64, STORE_ID, idioma)
 
         if (res.carta) {
-          // Construir lista de opciones: carta principal + candidatas (phash gap < 8)
           const candidatas = res.candidatas?.length ? res.candidatas : []
-          const opciones   = [res.carta, ...candidatas]
-          setOpciones(opciones)
+          setOpciones([res.carta, ...candidatas])
           setCarta(res.carta)
           setEstado('identified')
           procesandoRef.current = false
           return
         } else if (res.error) {
-          // Error explícito del backend (400/500)
           throw new Error(res.error)
         } else {
-          // Carta no encontrada — no es error de red, no reintentar
+          // Carta no encontrada — no reintentar
           setEstado('idle')
           procesandoRef.current = false
           return
@@ -55,26 +53,54 @@ export function useScanner() {
       }
     }
 
-    // Agotados los reintentos
     setError(lastErr?.message || 'Error al identificar')
     setEstado('error')
     procesandoRef.current = false
   }, [])
 
-  const confirmar = useCallback(async ({ carta: c, cantidad, condicion, accion, sale_price_ars, buyer_name }) => {
+  const confirmar = useCallback(async ({
+    carta: c,
+    cantidad,
+    condicion,
+    accion,
+    sale_price_ars,
+    buyer_name,
+    idioma          = 'en',
+    canal           = null,
+    is_first_edition = false,
+  }) => {
     setEstado('confirming')
     setError(null)
     try {
+      // 1. Llamar al backend del scanner (maneja inventory + cards)
       const res = await scannerApi.confirmar({
-        store_id: STORE_ID,
-        carta: c,
+        store_id:        STORE_ID,
+        carta:           c,
         cantidad,
         condicion,
         accion,
-        sale_price_ars: sale_price_ars ?? null,
-        buyer_name:     buyer_name     ?? null,
+        sale_price_ars:  sale_price_ars  ?? null,
+        buyer_name:      buyer_name      ?? null,
+        idioma,
+        canal,
+        is_first_edition,
       })
+
       if (res.guardado) {
+        // 2. Si la acción es vender → insertar en la tabla sales con los campos nuevos
+        if (accion === 'vender') {
+          await supabase.from('sales').insert({
+            store_id:    STORE_ID,
+            channel:     canal || 'fuera_de_evento',
+            buyer_name:  buyer_name  || null,
+            notes:       c.nombre    || '',
+            total_ars:   sale_price_ars || null,
+            sold_at:     new Date().toISOString(),
+            estado:      'pendiente',
+            inventory_id: res.inventory_id || null,
+          })
+        }
+
         setSesion(prev => ({
           cartas:   prev.cartas + cantidad,
           totalUSD: prev.totalUSD + (c.precio_usd || 0) * cantidad,

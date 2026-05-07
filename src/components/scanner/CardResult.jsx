@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import HoloCard from './HoloCard'
 import { useSettings } from '../../hooks/useSettings'
-import { CONDICIONES, CONDICION_LABELS } from '../../constants'
+import { CONDICIONES, CONDICION_LABELS, IDIOMAS, CANALES_VENTA, FIRST_ED_SETS } from '../../constants'
 
 // Calcula precio sugerido: USD × blue × (1 + margen/100), redondeado a $500
 function calcPrecioSugerido(usd, blue, margen) {
@@ -43,44 +43,54 @@ function rarityStyle(holoLevel, rarity = '') {
   return null
 }
 
+/** Detecta si el set de la carta puede tener 1ª edición */
+function canHaveFirstEd(setName) {
+  if (!setName) return false
+  return FIRST_ED_SETS.some(s => setName.includes(s))
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CardResult({
   carta,
   opciones = [],
   dolarRates = { blue: null, oficial: null },
+  idioma: idiomaInicial = 'en',
   onConfirmar,
   onVolver,
   onSelectOpcion,
   loading,
 }) {
-  const [condicion,   setCondicion]   = useState('NM')
-  const [cantidad,    setCantidad]    = useState(1)
-  const [accion,      setAccion]      = useState('agregar')
-  const [precioVenta, setPrecioVenta] = useState('')
-  const [buyerName,   setBuyerName]   = useState('')
-  const [fuenteKey,   setFuenteKey]   = useState(null)
+  const [condicion,     setCondicion]     = useState('NM')
+  const [cantidad,      setCantidad]      = useState(1)
+  const [accion,        setAccion]        = useState('agregar')
+  const [precioVenta,   setPrecioVenta]   = useState('')
+  const [buyerName,     setBuyerName]     = useState('')
+  const [canal,         setCanal]         = useState('fuera_de_evento')
+  const [idiomaLocal,   setIdiomaLocal]   = useState(idiomaInicial)
+  const [isFirstEd,     setIsFirstEd]     = useState(false)
+  const [fuenteKey,     setFuenteKey]     = useState(null)
 
   const { margen } = useSettings()
 
-  // Pre-rellenar precio de venta si el backend lo devuelve; si no, usar precio sugerido
+  // Al cambiar de carta: reiniciar estado local
   useEffect(() => {
     if (carta?.precio_venta != null) {
       setPrecioVenta(String(carta.precio_venta))
     } else {
-      // sugerido se calculará después de que activeUSD y dolarRates estén disponibles
       setPrecioVenta('')
     }
     setFuenteKey(null)
     setAccion('agregar')
     setCantidad(1)
     setBuyerName('')
-  }, [carta])
+    setCanal('fuera_de_evento')
+    setIsFirstEd(false)
+    setIdiomaLocal(idiomaInicial)
+  }, [carta])                     // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!carta) return null
 
   // ── Fuentes de precio ────────────────────────────────────────────────────
-  // Normalizar: si el backend devuelve precios_fuentes los usamos,
-  // si no, construimos una fuente sintética con el precio principal
   const rawFuentes = carta.precios_fuentes || {}
   const fuentes = Object.keys(rawFuentes).length > 0
     ? rawFuentes
@@ -92,30 +102,21 @@ export default function CardResult({
   const activeKey     = fuenteKey || fuentesDisp[0]?.key || null
   const activeFuente  = activeKey ? fuentes[activeKey] : null
 
-  // USD activo (fuente seleccionada o campo principal)
   const activeUSD = activeFuente?.usd != null
     ? parseFloat(activeFuente.usd)
     : carta.precio_usd != null ? parseFloat(carta.precio_usd) : null
 
-  // Precios por condición
-  const condPrices = activeFuente?.condicion
-    || carta.precios_condicion
-    || {}
+  const condPrices    = activeFuente?.condicion || carta.precios_condicion || {}
   const hasCondPrices = Object.keys(condPrices).length > 0
 
-  // Precio sugerido (Feature 3): USD × blue × (1+margen%) redondeado a $500
   const precioSugerido = useMemo(
     () => calcPrecioSugerido(activeUSD, dolarRates.blue, margen),
     [activeUSD, dolarRates.blue, margen]
   )
 
-  // Rarity badge
-  const rStyle = rarityStyle(carta.holo_level, carta.rarity || '')
-
-  // Otros candidatos (excluir la carta actual por número)
-  const otrosCandidatos = opciones.filter(
-    op => op.numero !== carta.numero || op.set !== carta.set
-  )
+  const rStyle           = rarityStyle(carta.holo_level, carta.rarity || '')
+  const otrosCandidatos  = opciones.filter(op => op.numero !== carta.numero || op.set !== carta.set)
+  const firstEdPosible   = canHaveFirstEd(carta.set || carta.set_id || '')
 
   return (
     <div className="absolute inset-0 bg-[#060612] flex flex-col overflow-hidden">
@@ -139,9 +140,6 @@ export default function CardResult({
               {rStyle.label}
             </span>
           )}
-          <span className="text-base" title={carta.idioma || 'en'}>
-            {LANG_FLAG[carta.idioma || 'en'] || '🌐'}
-          </span>
         </div>
       </div>
 
@@ -163,9 +161,7 @@ export default function CardResult({
           {/* Set name + número */}
           <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap">
             {(carta.set || carta.set_id) && (
-              <span className="text-white/50 text-sm">
-                {carta.set || carta.set_id}
-              </span>
+              <span className="text-white/50 text-sm">{carta.set || carta.set_id}</span>
             )}
             {carta.numero && (
               <span className="text-white/35 text-sm">· #{carta.numero}</span>
@@ -175,8 +171,7 @@ export default function CardResult({
           {/* Set logo */}
           {carta.set_logo_url && (
             <img
-              src={carta.set_logo_url}
-              alt=""
+              src={carta.set_logo_url} alt=""
               className="mt-2 max-h-6 max-w-[120px] object-contain opacity-55"
               onError={e => { e.target.style.display = 'none' }}
             />
@@ -186,31 +181,25 @@ export default function CardResult({
         {/* ── Precios ────────────────────────────────────────────────────── */}
         <div className="mx-4 rounded-2xl bg-white/5 border border-white/8 p-4 space-y-3">
 
-          {/* USD + ARS */}
           <div className="grid grid-cols-3 gap-3">
-            <PriceCell label="USD"        value={fmtUSD(activeUSD)} />
-            <PriceCell label="ARS Blue"   value={fmtARS(activeUSD, dolarRates.blue)}    accent />
+            <PriceCell label="USD"         value={fmtUSD(activeUSD)} />
+            <PriceCell label="ARS Blue"    value={fmtARS(activeUSD, dolarRates.blue)}    accent />
             <PriceCell label="ARS Oficial" value={fmtARS(activeUSD, dolarRates.oficial)} />
           </div>
 
-          {/* Selector de fuentes — siempre visible si hay al menos una */}
           {fuentesDisp.length >= 1 && (
             <div className="flex gap-1.5 flex-wrap pt-2 border-t border-white/8">
               {fuentesDisp.map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => setFuenteKey(f.key)}
+                <button key={f.key} onClick={() => setFuenteKey(f.key)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
                     ${activeKey === f.key
                       ? 'bg-blue-600 text-white'
-                      : 'bg-white/8 text-white/50 hover:bg-white/12'}`}
-                >
+                      : 'bg-white/8 text-white/50 hover:bg-white/12'}`}>
                   {f.label}
                 </button>
               ))}
             </div>
           )}
-          {/* Si no hay fuentes del backend, indicar origen del precio */}
           {fuentesDisp.length === 0 && activeUSD != null && (
             <div className="pt-2 border-t border-white/8">
               <span className="text-xs text-white/30 bg-white/5 px-2.5 py-1 rounded-lg">
@@ -219,14 +208,11 @@ export default function CardResult({
             </div>
           )}
 
-          {/* Precios por condición */}
           {hasCondPrices && (
             <div className="grid grid-cols-4 gap-1 pt-1 border-t border-white/8">
               {[
-                { k: 'Near Mint',          l: 'NM' },
-                { k: 'Lightly Played',     l: 'LP' },
-                { k: 'Moderately Played',  l: 'MP' },
-                { k: 'Heavily Played',     l: 'HP' },
+                { k: 'Near Mint', l: 'NM' }, { k: 'Lightly Played', l: 'LP' },
+                { k: 'Moderately Played', l: 'MP' }, { k: 'Heavily Played', l: 'HP' },
               ].map(({ k, l }) => (
                 <div key={k} className="text-center">
                   <div className="text-white/30 text-xs">{l}</div>
@@ -239,6 +225,22 @@ export default function CardResult({
           )}
         </div>
 
+        {/* ── Idioma ─────────────────────────────────────────────────────── */}
+        <div className="mx-4 mt-3">
+          <p className="text-white/35 text-xs mb-1.5">Idioma de la carta</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {IDIOMAS.map(({ code, flag }) => (
+              <button key={code} onClick={() => setIdiomaLocal(code)}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold transition
+                  ${idiomaLocal === code
+                    ? 'bg-purple-500/25 border border-purple-400 text-purple-300'
+                    : 'bg-white/5 border border-white/10 text-white/40 hover:bg-white/10'}`}>
+                {flag} {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ── Precio de venta ────────────────────────────────────────────── */}
         <div className="mx-4 mt-3">
           <div className="flex items-center justify-between mb-1">
@@ -248,13 +250,12 @@ export default function CardResult({
                 onClick={() => setPrecioVenta(String(precioSugerido))}
                 className="text-blue-400/80 hover:text-blue-300 text-xs transition"
               >
-                Sugerido: ${precioSugerido.toLocaleString('es-AR')} ({margen}% margen) →
+                Sugerido: ${precioSugerido.toLocaleString('es-AR')} ({margen}%) →
               </button>
             )}
           </div>
           <input
-            type="number"
-            inputMode="numeric"
+            type="number" inputMode="numeric"
             value={precioVenta}
             onChange={e => setPrecioVenta(e.target.value)}
             placeholder={precioSugerido != null ? `Sugerido: $${precioSugerido.toLocaleString('es-AR')}` : 'Sin precio fijado'}
@@ -264,34 +265,47 @@ export default function CardResult({
           />
         </div>
 
-        {/* ── Acciones rápidas ───────────────────────────────────────────── */}
+        {/* ── Acciones ───────────────────────────────────────────────────── */}
         <div className="mx-4 mt-3 flex gap-2">
           {[
             { key: 'agregar',  label: '+ Stock'     },
             { key: 'vender',   label: '$ Vender'    },
             { key: 'reservar', label: '🔒 Reservar' },
           ].map(a => (
-            <button
-              key={a.key}
-              onClick={() => setAccion(a.key)}
+            <button key={a.key} onClick={() => setAccion(a.key)}
               className={`flex-1 py-2 rounded-xl text-sm font-semibold transition
                 ${accion === a.key
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
-            >
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
               {a.label}
             </button>
           ))}
         </div>
 
-        {/* Nombre comprador (solo si reservar) */}
-        {accion === 'reservar' && (
+        {/* Canal de venta (solo si vender) */}
+        {accion === 'vender' && (
           <div className="mx-4 mt-2">
-            <input
-              type="text"
-              value={buyerName}
+            <p className="text-white/35 text-xs mb-1.5">Canal de venta</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {CANALES_VENTA.map(c => (
+                <button key={c.value} onClick={() => setCanal(c.value)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold transition
+                    ${canal === c.value
+                      ? 'bg-emerald-500/25 border border-emerald-400 text-emerald-300'
+                      : 'bg-white/5 border border-white/10 text-white/40 hover:bg-white/10'}`}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Nombre comprador (vender o reservar) */}
+        {(accion === 'vender' || accion === 'reservar') && (
+          <div className="mx-4 mt-2">
+            <input type="text" value={buyerName}
               onChange={e => setBuyerName(e.target.value)}
-              placeholder="Nombre del cliente (opcional)"
+              placeholder={accion === 'reservar' ? 'Nombre del cliente (opcional)' : 'Comprador (opcional)'}
               className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2
                          text-white text-sm focus:outline-none focus:border-blue-500/60
                          placeholder-white/25 transition"
@@ -299,18 +313,32 @@ export default function CardResult({
           </div>
         )}
 
+        {/* ── 1ª Edición (solo sets WotC) ────────────────────────────────── */}
+        {firstEdPosible && (
+          <div className="mx-4 mt-2">
+            <button
+              type="button"
+              onClick={() => setIsFirstEd(v => !v)}
+              className={`w-full py-2 rounded-xl text-sm font-semibold border transition flex items-center justify-center gap-2
+                ${isFirstEd
+                  ? 'bg-yellow-400/20 border-yellow-400 text-yellow-300'
+                  : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}>
+              ★ 1ª Edición
+              <span className="text-xs opacity-70">
+                {isFirstEd ? '(activado)' : '(set WotC — tocá para marcar)'}
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* ── Condición ─────────────────────────────────────────────────── */}
         <div className="mx-4 mt-3 flex gap-1.5 flex-wrap">
           {CONDICIONES.map(c => (
-            <button
-              key={c}
-              onClick={() => setCondicion(c)}
-              title={CONDICION_LABELS[c]}
+            <button key={c} onClick={() => setCondicion(c)} title={CONDICION_LABELS[c]}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition
                 ${condicion === c
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
-            >
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
               {c}
             </button>
           ))}
@@ -319,15 +347,15 @@ export default function CardResult({
         {/* ── Cantidad + Confirmar ───────────────────────────────────────── */}
         <div className="mx-4 mt-4 flex items-center gap-3">
           <div className="flex items-center gap-1 bg-white/5 rounded-xl px-1">
-            <button
-              onClick={() => setCantidad(v => Math.max(1, v - 1))}
-              className="w-9 h-9 text-white/70 hover:text-white text-xl font-bold flex items-center justify-center"
-            >−</button>
+            <button onClick={() => setCantidad(v => Math.max(1, v - 1))}
+              className="w-9 h-9 text-white/70 hover:text-white text-xl font-bold flex items-center justify-center">
+              −
+            </button>
             <span className="text-white font-bold w-6 text-center text-sm">{cantidad}</span>
-            <button
-              onClick={() => setCantidad(v => v + 1)}
-              className="w-9 h-9 text-white/70 hover:text-white text-xl font-bold flex items-center justify-center"
-            >+</button>
+            <button onClick={() => setCantidad(v => v + 1)}
+              className="w-9 h-9 text-white/70 hover:text-white text-xl font-bold flex items-center justify-center">
+              +
+            </button>
           </div>
 
           <button
@@ -336,8 +364,11 @@ export default function CardResult({
               cantidad,
               condicion,
               accion,
-              sale_price_ars: precioVenta ? parseFloat(precioVenta) : null,
-              buyer_name:     buyerName || null,
+              idioma:          idiomaLocal,
+              canal:           accion === 'vender' ? canal : null,
+              is_first_edition: isFirstEd,
+              sale_price_ars:  precioVenta ? parseFloat(precioVenta) : null,
+              buyer_name:      buyerName || null,
             })}
             disabled={loading}
             className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50
@@ -353,28 +384,16 @@ export default function CardResult({
             <p className="text-white/30 text-xs px-4 mb-2 uppercase tracking-wider">Otras versiones</p>
             <div className="flex gap-3 overflow-x-auto px-4 pb-4 scrollbar-none">
               {otrosCandidatos.map((op, i) => (
-                <button
-                  key={i}
-                  onClick={() => onSelectOpcion(op)}
+                <button key={i} onClick={() => onSelectOpcion(op)}
                   className="shrink-0 flex flex-col items-center gap-1.5 p-2.5 rounded-xl
-                             bg-white/5 border border-white/8 hover:bg-white/10 transition"
-                >
+                             bg-white/5 border border-white/8 hover:bg-white/10 transition">
                   {op.imagen
-                    ? <img
-                        src={op.imagen}
-                        alt=""
+                    ? <img src={op.imagen} alt=""
                         className="w-12 h-16 object-cover rounded-md"
-                        onError={e => {
-                          e.target.style.display = 'none'
-                          e.target.nextSibling.style.display = 'flex'
-                        }}
-                      />
-                    : null
-                  }
-                  <div
-                    className="w-12 h-16 rounded-md bg-white/10 items-center justify-center text-white/20 text-xl"
-                    style={{ display: op.imagen ? 'none' : 'flex' }}
-                  >🃏</div>
+                        onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
+                    : null}
+                  <div className="w-12 h-16 rounded-md bg-white/10 items-center justify-center text-white/20 text-xl"
+                    style={{ display: op.imagen ? 'none' : 'flex' }}>🃏</div>
                   <span className="text-white/50 text-xs w-16 text-center truncate leading-tight">
                     {op.set || op.set_id}
                   </span>

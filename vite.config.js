@@ -15,6 +15,31 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Vite 8 / rolldown requiere manualChunks como función
+        manualChunks(id) {
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3'))
+            return 'vendor-charts'
+          if (id.includes('node_modules/framer-motion'))
+            return 'vendor-motion'
+          if (id.includes('node_modules/@supabase'))
+            return 'vendor-supabase'
+          if (id.includes('node_modules/@tanstack'))
+            return 'vendor-query'
+          if (id.includes('node_modules/date-fns'))
+            return 'vendor-dates'
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router') ||
+            id.includes('node_modules/react-is/')
+          ) return 'vendor-react'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

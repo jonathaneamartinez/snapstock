@@ -1,15 +1,30 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import Layout   from './components/layout/Layout'
-import Home     from './pages/Home'
-import Stock    from './pages/Stock'
-import Ventas   from './pages/Ventas'
-import Deudas   from './pages/Deudas'
-import Compras  from './pages/Compras'
-import Ingresos from './pages/Ingresos'
-import Settings from './pages/Settings'
-import Scanner  from './pages/Scanner'
-import Claims   from './pages/Claims'
+import Layout from './components/layout/Layout'
+
+/* ─── Lazy load de páginas ────────────────────────────────────────────────
+   Cada página se descarga solo cuando el usuario navega a ella.
+   Layout y Scanner son pequeños y se cargan siempre.
+──────────────────────────────────────────────────────────────────────── */
+const Home     = lazy(() => import('./pages/Home'))
+const Stock    = lazy(() => import('./pages/Stock'))
+const Ventas   = lazy(() => import('./pages/Ventas'))
+const Deudas   = lazy(() => import('./pages/Deudas'))
+const Compras  = lazy(() => import('./pages/Compras'))
+const Ingresos = lazy(() => import('./pages/Ingresos'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Scanner  = lazy(() => import('./pages/Scanner'))
+const Claims   = lazy(() => import('./pages/Claims'))
+
+/* ─── Spinner de carga de página ─────────────────────────────────────── */
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center w-full h-full min-h-[60vh]">
+      <div className="w-7 h-7 rounded-full border-[3px] border-blue-200 border-t-blue-500 animate-spin" />
+    </div>
+  )
+}
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -19,26 +34,28 @@ export default function App() {
   return (
     <QueryClientProvider client={qc}>
       <BrowserRouter>
-        <Routes>
-          {/* Scanner — fullscreen, sin layout */}
-          <Route path="/scanner" element={<Scanner />} />
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Scanner — fullscreen, sin layout */}
+            <Route path="/scanner" element={<Scanner />} />
 
-          {/* Dashboard — con sidebar + topbar */}
-          <Route element={<Layout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Home />}     />
-            <Route path="/stock"     element={<Stock />}    />
-            <Route path="/ventas"    element={<Ventas />}   />
-            <Route path="/deudas"    element={<Deudas />}   />
-            <Route path="/compras"   element={<Compras />}  />
-            <Route path="/ingresos"  element={<Ingresos />} />
-            <Route path="/settings"  element={<Settings />} />
-            <Route path="/claims"    element={<Claims />}   />
-          </Route>
+            {/* Dashboard — con sidebar + topbar */}
+            <Route element={<Layout />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Home />}     />
+              <Route path="/stock"     element={<Stock />}    />
+              <Route path="/ventas"    element={<Ventas />}   />
+              <Route path="/deudas"    element={<Deudas />}   />
+              <Route path="/compras"   element={<Compras />}  />
+              <Route path="/ingresos"  element={<Ingresos />} />
+              <Route path="/settings"  element={<Settings />} />
+              <Route path="/claims"    element={<Claims />}   />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   )

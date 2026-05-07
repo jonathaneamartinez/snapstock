@@ -15,7 +15,7 @@ export function useVentas(year, month) {
       // para poder filtrar por sold_at o created_at del lado cliente
       const { data, error } = await supabase
         .from('sales')
-        .select('id, sold_at, created_at, channel, buyer_name, notes, total_usd, total_ars, total_ars_blue')
+        .select('id, sold_at, channel, buyer_name, notes, total_ars, estado, inventory_id')
         .eq('store_id', STORE_ID)
         .order('sold_at', { ascending: false, nullsFirst: false })
 
@@ -26,14 +26,12 @@ export function useVentas(year, month) {
 
       return (data ?? [])
         .map(v => {
-          const fechaEfectiva = v.sold_at || v.created_at
           return {
             ...v,
-            fecha_venta:   fechaEfectiva,
+            fecha_venta:   v.sold_at,
             // nombre de carta guardado en notes ("Charizard ex | info")
             card_name:     v.notes ? v.notes.split('|')[0].trim() : null,
-            // ARS: total_ars_blue primero, sino total_ars
-            total_ars_blue: v.total_ars_blue ?? v.total_ars ?? null,
+            total_ars_blue: v.total_ars ?? null,  // alias para compatibilidad frontend
           }
         })
         .filter(v => {
