@@ -160,6 +160,11 @@ async function _doFetchCardImages(nombre, numero, setName, key) {
   const bestNum = extraNum || (numero ? String(numero) : '')
   const numOnly = bestNum.replace(/\D/g, '')
 
+  // Nombre sin variante: quita "[Reverse Holo]", "[Ball]", "[Prize Pack]", etc.
+  // Los corchetes son caracteres especiales en Lucene y rompen la query.
+  const stripped   = withAp.replace(/\s*\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
+  const hasVariant = stripped !== withAp
+
   let card = null
 
   try {
@@ -168,6 +173,13 @@ async function _doFetchCardImages(nombre, numero, setName, key) {
     if (bestNum) card = await apiSearch(`name:"${withAp}" number:${bestNum}`)
     // S2: nombre solo
     if (!card)   card = await apiSearch(`name:"${withAp}"`)
+
+    // ── Sin variante entre corchetes [Reverse Holo], [Ball], etc. ─────────
+    // Necesario porque [ ] son caracteres especiales en Lucene
+    if (!card && hasVariant) {
+      if (bestNum) card = await apiSearch(`name:"${stripped}" number:${bestNum}`)
+      if (!card)   card = await apiSearch(`name:"${stripped}"`)
+    }
 
     // ── Sin apóstrofe (por si el parser de Lucene falla con '') ───────────
     if (!card && noAp !== withAp) {
