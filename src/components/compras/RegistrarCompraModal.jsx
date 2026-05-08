@@ -265,12 +265,17 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     const usd = card.price_usd ? parseFloat(card.price_usd).toFixed(2) : ''
     const ars = usd && blue ? String(Math.round(parseFloat(usd) * blue)) : ''
     const firstEd = detectFirstEdition(card)
+    // card.id puede ser el ID de la API TCG ("ex8-16") — no es un UUID de Supabase.
+    // Solo usamos card_id si la carta vino del stock propio (source === 'stock').
+    // Para cartas de mercado, dejamos card_id en null y guardamos todo en _market
+    // para que handleSubmit haga el lookup/upsert en la tabla cards y obtenga el UUID real.
+    const isStockCard = card.source === 'stock' && card.id
     updateRow(key, {
-      card_id:          card.id,
+      card_id:          isStockCard ? card.id : null,
       card_name:        card.name,
       set_name:         card.set_name || '',
       set_id:           card.set_id   || null,
-      _market:          card,
+      _market:          isStockCard ? null : card,
       price_usd:        usd,
       price_ars:        ars,
       is_first_edition: firstEd.detected,
