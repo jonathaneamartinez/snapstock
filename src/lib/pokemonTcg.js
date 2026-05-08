@@ -3,8 +3,32 @@
 
 const BASE = 'https://api.pokemontcg.io/v2'
 
-// In-memory cache
+// Resultados ya resueltos (nombre|numero → result)
 const _cache = new Map()
+
+// In-flight: evita lanzar el mismo fetch dos veces para la misma carta
+const _inflight = new Map()
+
+// Semáforo: máximo 3 fetchCardImages simultáneos para no saturar la API
+const MAX_CONCURRENT = 3
+let   _running = 0
+const _queue   = []
+
+function runQueued(fn) {
+  return new Promise((resolve, reject) => {
+    const task = () => {
+      _running++
+      fn()
+        .then(resolve, reject)
+        .finally(() => {
+          _running--
+          if (_queue.length > 0) _queue.shift()()
+        })
+    }
+    if (_running < MAX_CONCURRENT) task()
+    else _queue.push(task)
+  })
+}
 
 /** Extrae número embebido: "Mew VMAX #TG30" → { cleanName:"Mew VMAX", extraNum:"TG30" } */
 function extractEmbeddedNumber(nombre) {
@@ -112,12 +136,20 @@ function toResult(card) {
  * @param {string|number} numero
  * @param {string} [setName]  — nombre del set de Supabase (opcional, mejora precisión)
  */
-export async function fetchCardImages(nombre, numero, setName) {
-  if (!nombre) return null
+export function fetchCardImages(nombre, numero, setName) {
+  if (!nombre) return Promise.resolve(null)
 
   const key = `${nombre}|${numero}`
-  if (_cache.has(key)) return _cache.get(key)
+  if (_cache.has(key))    return Promise.resolve(_cache.get(key))
+  if (_inflight.has(key)) return _inflight.get(key)
 
+  const promise = runQueued(() => _doFetchCardImages(nombre, numero, setName, key))
+  _inflight.set(key, promise)
+  promise.finally(() => _inflight.delete(key))
+  return promise
+}
+
+async function _doFetchCardImages(nombre, numero, setName, key) {
   const { cleanName, extraNum } = extractEmbeddedNumber(nombre)
   const norm     = normalize(cleanName)
   const withAp   = forQuery(norm)           // mantiene apóstrofe, sin comillas dobles

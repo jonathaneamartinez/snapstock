@@ -10,6 +10,8 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
   const [loaded,   setLoaded]   = useState(!!imageUrl)
   const [fetching, setFetching] = useState(false)
   const [failed,   setFailed]   = useState(false)
+  // Si la URL de la DB falla, queremos reintentar vía API una sola vez
+  const [triedApiFallback, setTriedApiFallback] = useState(false)
 
   const doFetch = useCallback(async () => {
     if (fetching || !nombre) return
@@ -93,7 +95,17 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
             className={`w-full h-full object-cover transition-opacity duration-300
               ${loaded ? 'opacity-100' : 'opacity-0'}`}
             onLoad={() => setLoaded(true)}
-            onError={() => { setSrc(null); setLoaded(false); setFailed(true) }}
+            onError={() => {
+              setSrc(null)
+              setLoaded(false)
+              // Si la URL vino de la DB y nunca intentamos buscar vía API, reintentamos
+              if (!triedApiFallback && nombre) {
+                setTriedApiFallback(true)
+                doFetch()
+              } else {
+                setFailed(true)
+              }
+            }}
           />
         ) : fetching ? (
           <div className="w-3 h-3 border border-gray-300 border-t-transparent rounded-full animate-spin" />
