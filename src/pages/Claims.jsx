@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useClaims } from '../hooks/useClaims'
@@ -54,8 +55,8 @@ function ImagenFullscreen({ src, onClose }) {
   )
 }
 
-/* ─── Barra de acción bulk ───────────────────────────────────────────── */
-function BulkActionBar({ selected, cards, onSell, onReserve, onReturn, onClear }) {
+/* ─── Floating Bulk Action Bar (portal → fixed bottom center) ────────── */
+function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
   const [action,  setAction]  = useState(null) // 'vender' | 'reservar' | null
   const [buyer,   setBuyer]   = useState('')
   const [canal,   setCanal]   = useState('claims')
@@ -81,28 +82,44 @@ function BulkActionBar({ selected, cards, onSell, onReserve, onReturn, onClear }
     finally { setLoading(false); onClear() }
   }
 
-  if (action) {
-    return (
-      <motion.div
-        key="action-confirm"
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0 }}
-        className="mt-3 p-3 bg-violet-50 border border-violet-200 rounded-xl space-y-2"
-      >
-        <p className="text-xs font-semibold text-violet-700">
-          {action === 'vender' ? '✓ Marcar como vendida' : '📌 Marcar como reservada'}
-          &nbsp;·&nbsp;{selected.size} {selected.size === 1 ? 'carta' : 'cartas'}
-        </p>
+  const bar = (
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0,  scale: 1    }}
+      exit={{    opacity: 0, y: 16, scale: 0.96  }}
+      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+      style={{ zIndex: 9999 }}
+      className="fixed bottom-6 left-1/2 -translate-x-1/2
+                 bg-gray-900 shadow-2xl shadow-black/40
+                 rounded-2xl px-4 py-3
+                 flex flex-wrap items-center gap-2
+                 min-w-[320px] max-w-[calc(100vw-32px)]"
+    >
+      {/* Contador */}
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="inline-flex items-center justify-center
+                         min-w-[24px] h-6 px-1.5
+                         bg-violet-500 text-white text-xs font-bold rounded-full">
+          {selected.size}
+        </span>
+        <span className="text-xs text-white/70 font-medium whitespace-nowrap">
+          {selected.size === 1 ? 'carta seleccionada' : 'cartas seleccionadas'}
+        </span>
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          {/* Canal — solo para ventas */}
+      {action ? (
+        /* ── Modo confirmación ────────────────────────────────── */
+        <>
+          <div className="w-px h-5 bg-white/15 shrink-0" />
+
+          {/* Canal — solo ventas */}
           {action === 'vender' && (
             <select
               value={canal}
               onChange={e => setCanal(e.target.value)}
-              className="border border-violet-300 rounded-lg px-2.5 py-1.5 text-xs
-                         bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+              className="border border-white/20 rounded-lg px-2.5 py-1.5 text-xs
+                         bg-gray-800 text-white focus:outline-none focus:ring-2
+                         focus:ring-violet-400 cursor-pointer"
             >
               {CANALES_VENTA.map(c => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -110,82 +127,82 @@ function BulkActionBar({ selected, cards, onSell, onReserve, onReturn, onClear }
             </select>
           )}
 
-          {/* Comprador */}
+          {/* Nombre comprador */}
           <input
             autoFocus
             type="text"
-            placeholder={action === 'vender' ? 'Comprador (opcional)' : 'Nombre comprador…'}
+            placeholder={action === 'vender' ? 'Comprador (opcional)' : 'Nombre…'}
             value={buyer}
             onChange={e => setBuyer(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleExecute()}
-            className="flex-1 min-w-[140px] border border-violet-300 rounded-lg px-2.5 py-1.5
-                       text-xs focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className="flex-1 min-w-[130px] border border-white/20 rounded-lg px-2.5 py-1.5
+                       text-xs bg-gray-800 text-white placeholder:text-white/30
+                       focus:outline-none focus:ring-2 focus:ring-violet-400"
           />
 
           <button
             onClick={handleExecute}
             disabled={loading}
-            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold
-                       rounded-lg hover:bg-violet-500 disabled:opacity-50 transition whitespace-nowrap"
+            className={`px-3 py-1.5 text-white text-xs font-bold rounded-lg transition
+                        whitespace-nowrap disabled:opacity-50
+                        ${action === 'vender'
+                          ? 'bg-emerald-500 hover:bg-emerald-400'
+                          : 'bg-amber-500 hover:bg-amber-400'}`}
           >
             {loading ? '…' : 'Confirmar'}
           </button>
           <button
             onClick={reset}
-            className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold
-                       rounded-lg hover:bg-gray-200 transition"
+            className="px-3 py-1.5 bg-white/10 hover:bg-white/20
+                       text-white/70 text-xs font-semibold rounded-lg transition whitespace-nowrap"
           >
-            Cancelar
+            ← Volver
           </button>
-        </div>
-      </motion.div>
-    )
-  }
+        </>
+      ) : (
+        /* ── Modo botones principales ─────────────────────────── */
+        <>
+          <div className="w-px h-5 bg-white/15 shrink-0" />
+          <button
+            onClick={() => setAction('vender')}
+            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
+                       text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
+          >
+            ✓ Vendida
+          </button>
+          <button
+            onClick={() => setAction('reservar')}
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400
+                       text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
+          >
+            📌 Reservada
+          </button>
+          <button
+            onClick={handleReturn}
+            disabled={loading}
+            className="px-3 py-1.5 bg-blue-500 hover:bg-blue-400
+                       text-white text-xs font-semibold rounded-lg transition
+                       disabled:opacity-50 whitespace-nowrap"
+          >
+            {loading ? '…' : '↩ Stock'}
+          </button>
 
-  return (
-    <motion.div
-      key="action-buttons"
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      className="flex flex-wrap items-center gap-2 mt-3 p-2.5 bg-gray-900 rounded-xl"
-    >
-      <span className="text-xs text-white/70 font-medium px-1">
-        {selected.size} {selected.size === 1 ? 'carta' : 'cartas'}
-      </span>
-      <div className="w-px h-4 bg-white/20" />
-      <button
-        onClick={() => setAction('vender')}
-        className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
-                   text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
-      >
-        ✓ Vendida
-      </button>
-      <button
-        onClick={() => setAction('reservar')}
-        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400
-                   text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
-      >
-        📌 Reservada
-      </button>
-      <button
-        onClick={handleReturn}
-        disabled={loading}
-        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-400
-                   text-white text-xs font-semibold rounded-lg transition
-                   disabled:opacity-50 whitespace-nowrap"
-      >
-        ↩ Volver al stock
-      </button>
-      <button
-        onClick={onClear}
-        className="ml-auto w-6 h-6 flex items-center justify-center rounded-full
-                   bg-white/10 hover:bg-white/20 text-white/60 text-base transition"
-      >
-        ×
-      </button>
+          {/* Cerrar */}
+          <button
+            onClick={onClear}
+            className="ml-auto w-7 h-7 flex items-center justify-center rounded-full
+                       bg-white/10 hover:bg-white/20 text-white/50 hover:text-white
+                       text-base transition shrink-0"
+            title="Deseleccionar todo"
+          >
+            ×
+          </button>
+        </>
+      )}
     </motion.div>
   )
+
+  return createPortal(bar, document.body)
 }
 
 /* ─── Tabla de cartas del claim (con workflow post-claim) ────────────── */
@@ -415,13 +432,11 @@ function CardTable({ cards, claimId }) {
         </div>
       )}
 
-      {/* Barra de acción bulk */}
-      <AnimatePresence mode="wait">
+      {/* Floating bulk action bar — renderizado via portal en document.body */}
+      <AnimatePresence>
         {someSelected && (
           <BulkActionBar
-            key="bulk"
             selected={selected}
-            cards={cards}
             onSell={handleSell}
             onReserve={handleReserve}
             onReturn={handleReturn}
