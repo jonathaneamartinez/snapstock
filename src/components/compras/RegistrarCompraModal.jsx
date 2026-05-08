@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase }           from '../../lib/supabase'
-import { searchCardsByName }  from '../../lib/pokemonTcg'
+import {
+  searchCardsByName,
+  fetchAllSets,
+  fetchCardsBySet,
+  fetchCardBySetAndNumber,
+} from '../../lib/pokemonTcg'
 import { useDolar }           from '../../hooks/useDolar'
 import { STORE_ID, CONDICIONES, IDIOMAS, FIRST_ED_SETS } from '../../constants'
 import Spinner from '../ui/Spinner'
@@ -31,6 +36,7 @@ const emptyRow = () => ({
   card_id:          null,
   card_name:        '',
   set_name:         '',
+  set_id:           null,   // id de la API ("sv3pt5", "base1"…)
   language:         'en',
   is_first_edition: false,
   can_be_first_ed:  false,
@@ -42,6 +48,137 @@ const emptyRow = () => ({
   suggestions:      [],
   searching:        false,
 })
+
+/* ─── SetSelect — selector de set con búsqueda ──────────────────────────── */
+function SetSelect({ value, setId, onChange }) {
+  const [open,    setOpen]    = useState(false)
+  const [query,   setQuery]   = useState('')
+  const [sets,    setSets]    = useState([])
+  const [loading, setLoading] = useState(false)
+  const wrapRef  = useRef(null)
+  const inputRef = useRef(null)
+
+  // Cargar sets al abrir por primera vez
+  const openDropdown = async () => {
+    setOpen(true)
+    setQuery('')
+    if (sets.length === 0) {
+      setLoading(true)
+      const data = await fetchAllSets()
+      setSets(data)
+      setLoading(false)
+    }
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  // Cerrar al click fuera
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const filtered = query.trim()
+    ? sets.filter(s =>
+        s.name.toLowerCase().includes(query.toLowerCase()) ||
+        s.series?.toLowerCase().includes(query.toLowerCase()) ||
+        s.year?.includes(query)
+      )
+    : sets
+
+  const handleSelect = (set) => {
+    onChange({ set_name: set.name, set_id: set.id })
+    setOpen(false)
+  }
+
+  const handleClear = (e) => {
+    e.stopPropagation()
+    onChange({ set_name: '', set_id: null })
+  }
+
+  return (
+    <div ref={wrapRef} className="relative flex-1 min-w-[160px]">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={openDropdown}
+        className={`w-full flex items-center justify-between gap-1 px-2.5 py-1.5
+                    border rounded-lg text-xs text-left transition
+                    focus:outline-none focus:ring-2 focus:ring-blue-200
+                    ${setId
+                      ? 'border-blue-200 bg-blue-50 text-blue-700'
+                      : 'border-gray-100 bg-gray-50 text-gray-400 hover:bg-white hover:border-gray-200'}`}
+      >
+        <span className="truncate font-medium">
+          {value || 'Elegir set…'}
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {setId && (
+            <span
+              onClick={handleClear}
+              className="text-blue-400 hover:text-red-400 transition text-[10px] leading-none cursor-pointer"
+              title="Quitar set"
+            >✕</span>
+          )}
+          <span className="text-gray-400 text-[10px]">▾</span>
+        </div>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute top-full left-0 z-[80] mt-1 w-72 bg-white border
+                        border-gray-200 rounded-xl shadow-xl overflow-hidden"
+        >
+          {/* Search input */}
+          <div className="p-2 border-b border-gray-100">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Buscar set o serie…"
+              className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg
+                         focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+
+          {/* List */}
+          <div className="overflow-y-auto max-h-60">
+            {loading && (
+              <div className="flex justify-center py-6">
+                <div className="w-5 h-5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+              </div>
+            )}
+            {!loading && filtered.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-4">Sin resultados</p>
+            )}
+            {!loading && filtered.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => handleSelect(s)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs
+                            hover:bg-blue-50 transition
+                            ${s.id === setId ? 'bg-blue-50' : ''}`}
+              >
+                {s.symbol
+                  ? <img src={s.symbol} alt="" className="w-5 h-5 object-contain shrink-0" />
+                  : <span className="w-5 h-5 shrink-0 text-gray-300 flex items-center justify-center">🃏</span>
+                }
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-gray-800 block truncate">{s.name}</span>
+                  <span className="text-gray-400 text-[10px]">{s.series} · {s.year} · {s.total} cartas</span>
+                </div>
+                {s.id === setId && <span className="text-blue-500 text-[10px] shrink-0">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* ─── Debounce ────────────────────────────────────────────────────────────── */
 function useDebounce(fn, delay) {
@@ -132,6 +269,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       card_id:          card.id,
       card_name:        card.name,
       set_name:         card.set_name || '',
+      set_id:           card.set_id   || null,
       _market:          card,
       price_usd:        usd,
       price_ars:        ars,
@@ -413,9 +551,12 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 ══════════════════════════════════════════════════════════════════════════ */
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
-function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
-  const wrapRef = useRef(null)
+function CardRow({ row, isLast, blue, onChange, onSearch, onSelect, onRemove }) {
+  const wrapRef    = useRef(null)
+  const numTimer   = useRef(null)
+  const [numInput, setNumInput] = useState(row.card_number || '')
 
+  // Cerrar sugerencias al click fuera
   useEffect(() => {
     const close = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target))
@@ -424,6 +565,43 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [])
+
+  // ── Cuando se escribe un número con set seleccionado → buscar esa carta ──
+  const handleNumberChange = (val) => {
+    setNumInput(val)
+    if (!row.set_id || !val.trim()) return
+    clearTimeout(numTimer.current)
+    numTimer.current = setTimeout(async () => {
+      onChange({ searching: true })
+      const card = await fetchCardBySetAndNumber(row.set_id, val.trim())
+      onChange({ searching: false })
+      if (card) onSelect(card)
+    }, 400)
+  }
+
+  // ── Al hacer focus en nombre con set ya elegido → cargar cartas del set ──
+  const handleNameFocus = async () => {
+    if (!row.set_id || row.card_id) return
+    if (row.suggestions.length > 0) return
+    onChange({ searching: true, suggestions: [] })
+    const cards = await fetchCardsBySet(row.set_id)
+    onChange({ searching: false, suggestions: cards.slice(0, 80) })
+  }
+
+  // ── Búsqueda por nombre (con o sin set) ──────────────────────────────────
+  const handleNameChange = async (val) => {
+    onChange({ card_name: val, card_id: null })
+    if (!val.trim() || val.length < 2) { onChange({ suggestions: [] }); return }
+
+    if (row.set_id) {
+      // Buscar dentro del set por nombre
+      onChange({ searching: true })
+      const cards = await fetchCardsBySet(row.set_id, val.trim())
+      onChange({ searching: false, suggestions: cards.slice(0, 60) })
+    } else {
+      onSearch(val)   // búsqueda global sin set
+    }
+  }
 
   return (
     <div className="px-3 py-2.5 space-y-2">
@@ -437,8 +615,9 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
             {row.card_id && <span className="text-emerald-500 text-xs shrink-0">✓</span>}
             <input
               type="text" value={row.card_name}
-              onChange={e => { onChange({ card_name: e.target.value, card_id: null }); onSearch(e.target.value) }}
-              placeholder="Buscar carta…"
+              onFocus={handleNameFocus}
+              onChange={e => handleNameChange(e.target.value)}
+              placeholder={row.set_id ? 'Buscar en el set…' : 'Buscar carta…'}
               className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
                          focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
@@ -448,12 +627,12 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
           {row.suggestions.length > 0 && (
             <div className="absolute top-full left-0 z-[70] mt-1 bg-white border border-gray-200
                             rounded-xl shadow-xl max-h-64 overflow-y-auto"
-                 style={{ minWidth: '260px', width: 'max-content', maxWidth: '400px' }}>
+                 style={{ minWidth: '260px', width: 'max-content', maxWidth: '420px' }}>
               {row.suggestions.map((card, idx) => {
                 const fe = detectFirstEdition(card)
                 return (
-                  <button key={`${card.name}|${card.set_name}|${idx}`}
-                    onClick={() => onSelect(card)}
+                  <button key={`${card.id || card.name}|${idx}`}
+                    onClick={() => { onSelect(card); onChange({ suggestions: [] }) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
                     {card.image_url
                       ? <img src={card.image_url} alt={card.name} className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
@@ -477,7 +656,7 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
                     </div>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0
                       ${card.source === 'stock' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
-                      {card.source === 'stock' ? 'stock' : 'tcg'}
+                      {card.card_number ? `#${card.card_number}` : (card.source === 'stock' ? 'stock' : 'tcg')}
                     </span>
                   </button>
                 )
@@ -520,19 +699,31 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
         </button>
       </div>
 
-      {/* ── Fila 2: Set | Idioma | 1ª Edición ──────────────────────────── */}
+      {/* ── Fila 2: Set | Nº | Idioma | 1ª Edición ─────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
 
-        {/* Set / Expansión */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+        {/* Set — desplegable con todos los sets */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
           <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Set</span>
+          <SetSelect
+            value={row.set_name}
+            setId={row.set_id}
+            onChange={patch => onChange(patch)}
+          />
+        </div>
+
+        {/* Número — cuando hay set, busca la carta exacta */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Nº</span>
           <input
             type="text"
-            value={row.set_name}
-            onChange={e => onChange({ set_name: e.target.value })}
-            placeholder="Ej: Scarlet & Violet, Base Set…"
-            className="flex-1 border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs
-                       focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition"
+            value={numInput}
+            onChange={e => handleNumberChange(e.target.value)}
+            placeholder={row.set_id ? '1, TG30…' : '—'}
+            disabled={!row.set_id}
+            className="w-16 border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs text-center
+                       focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition
+                       disabled:opacity-40 disabled:cursor-not-allowed"
           />
         </div>
 
@@ -551,7 +742,7 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
           </select>
         </div>
 
-        {/* 1ª Edición — solo si el set lo permite o está detectado */}
+        {/* 1ª Edición */}
         {(row.can_be_first_ed || row.is_first_edition) && (
           <button
             type="button"
@@ -563,17 +754,12 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove }) {
                 : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-yellow-50 hover:border-yellow-300'}`}
             title={row.first_ed_reason}
           >
-            ★ 1ª Edición
+            ★ 1ª Ed
             {row.is_first_edition
               ? <span className="text-yellow-800 text-[10px]">✓</span>
               : <span className="text-gray-400 text-[10px]">○</span>
             }
           </button>
-        )}
-
-        {/* Indicador de detección automática */}
-        {row.is_first_edition && row.first_ed_reason && (
-          <span className="text-[10px] text-yellow-600 italic">{row.first_ed_reason}</span>
         )}
       </div>
     </div>

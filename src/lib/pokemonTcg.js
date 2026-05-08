@@ -30,6 +30,127 @@ function runQueued(fn) {
   })
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   SETS  —  lista completa + cartas por set
+═══════════════════════════════════════════════════════════════════ */
+
+let _setsCache    = null
+let _setsFetching = null
+
+/**
+ * Devuelve todos los sets de la API, ordenados por fecha desc.
+ * Se cachea en memoria para toda la sesión (los sets raramente cambian).
+ */
+export async function fetchAllSets() {
+  if (_setsCache) return _setsCache
+  if (_setsFetching) return _setsFetching
+
+  _setsFetching = (async () => {
+    try {
+      const res  = await fetch(`${BASE}/sets?orderBy=-releaseDate&pageSize=250`)
+      if (!res.ok) return []
+      const json = await res.json()
+      _setsCache = (json.data ?? []).map(s => ({
+        id:         s.id,
+        name:       s.name,
+        series:     s.series,
+        total:      s.total,
+        year:       s.releaseDate?.slice(0, 4) ?? '',
+        logo:       s.images?.logo ?? null,
+        symbol:     s.images?.symbol ?? null,
+      }))
+      return _setsCache
+    } catch {
+      return []
+    } finally {
+      _setsFetching = null
+    }
+  })()
+  return _setsFetching
+}
+
+// Caché por setId (setId → cards[])
+const _setCardsCache    = new Map()
+const _setCardsInflight = new Map()
+
+/**
+ * Trae todas las cartas de un set.
+ * @param {string} setId   — id de set de la API ("sv3pt5", "base1", etc.)
+ * @param {string} [query] — filtro opcional de nombre (para búsqueda live)
+ */
+export async function fetchCardsBySet(setId, query = '') {
+  const key = `${setId}|${query}`
+  if (_setCardsCache.has(key))    return _setCardsCache.get(key)
+  if (_setCardsInflight.has(key)) return _setCardsInflight.get(key)
+
+  const promise = (async () => {
+    try {
+      const q      = query
+        ? `set.id:${setId} name:*${query.replace(/\s+/g, '*')}*`
+        : `set.id:${setId}`
+      const params = new URLSearchParams({ q, pageSize: 250, orderBy: 'number' })
+      const res    = await fetch(`${BASE}/cards?${params}`)
+      if (!res.ok) return []
+      const json   = await res.json()
+
+      const cards = (json.data ?? []).map(c => {
+        const prices = c.tcgplayer?.prices ?? {}
+        const has1st = !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal'])
+        return {
+          id:               c.id,
+          name:             c.name,
+          set_name:         c.set?.name   || null,
+          set_id:           c.set?.id     || null,
+          card_number:      c.number      || null,
+          image_url:        c.images?.small || c.images?.large || null,
+          price_usd:        extractPrice(c),
+          subtypes:         c.subtypes ?? [],
+          has_first_ed_price: has1st,
+          source:           'market',
+        }
+      })
+
+      // Cachear solo búsquedas por set completo (sin query), no las filtradas
+      if (!query) _setCardsCache.set(key, cards)
+      return cards
+    } catch {
+      return []
+    } finally {
+      _setCardsInflight.delete(key)
+    }
+  })()
+
+  _setCardsInflight.set(key, promise)
+  return promise
+}
+
+/**
+ * Busca UNA carta específica por setId + número exacto.
+ */
+export async function fetchCardBySetAndNumber(setId, number) {
+  if (!setId || !number) return null
+  const num = String(number).trim().replace(/\.0+$/, '')
+  try {
+    const card = await apiSearch(`set.id:${setId} number:${num}`)
+    if (!card) return null
+    const prices = card.tcgplayer?.prices ?? {}
+    return {
+      id:               card.id,
+      name:             card.name,
+      set_name:         card.set?.name || null,
+      set_id:           card.set?.id   || null,
+      card_number:      card.number    || null,
+      image_url:        card.images?.small || card.images?.large || null,
+      price_usd:        extractPrice(card),
+      subtypes:         card.subtypes ?? [],
+      has_first_ed_price: !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal']),
+      source:           'market',
+    }
+  } catch {
+    return null
+  }
+}
+
 /** Extrae número embebido: "Mew VMAX #TG30" → { cleanName:"Mew VMAX", extraNum:"TG30" } */
 function extractEmbeddedNumber(nombre) {
   const match = nombre.match(/\s*#([A-Za-z0-9]+)\s*$/)
