@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import Layout from './components/layout/Layout'
+import Layout      from './components/layout/Layout'
+import LockScreen  from './components/auth/LockScreen'
+import { useAuth } from './hooks/useAuth'
 
 /* ─── Lazy load de páginas ────────────────────────────────────────────────
    Cada página se descarga solo cuando el usuario navega a ella.
@@ -30,10 +32,17 @@ const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 })
 
+function AuthGate({ children }) {
+  const { authenticated, unlock } = useAuth()
+  if (!authenticated) return <LockScreen onUnlock={unlock} />
+  return children
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={qc}>
       <BrowserRouter>
+        <AuthGate>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Scanner — fullscreen, sin layout */}
@@ -56,6 +65,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Suspense>
+        </AuthGate>
       </BrowserRouter>
     </QueryClientProvider>
   )
