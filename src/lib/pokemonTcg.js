@@ -150,78 +150,76 @@ export function fetchCardImages(nombre, numero, setName) {
 }
 
 async function _doFetchCardImages(nombre, numero, setName, key) {
+  // ── 1. Extraer número embebido en el nombre ("Mew #TG30" → extraNum:"TG30") ──
   const { cleanName, extraNum } = extractEmbeddedNumber(nombre)
-  const norm   = normalize(cleanName)
+
+  // ── 2. Limpiar el nombre ANTES de construir queries ────────────────────────
+  //    Quitamos variantes entre corchetes ([Reverse Holo], [Ball], [Prize Pack]…)
+  //    porque son chars especiales en Lucene y nunca forman parte del nombre en la API.
+  const cleanBase = cleanName.replace(/\s*\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
+
+  const norm   = normalize(cleanBase)
   const withAp = forQuery(norm)            // mantiene apóstrofe, sin comillas dobles
   const noAp   = noApostrophe(norm)        // sin apóstrofe
-  const base   = forQuery(baseName(norm))  // sin prefijo entrenador
+  const trainer = forQuery(baseName(norm)) // sin prefijo de entrenador
   const setFrag = setFragment(setName)
 
-  // Número limpio: quita sufijo .0 de Excel ("22.0" → "22") y espacios
-  const rawNum  = extraNum || (numero ? String(numero).trim() : '')
-  const bestNum = rawNum.replace(/\.0+$/, '')   // ← fix Excel artifact
-  const numOnly = bestNum.replace(/\D/g, '')     // solo dígitos ("TG30" → "30")
-
-  // Nombre sin variante entre corchetes: [Reverse Holo], [Ball], [Prize Pack], etc.
-  // Los corchetes son caracteres especiales en Lucene y rompen la query
-  const stripped     = withAp.replace(/\s*\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
-  const strippedNoAp = noAp.replace(/\s*\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
-  const hasVariant   = stripped.length > 0 && stripped !== withAp
+  // ── 3. Número limpio ────────────────────────────────────────────────────────
+  //    Prioridad: número embebido en nombre > campo numero de la DB
+  //    Quita sufijo .0 de Excel ("22.0" → "22") y espacios
+  const rawNum  = (extraNum || (numero ? String(numero).trim() : '')).replace(/\.0+$/, '')
+  const numOnly = rawNum.replace(/\D/g, '')   // solo dígitos ("TG30" → "30")
 
   let card = null
 
   try {
-    // ── S1-S2: nombre completo ──────────────────────────────────────────
-    if (bestNum) card = await apiSearch(`name:"${withAp}" number:${bestNum}`)
-    if (!card)   card = await apiSearch(`name:"${withAp}"`)
-
-    // ── S3-S5: sin variante [Reverse Holo] / [Ball] etc. ───────────────
-    // Los corchetes son chars especiales en Lucene → siempre buscar sin ellos
-    if (!card && hasVariant) {
-      if (bestNum)                        card = await apiSearch(`name:"${stripped}" number:${bestNum}`)
-      if (!card && numOnly !== bestNum)   card = await apiSearch(`name:"${stripped}" number:${numOnly}`)
-      if (!card)                          card = await apiSearch(`name:"${stripped}"`)
+    // ── Estrategia 1 (más precisa): nombre + número + set ─────────────────
+    if (withAp && rawNum && setFrag) {
+      card = await apiSearch(`name:"${withAp}" number:${rawNum} set.name:"${setFrag}"`)
+      if (!card && numOnly && numOnly !== rawNum)
+        card = await apiSearch(`name:"${withAp}" number:${numOnly} set.name:"${setFrag}"`)
     }
 
-    // ── S6-S7: sin apóstrofe ────────────────────────────────────────────
+    // ── Estrategia 2: nombre + número (sin set) ────────────────────────────
+    if (!card && rawNum)
+      card = await apiSearch(`name:"${withAp}" number:${rawNum}`)
+    if (!card && numOnly && numOnly !== rawNum)
+      card = await apiSearch(`name:"${withAp}" number:${numOnly}`)
+
+    // ── Estrategia 3: nombre + set (sin número) ────────────────────────────
+    if (!card && setFrag)
+      card = await apiSearch(`name:"${withAp}" set.name:"${setFrag}"`)
+
+    // ── Estrategia 4: nombre solo ──────────────────────────────────────────
+    if (!card) card = await apiSearch(`name:"${withAp}"`)
+
+    // ── Estrategia 5: sin apóstrofe ────────────────────────────────────────
     if (!card && noAp !== withAp) {
-      if (bestNum) card = await apiSearch(`name:"${noAp}" number:${bestNum}`)
-      if (!card)   card = await apiSearch(`name:"${noAp}"`)
-    }
-
-    // ── S8-S9: sin prefijo de entrenador ───────────────────────────────
-    if (!card && base && base !== withAp && base !== stripped) {
-      if (bestNum) card = await apiSearch(`name:"${base}" number:${bestNum}`)
-      if (!card)   card = await apiSearch(`name:"${base}"`)
-    }
-
-    // ── S10-S11: número solo dígitos (TG30 → 30, o .0 ya removido) ────
-    if (!card && numOnly && numOnly !== bestNum) {
-      card = await apiSearch(`name:"${stripped || withAp}" number:${numOnly}`)
-      if (!card && noAp !== withAp)
-        card = await apiSearch(`name:"${strippedNoAp || noAp}" number:${numOnly}`)
-    }
-
-    // ── S12: nombre sin comillas + set ─────────────────────────────────
-    if (!card) {
-      const q = setFrag
-        ? `name:${strippedNoAp || noAp} number:${bestNum || numOnly} set.name:"${setFrag}"`
-        : `name:${strippedNoAp || noAp}${bestNum ? ` number:${bestNum}` : ''}`
-      card = await apiSearch(q.trim())
-    }
-
-    // ── S13: stripped + set (última chance con nombre limpio + set) ─────
-    if (!card && hasVariant && setFrag) {
-      if (bestNum || numOnly)
-        card = await apiSearch(`name:"${strippedNoAp}" number:${bestNum || numOnly} set.name:"${setFrag}"`)
+      if (rawNum && setFrag)
+        card = await apiSearch(`name:"${noAp}" number:${rawNum} set.name:"${setFrag}"`)
+      if (!card && rawNum)
+        card = await apiSearch(`name:"${noAp}" number:${rawNum}`)
       if (!card)
-        card = await apiSearch(`name:"${strippedNoAp}" set.name:"${setFrag}"`)
+        card = await apiSearch(`name:"${noAp}"`)
     }
 
-    // ── S14: base sin comillas + set ────────────────────────────────────
-    if (!card && base && setFrag && base !== stripped) {
-      card = await apiSearch(`name:"${base}" set.name:"${setFrag}"`)
+    // ── Estrategia 6: sin prefijo de entrenador ────────────────────────────
+    if (!card && trainer && trainer !== withAp) {
+      if (rawNum && setFrag)
+        card = await apiSearch(`name:"${trainer}" number:${rawNum} set.name:"${setFrag}"`)
+      if (!card && rawNum)
+        card = await apiSearch(`name:"${trainer}" number:${rawNum}`)
+      if (!card)
+        card = await apiSearch(`name:"${trainer}"`)
     }
+
+    // ── Estrategia 7: nombre sin comillas + set (máximo tolerante) ─────────
+    if (!card && setFrag)
+      card = await apiSearch(`name:${noAp} set.name:"${setFrag}"`)
+    if (!card && rawNum)
+      card = await apiSearch(`name:${noAp} number:${rawNum}`)
+    if (!card)
+      card = await apiSearch(`name:${noAp}`)
 
     const result = toResult(card)
     _cache.set(key, result)
