@@ -86,24 +86,24 @@ export function useStock(filters = {}) {
         .eq('store_id', STORE_ID)
       q = buildQuery(q)
 
-      // ── Ordenamiento server-side ──────────────────────────────────────────
-      const sortDef = sortCol ? SORT_MAP[sortCol] : null
-      if (sortDef) {
+      // ── Ordenamiento ─────────────────────────────────────────────────────
+      const sortDef       = sortCol ? SORT_MAP[sortCol] : null
+      const isForeignSort = sortDef?.table != null   // columna en tabla cards
+
+      if (sortDef && !isForeignSort) {
+        // Sort server-side sólo para columnas directas de inventory
         const asc = sortDir !== 'desc'
-        if (sortDef.table) {
-          // Columna en tabla relacionada (cards.name, cards.set_name, etc.)
-          q = q.order(sortDef.col, { referencedTable: sortDef.table, ascending: asc, nullsFirst: false })
-        } else {
-          q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
-        }
-        // Siempre añadir id como desempate secundario para paginado estable
+        q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
         q = q.order('id', { ascending: false })
       } else {
-        // Sin sort explícito: más recientes primero
+        // Sin sort explícito o foreign sort → más recientes primero
         q = q.order('id', { ascending: false })
       }
 
-      q = q.range(from, to)
+      // Paginación: para foreign sort traemos TODO y paginamos client-side
+      if (!isForeignSort) {
+        q = q.range(from, to)
+      }
 
       const { data, error } = await q
       if (error) throw error
@@ -140,6 +140,22 @@ export function useStock(filters = {}) {
         r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         r.set_name.toLowerCase().includes(busqueda.toLowerCase())
       )
+
+      // Sort + paginación client-side cuando la columna pertenece a `cards`
+      if (isForeignSort && sortDef) {
+        const asc   = sortDir !== 'desc'
+        const field = sortCol   // 'nombre', 'set_name', 'numero', 'idioma', 'holo'
+        rows.sort((a, b) => {
+          const va = (a[field] ?? '').toString().toLowerCase()
+          const vb = (b[field] ?? '').toString().toLowerCase()
+          if (va < vb) return asc ? -1 :  1
+          if (va > vb) return asc ?  1 : -1
+          return 0
+        })
+        const total = rows.length
+        const sliced = rows.slice(from, from + PAGE_SIZE)
+        return { rows: sliced, total, page, pageSize: PAGE_SIZE }
+      }
 
       return { rows, total: totalCount ?? 0, page, pageSize: PAGE_SIZE }
     },
