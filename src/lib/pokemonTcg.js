@@ -193,6 +193,14 @@ function setFragment(setName) {
 async function apiSearch(q, pageSize = 1) {
   const params = new URLSearchParams({ q, pageSize })
   const res = await fetch(`${BASE}/cards?${params}`)
+  // Rate-limit: esperar y reintentar una vez
+  if (res.status === 429) {
+    await new Promise(r => setTimeout(r, 3000))
+    const res2 = await fetch(`${BASE}/cards?${params}`)
+    if (!res2.ok) return null
+    const json2 = await res2.json()
+    return json2.data?.[0] ?? null
+  }
   if (!res.ok) return null
   const json = await res.json()
   return json.data?.[0] ?? null
@@ -353,12 +361,14 @@ async function _doFetchCardImages(nombre, numero, setName, key) {
       card = await apiSearch(`name:${noAp}`)
 
     const result = toResult(card)
-    _cache.set(key, result)
+    // Solo cacheamos resultados exitosos; null no se cachea para que el retry
+    // pueda volver a intentar (errores de red o rate-limit no se guardan)
+    if (result) _cache.set(key, result)
     return result
 
   } catch (err) {
     console.warn('[pokemonTcg] error buscando', nombre, err?.message)
-    _cache.set(key, null)
+    // No cachear errores de red — el usuario puede reintentar
     return null
   }
 }
