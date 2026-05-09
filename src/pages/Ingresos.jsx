@@ -1,13 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { scannerApi } from '../lib/scanner'
-import { fetchCardImages } from '../lib/pokemonTcg'
+import {
+  fetchCardImages,
+  fetchCardsBySet,
+  fetchCardBySetAndNumber,
+} from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
-import Toast from '../components/ui/Toast'
-import Spinner from '../components/ui/Spinner'
+import Toast      from '../components/ui/Toast'
+import Spinner    from '../components/ui/Spinner'
+import SetSelect  from '../components/ui/SetSelect'
 import ImportarCartasModal from '../components/ingresos/ImportarCartasModal'
 
 const fmtARS = (n) => n != null ? `$${Math.round(n).toLocaleString('es-AR')}` : '—'
@@ -19,7 +24,7 @@ export default function Ingresos() {
   const [showImport, setShowImport] = useState(false)
 
   const [form, setForm] = useState({
-    nombre: '', set: '', numero: '', cantidad: 1,
+    nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
     condicion: 'NM', idioma: 'en', precioVenta: '',
   })
   const [loading,   setLoading]   = useState(false)
@@ -46,10 +51,26 @@ export default function Ingresos() {
     setSugLoading(true)
     sugTimer.current = setTimeout(async () => {
       try {
+        // Si hay set seleccionado, buscar dentro del set por nombre
+        if (form.set_id) {
+          const cards = await fetchCardsBySet(form.set_id, val.trim())
+          const mapped = cards.slice(0, 60).map(c => ({
+            nombre:     c.name,
+            set:        c.set_name,
+            set_id:     c.set_id,
+            numero:     c.card_number,
+            imagen:     c.image_url,
+            precio_usd: c.price_usd,
+            source:     'market',
+          }))
+          setSuggestions(mapped)
+          setShowSug(mapped.length > 0)
+          return
+        }
+
+        // Sin set: búsqueda global (scanner + Supabase)
         const [apiRes, dbRes] = await Promise.allSettled([
-          // 1. Backend scanner (incluye precios de mercado)
           scannerApi.buscar(val, form.idioma),
-          // 2. Cartas ya en stock en Supabase
           supabase.from('cards')
             .select('name, set_name, card_number, image_url, language')
             .ilike('name', `%${val}%`)
@@ -58,27 +79,28 @@ export default function Ingresos() {
 
         const fromApi = apiRes.status === 'fulfilled'
           ? (apiRes.value?.opciones ?? apiRes.value?.results ?? []).map(c => ({
-              nombre:    c.nombre || c.name,
-              set:       c.set || c.set_name,
-              numero:    c.numero || c.number,
-              imagen:    c.imagen || c.image_url,
+              nombre:     c.nombre || c.name,
+              set:        c.set || c.set_name,
+              set_id:     null,
+              numero:     c.numero || c.number,
+              imagen:     c.imagen || c.image_url,
               precio_usd: c.precio_usd || c.price_usd,
-              source:    'market',
+              source:     'market',
             }))
           : []
 
         const fromDb = dbRes.status === 'fulfilled'
           ? (dbRes.value?.data ?? []).map(c => ({
-              nombre:    c.name,
-              set:       c.set_name,
-              numero:    c.card_number,
-              imagen:    c.image_url,
+              nombre:     c.name,
+              set:        c.set_name,
+              set_id:     null,
+              numero:     c.card_number,
+              imagen:     c.image_url,
               precio_usd: null,
-              source:    'stock',
+              source:     'stock',
             }))
           : []
 
-        // Combinar, deduplicar por nombre+set, dar prioridad a market (tiene precio)
         const seen = new Set()
         const merged = [...fromApi, ...fromDb].filter(c => {
           const k = `${c.nombre}|${c.set}|${c.numero}`
@@ -94,29 +116,46 @@ export default function Ingresos() {
     }, 300)
   }
 
+  // ── Focus en nombre con set seleccionado → cargar todas las cartas del set ──
+  const handleNombreFocus = async () => {
+    if (!form.set_id) return
+    if (suggestions.length > 0) { setShowSug(true); return }
+    setSugLoading(true)
+    const cards = await fetchCardsBySet(form.set_id)
+    const mapped = cards.slice(0, 80).map(c => ({
+      nombre:     c.name,
+      set:        c.set_name,
+      set_id:     c.set_id,
+      numero:     c.card_number,
+      imagen:     c.image_url,
+      precio_usd: c.price_usd,
+      source:     'market',
+    }))
+    setSuggestions(mapped)
+    setShowSug(mapped.length > 0)
+    setSugLoading(false)
+  }
+
   // ── Seleccionar sugerencia ─────────────────────────────────────────────
   const selectSuggestion = useCallback((sug) => {
-    // Auto-calcular precio de venta con margen si tenemos precio USD y dólar blue
     let autoPrice = ''
     if (sug.precio_usd && blue) {
       const m = margen ?? 0
       const raw = sug.precio_usd * blue * (1 + m / 100)
-      // Redondear a los 500 ARS más cercanos
       autoPrice = String(Math.round(raw / 500) * 500)
     }
 
     setForm(f => ({
       ...f,
-      nombre:      sug.nombre || '',
-      set:         sug.set    || '',
-      numero:      sug.numero || '',
-      precioVenta: autoPrice  || f.precioVenta,
+      nombre:      sug.nombre  || '',
+      set:         sug.set     || '',
+      set_id:      sug.set_id  ?? f.set_id,  // conservar set_id si ya hay uno
+      numero:      sug.numero  || '',
+      precioVenta: autoPrice   || f.precioVenta,
     }))
     setShowSug(false)
     setSuggestions([])
-    // Guardar preview con lo que ya tenemos
     setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd })
-    // Si no tiene imagen, buscar
     if (!sug.imagen) fetchPreviewImage(sug.nombre, sug.numero, sug.set)
   }, [blue, margen])
 
@@ -131,16 +170,35 @@ export default function Ingresos() {
     setPreviewLoad(false)
   }
 
-  // Cuando el usuario termina de escribir nombre + numero, busca preview
-  const nombreBlurTimer = useRef(null)
+  // Cuando el usuario escribe un número: si hay set → busca la carta exacta;
+  // si no → busca imagen con nombre+número+set
+  const numTimer = useRef(null)
   const handleNumeroChange = (val) => {
     setField('numero', val)
-    clearTimeout(nombreBlurTimer.current)
-    if (form.nombre && val) {
-      nombreBlurTimer.current = setTimeout(() => {
+    clearTimeout(numTimer.current)
+    if (!val.trim()) return
+
+    numTimer.current = setTimeout(async () => {
+      if (form.set_id) {
+        // Buscar carta exacta por set + número
+        setSugLoading(true)
+        const card = await fetchCardBySetAndNumber(form.set_id, val.trim())
+        setSugLoading(false)
+        if (card) {
+          selectSuggestion({
+            nombre:     card.name,
+            set:        card.set_name,
+            set_id:     card.set_id,
+            numero:     card.card_number,
+            imagen:     card.image_url,
+            precio_usd: card.price_usd,
+            source:     'market',
+          })
+        }
+      } else if (form.nombre) {
         fetchPreviewImage(form.nombre, val, form.set)
-      }, 600)
-    }
+      }
+    }, 400)
   }
 
   // ── Cerrar dropdown al hacer click afuera ──────────────────────────────
@@ -245,7 +303,7 @@ export default function Ingresos() {
       }
 
       showToast(`✅ ${cantidad > 1 ? `${cantidad} cartas agregadas` : 'Carta agregada'} al stock`)
-      setForm({ nombre: '', set: '', numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
+      setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
       setPreview(null)
     } catch (err) {
       console.error('Error al guardar carta:', err)
@@ -289,8 +347,8 @@ export default function Ingresos() {
                 <input
                   value={form.nombre}
                   onChange={e => handleNombreChange(e.target.value)}
-                  onFocus={() => suggestions.length > 0 && setShowSug(true)}
-                  placeholder="Ej: Charizard ex"
+                  onFocus={handleNombreFocus}
+                  placeholder={form.set_id ? 'Buscar en el set…' : 'Ej: Charizard ex'}
                   autoComplete="off"
                   className={inputCls}
                 />
@@ -344,13 +402,27 @@ export default function Ingresos() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Set / Edición</label>
-                  <input value={form.set} onChange={e => setField('set', e.target.value)}
-                    placeholder="Ej: Obsidian Flames" className={inputCls} />
+                  <SetSelect
+                    value={form.set}
+                    setId={form.set_id}
+                    onChange={({ set_name, set_id }) => {
+                      setForm(f => ({ ...f, set: set_name, set_id, numero: '', nombre: '' }))
+                      setSuggestions([])
+                      setShowSug(false)
+                      setPreview(null)
+                    }}
+                    className="w-full"
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>Número de carta</label>
-                  <input value={form.numero} onChange={e => handleNumeroChange(e.target.value)}
-                    placeholder="Ej: 125" className={inputCls} />
+                  <input
+                    value={form.numero}
+                    onChange={e => handleNumeroChange(e.target.value)}
+                    placeholder={form.set_id ? '1, TG30…' : 'Ej: 125'}
+                    disabled={!form.set_id && !form.nombre}
+                    className={`${inputCls} disabled:opacity-50`}
+                  />
                 </div>
               </div>
 

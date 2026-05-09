@@ -2,13 +2,13 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase }           from '../../lib/supabase'
 import {
   searchCardsByName,
-  fetchAllSets,
   fetchCardsBySet,
   fetchCardBySetAndNumber,
 } from '../../lib/pokemonTcg'
 import { useDolar }           from '../../hooks/useDolar'
 import { STORE_ID, CONDICIONES, IDIOMAS, FIRST_ED_SETS } from '../../constants'
-import Spinner from '../ui/Spinner'
+import Spinner    from '../ui/Spinner'
+import SetSelect  from '../ui/SetSelect'
 
 /* ─── Formatters ─────────────────────────────────────────────────────────── */
 const fmtARS = (n) =>
@@ -48,137 +48,6 @@ const emptyRow = () => ({
   suggestions:      [],
   searching:        false,
 })
-
-/* ─── SetSelect — selector de set con búsqueda ──────────────────────────── */
-function SetSelect({ value, setId, onChange }) {
-  const [open,    setOpen]    = useState(false)
-  const [query,   setQuery]   = useState('')
-  const [sets,    setSets]    = useState([])
-  const [loading, setLoading] = useState(false)
-  const wrapRef  = useRef(null)
-  const inputRef = useRef(null)
-
-  // Cargar sets al abrir por primera vez
-  const openDropdown = async () => {
-    setOpen(true)
-    setQuery('')
-    if (sets.length === 0) {
-      setLoading(true)
-      const data = await fetchAllSets()
-      setSets(data)
-      setLoading(false)
-    }
-    setTimeout(() => inputRef.current?.focus(), 50)
-  }
-
-  // Cerrar al click fuera
-  useEffect(() => {
-    if (!open) return
-    const handler = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  const filtered = query.trim()
-    ? sets.filter(s =>
-        s.name.toLowerCase().includes(query.toLowerCase()) ||
-        s.series?.toLowerCase().includes(query.toLowerCase()) ||
-        s.year?.includes(query)
-      )
-    : sets
-
-  const handleSelect = (set) => {
-    onChange({ set_name: set.name, set_id: set.id })
-    setOpen(false)
-  }
-
-  const handleClear = (e) => {
-    e.stopPropagation()
-    onChange({ set_name: '', set_id: null })
-  }
-
-  return (
-    <div ref={wrapRef} className="relative flex-1 min-w-[160px]">
-      {/* Trigger */}
-      <button
-        type="button"
-        onClick={openDropdown}
-        className={`w-full flex items-center justify-between gap-1 px-2.5 py-1.5
-                    border rounded-lg text-xs text-left transition
-                    focus:outline-none focus:ring-2 focus:ring-blue-200
-                    ${setId
-                      ? 'border-blue-200 bg-blue-50 text-blue-700'
-                      : 'border-gray-100 bg-gray-50 text-gray-400 hover:bg-white hover:border-gray-200'}`}
-      >
-        <span className="truncate font-medium">
-          {value || 'Elegir set…'}
-        </span>
-        <div className="flex items-center gap-1 shrink-0">
-          {setId && (
-            <span
-              onClick={handleClear}
-              className="text-blue-400 hover:text-red-400 transition text-[10px] leading-none cursor-pointer"
-              title="Quitar set"
-            >✕</span>
-          )}
-          <span className="text-gray-400 text-[10px]">▾</span>
-        </div>
-      </button>
-
-      {/* Dropdown */}
-      {open && (
-        <div className="absolute top-full left-0 z-[80] mt-1 w-72 bg-white border
-                        border-gray-200 rounded-xl shadow-xl overflow-hidden"
-        >
-          {/* Search input */}
-          <div className="p-2 border-b border-gray-100">
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Buscar set o serie…"
-              className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg
-                         focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
-          </div>
-
-          {/* List */}
-          <div className="overflow-y-auto max-h-60">
-            {loading && (
-              <div className="flex justify-center py-6">
-                <div className="w-5 h-5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
-              </div>
-            )}
-            {!loading && filtered.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-4">Sin resultados</p>
-            )}
-            {!loading && filtered.map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => handleSelect(s)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs
-                            hover:bg-blue-50 transition
-                            ${s.id === setId ? 'bg-blue-50' : ''}`}
-              >
-                {s.symbol
-                  ? <img src={s.symbol} alt="" className="w-5 h-5 object-contain shrink-0" />
-                  : <span className="w-5 h-5 shrink-0 text-gray-300 flex items-center justify-center">🃏</span>
-                }
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium text-gray-800 block truncate">{s.name}</span>
-                  <span className="text-gray-400 text-[10px]">{s.series} · {s.year} · {s.total} cartas</span>
-                </div>
-                {s.id === setId && <span className="text-blue-500 text-[10px] shrink-0">✓</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 /* ─── Debounce ────────────────────────────────────────────────────────────── */
 function useDebounce(fn, delay) {
@@ -714,6 +583,8 @@ function CardRow({ row, isLast, blue, onChange, onSearch, onSelect, onRemove }) 
             value={row.set_name}
             setId={row.set_id}
             onChange={patch => onChange(patch)}
+            className="flex-1 min-w-[160px]"
+            size="sm"
           />
         </div>
 
