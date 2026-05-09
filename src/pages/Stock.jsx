@@ -54,7 +54,7 @@ const COLS = [
 export default function Stock() {
   const queryClient = useQueryClient()
 
-  const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0 })
+  const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0, sortCol: null, sortDir: 'asc' })
   const [modalCard,   setModalCard]   = useState(null)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -62,8 +62,6 @@ export default function Stock() {
   const [confirmSell, setConfirmSell] = useState(false)
   const [bulkChannel, setBulkChannel] = useState('fuera_de_evento')
   const [bulkBuyer,   setBulkBuyer]   = useState('')
-  const [sortCol,     setSortCol]     = useState(null)
-  const [sortDir,     setSortDir]     = useState('asc')
   const [toast,       setToast]       = useState({ visible: false, mensaje: '', tipo: 'success' })
   const [claimCards,   setClaimCards]   = useState(null)    // array para modal de generación
   const [showCartModal, setShowCartModal] = useState(false) // carrito review modal
@@ -96,32 +94,24 @@ export default function Stock() {
 
   const imageMap = usePrefetchPageImages(rows)
 
-  // ── Función para cambiar columna de sort ────────────────────────────────
+  const { sortCol, sortDir = 'asc' } = filters
+
+  // ── Sort server-side: cambiar columna vuelve a página 0 ─────────────────
   const handleSort = (key) => {
     if (!key) return
-    if (sortCol === key) {
-      sortDir === 'asc' ? setSortDir('desc') : (setSortCol(null), setSortDir('asc'))
-    } else {
-      setSortCol(key)
-      setSortDir('asc')
-    }
+    setSelectedIds(new Set())
+    setFilters(f => {
+      if (f.sortCol === key) {
+        if (f.sortDir === 'asc') return { ...f, sortDir: 'desc', page: 0 }
+        // tercer click: quitar sort
+        return { ...f, sortCol: null, sortDir: 'asc', page: 0 }
+      }
+      return { ...f, sortCol: key, sortDir: 'asc', page: 0 }
+    })
   }
 
-  // ── Rows ordenadas ───────────────────────────────────────────────────────
-  const sortedRows = useMemo(() => {
-    if (!sortCol) return rows
-    const col = COLS.find(c => c.key === sortCol)
-    return [...rows].sort((a, b) => {
-      let va = a[sortCol], vb = b[sortCol]
-      if (col?.type === 'num')  { va = Number(va ?? -Infinity); vb = Number(vb ?? -Infinity) }
-      if (col?.type === 'date') { va = va ? new Date(va).getTime() : 0; vb = vb ? new Date(vb).getTime() : 0 }
-      if (col?.type === 'bool') { va = va ? 1 : 0; vb = vb ? 1 : 0 }
-      if (col?.type === 'str')  { va = (va ?? '').toLowerCase(); vb = (vb ?? '').toLowerCase() }
-      if (va < vb) return sortDir === 'asc' ? -1 : 1
-      if (va > vb) return sortDir === 'asc' ?  1 : -1
-      return 0
-    })
-  }, [rows, sortCol, sortDir])
+  // Sin sort client-side: el servidor ya trae las filas en el orden correcto
+  const sortedRows = rows
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
 

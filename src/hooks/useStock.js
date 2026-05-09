@@ -4,8 +4,25 @@ import { STORE_ID } from '../constants'
 
 const PAGE_SIZE = 100
 
+// Mapeo de key de columna UI → columna real en Supabase (y tabla si es foreign)
+const SORT_MAP = {
+  nombre:       { col: 'name',              table: 'cards'     },
+  set_name:     { col: 'set_name',          table: 'cards'     },
+  numero:       { col: 'card_number',       table: 'cards'     },
+  idioma:       { col: 'language',          table: 'cards'     },
+  holo:         { col: 'is_holo',           table: 'cards'     },
+  condicion:    { col: 'condition',         table: null        },
+  stock:        { col: 'quantity',          table: null        },
+  price_usd:    { col: 'price_usd',         table: null        },
+  _ars_ofic:    { col: 'price_ars_oficial', table: null        },
+  _ars_blue:    { col: 'price_ars_blue',    table: null        },
+  precio_venta: { col: 'price_ars_blue',    table: null        },
+  status:       { col: 'status',            table: null        },
+  buyer_name:   { col: 'buyer_name',        table: null        },
+}
+
 export function useStock(filters = {}) {
-  const { estado, busqueda, idioma, condicion, page = 0 } = filters
+  const { estado, busqueda, idioma, condicion, page = 0, sortCol, sortDir = 'asc' } = filters
 
   return useQuery({
     queryKey: ['stock', filters],
@@ -68,7 +85,25 @@ export function useStock(filters = {}) {
         .select(selectFields)
         .eq('store_id', STORE_ID)
       q = buildQuery(q)
-      q = q.order('id', { ascending: false }).range(from, to)
+
+      // ── Ordenamiento server-side ──────────────────────────────────────────
+      const sortDef = sortCol ? SORT_MAP[sortCol] : null
+      if (sortDef) {
+        const asc = sortDir !== 'desc'
+        if (sortDef.table) {
+          // Columna en tabla relacionada (cards.name, cards.set_name, etc.)
+          q = q.order(sortDef.col, { referencedTable: sortDef.table, ascending: asc, nullsFirst: false })
+        } else {
+          q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
+        }
+        // Siempre añadir id como desempate secundario para paginado estable
+        q = q.order('id', { ascending: false })
+      } else {
+        // Sin sort explícito: más recientes primero
+        q = q.order('id', { ascending: false })
+      }
+
+      q = q.range(from, to)
 
       const { data, error } = await q
       if (error) throw error
