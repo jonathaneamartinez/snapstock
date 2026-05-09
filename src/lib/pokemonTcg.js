@@ -202,7 +202,13 @@ async function apiSearch(q, pageSize = 1) {
 function extractPrice(card) {
   const p = card.tcgplayer?.prices
   if (!p) return null
-  const grades = ['holofoil', 'normal', 'reverseHolofoil', '1stEditionHolofoil', 'unlimitedHolofoil']
+  // Orden de prioridad: cartas modernas primero, luego WotC (1stEdition/unlimited)
+  const grades = [
+    'holofoil', 'normal', 'reverseHolofoil',
+    '1stEditionHolofoil', 'unlimitedHolofoil',
+    'unlimited', '1stEdition',          // cartas WotC (Base, Jungle, Gym…)
+    '1stEditionNormal',
+  ]
   for (const g of grades) {
     const v = p[g]?.market ?? p[g]?.mid ?? p[g]?.low
     if (v != null && v > 0) return Number(v.toFixed(2))
