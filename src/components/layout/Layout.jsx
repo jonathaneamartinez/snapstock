@@ -2,9 +2,13 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import { usePriceAutoUpdate } from '../../hooks/usePriceAutoUpdate'
 
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Revalidación silenciosa de precios 1 vez al día
+  usePriceAutoUpdate()
 
   return (
     <div className="min-h-screen bg-[#F7F8FC] font-['DM_Sans',sans-serif]">
