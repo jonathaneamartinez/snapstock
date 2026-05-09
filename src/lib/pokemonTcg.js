@@ -248,7 +248,11 @@ export async function searchCardsByName(nombre, limit = 20) {
 
 function toResult(card) {
   if (!card) return null
-  return { small: card.images?.small ?? null, large: card.images?.large ?? null }
+  return {
+    small:     card.images?.small ?? null,
+    large:     card.images?.large ?? null,
+    price_usd: extractPrice(card),
+  }
 }
 
 /**
@@ -351,4 +355,18 @@ async function _doFetchCardImages(nombre, numero, setName, key) {
     _cache.set(key, null)
     return null
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   fetchCardMarketData — igual que fetchCardImages pero incluye precio.
+   Reutiliza el mismo caché (_cache) ya que toResult ahora incluye price_usd.
+   Uso principal: revalidación masiva de precios.
+═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Devuelve { small, large, price_usd } para una carta.
+ * Comparte caché con fetchCardImages (misma key nombre|numero).
+ */
+export function fetchCardMarketData(nombre, numero, setName) {
+  return fetchCardImages(nombre, numero, setName) // toResult ya incluye price_usd
 }
