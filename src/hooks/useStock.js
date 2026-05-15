@@ -29,7 +29,8 @@ export function useStock(filters = {}) {
     queryFn: async () => {
       // ── Construcción base del query ──────────────────────────────────────
       const buildQuery = (q) => {
-        if (estado)    q = q.or(`status.eq.${estado},estado.eq.${estado}`)
+        // Prioriza `status`; si está vacío usa `estado` como fallback (legacy)
+        if (estado)    q = q.or(`status.eq.${estado},and(status.is.null,estado.eq.${estado})`)
         if (condicion) q = q.or(`condition.eq.${condicion},condicion.eq.${condicion}`)
         return q
       }
@@ -44,6 +45,8 @@ export function useStock(filters = {}) {
         price_usd,
         price_ars_blue,
         price_ars_oficial,
+        precios_fuentes,
+        precio_fuente_override,
         buyer_name,
         buyer_contact,
         comprador,
@@ -119,13 +122,15 @@ export function useStock(filters = {}) {
         holo:              r.cards?.is_holo || false,
         image_url:         r.cards?.image_url || '',
         // Inventario
-        condicion:         r.condition || r.condicion || '',
-        stock:             r.quantity ?? 1,
-        price_usd:         r.price_usd,
-        price_ars_blue:    r.price_ars_blue,
-        price_ars_oficial: r.price_ars_oficial,
-        precio_venta:      r.price_ars_blue,
-        status:            r.status || r.estado || '',
+        condicion:          r.condition || r.condicion || '',
+        stock:              r.quantity ?? 1,
+        price_usd:          r.price_usd,
+        price_ars_blue:     r.price_ars_blue,
+        price_ars_oficial:  r.price_ars_oficial,
+        precio_venta:       r.price_ars_blue,
+        precios_fuentes:    r.precios_fuentes || {},
+        precio_fuente_override: r.precio_fuente_override || null,
+        status:             r.status || r.estado || '',
         // Reserva / comprador
         buyer_name:        r.buyer_name || r.comprador || '',
         buyer_contact:     r.buyer_contact || r.contacto || '',

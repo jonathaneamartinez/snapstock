@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient }   from '@tanstack/react-query'
 import { useDolar }         from '../hooks/useDolar'
-import { useSettings }      from '../hooks/useSettings'
+import { useSettings, PRICE_SOURCES } from '../hooks/useSettings'
 import { revalidarPrecios } from '../lib/revalidarPrecios'
 import Toast  from '../components/ui/Toast'
 import Spinner from '../components/ui/Spinner'
@@ -10,6 +10,7 @@ const USUARIOS = [
   { nombre: 'Kardia',  tel: '5491122541350' },
   { nombre: 'Sebas',   tel: '5491125284...' },
   { nombre: 'Melody',  tel: '5491159730...' },
+  { nombre: 'Mayra',   tel: '5491132583386' },
 ]
 
 const LS_KEY = 'ss_last_price_update'
@@ -17,7 +18,7 @@ const LS_KEY = 'ss_last_price_update'
 export default function Settings() {
   const queryClient = useQueryClient()
   const { blue, oficial, isLoading } = useDolar()
-  const { margen, saveMargen, savingMargen } = useSettings()
+  const { margen, saveMargen, savingMargen, precioFuente, savePrecioFuente, savingFuente } = useSettings()
   const [margenDraft, setMargenDraft] = useState(null)
   const [toast, setToast] = useState({ visible: false, mensaje: '' })
 
@@ -99,16 +100,13 @@ export default function Settings() {
             <div key={r.label}>
               <label className="text-xs text-gray-400 font-medium">{r.label}</label>
               <input
-                defaultValue={r.value}
-                className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
-                           focus:outline-none focus:ring-2 focus:ring-blue-200"
+                readOnly
+                value={r.value}
+                className="mt-1 w-full border border-gray-100 rounded-xl px-3 py-2 text-sm
+                           bg-gray-50 text-gray-600 cursor-default select-none outline-none"
               />
             </div>
           ))}
-          <button className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm
-                             font-semibold rounded-xl transition mt-2">
-            Guardar cambios
-          </button>
         </div>
       </div>
 
@@ -116,10 +114,6 @@ export default function Settings() {
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-800">Usuarios autorizados</h3>
-          <button className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold
-                             rounded-xl hover:bg-blue-500 transition">
-            + Agregar
-          </button>
         </div>
         <div className="space-y-2">
           {USUARIOS.map(u => (
@@ -197,6 +191,36 @@ export default function Settings() {
         <p className="text-xs text-gray-400 mt-3">
           Ejemplo con margen {margenDraft ?? margen}%:&nbsp;
           USD $45 × ${blue ? Math.round(blue) : '?'} blue = ${blue ? Math.round(45 * blue * (1 + (parseInt(margenDraft ?? margen) || 0) / 100) / 500) * 500 : '?'} ARS
+        </p>
+      </div>
+
+      {/* Proveedor de precio base */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-800 mb-1">Proveedor de precio base</h3>
+        <p className="text-xs text-gray-400 mb-4">
+          Se usa en el dashboard y en el agente de WhatsApp para mostrar el precio de mercado.
+          Podés overridear carta por carta desde el stock.
+        </p>
+        <div className="flex gap-3 flex-wrap">
+          {PRICE_SOURCES.map(src => (
+            <button
+              key={src.id}
+              onClick={() => savePrecioFuente(src.id)}
+              disabled={savingFuente}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition
+                ${precioFuente === src.id
+                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'}`}
+            >
+              <span className="text-base">{src.flag}</span>
+              <span>{src.label}</span>
+              <span className="text-xs font-normal text-gray-400">{src.currency}</span>
+              {precioFuente === src.id && <span className="text-blue-500 text-xs">✓ activo</span>}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          TCGPlayer = mercado USA · CardMarket = mercado europeo (EUR → USD estimado)
         </p>
       </div>
 

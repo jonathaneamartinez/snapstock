@@ -6,6 +6,37 @@ import { setCardImage, loadBlobUrl } from '../../lib/imageCache'
 // Dorso genérico de carta Pokémon (sin dependencia de CDN externo)
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 
+const SCANNER_URL = import.meta.env.VITE_SCANNER_URL
+
+/**
+ * Busca la URL de imagen en nuestro R2 vía el scanner de Railway.
+ * Más rápido y sin rate-limit que pokemontcg.io.
+ * Devuelve null si no encuentra o si el scanner no está disponible.
+ */
+async function fetchR2ImageUrl(nombre, numero, idioma, setName) {
+  if (!SCANNER_URL || !nombre) return null
+  try {
+    const lang = (idioma === 'ja' || idioma === 'jp') ? 'jp'
+               : (idioma === 'zh' || idioma === 'cn') ? 'cn'
+               : 'en'
+    const params = new URLSearchParams({
+      name:   nombre.toLowerCase(),
+      number: String(numero ?? ''),
+      lang,
+      ...(setName ? { set_id: setName.toLowerCase().replace(/\s+/g, '-') } : {}),
+    })
+    const res = await fetch(
+      `${SCANNER_URL}/card-image-url?${params}`,
+      { signal: AbortSignal.timeout(3000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.url || null
+  } catch {
+    return null
+  }
+}
+
 export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, setName, onOpen }) {
   const ref                     = useRef(null)
   const [src,      setSrc]      = useState(imageUrl || null)
@@ -22,6 +53,23 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     fetchCount.current++
     setFetching(true)
     setFailed(false)
+
+    // ── 1. Intentar imagen propia desde R2 (más rápido, sin rate-limit) ──
+    const r2Url = await fetchR2ImageUrl(nombre, numero, idioma, setName)
+    if (r2Url) {
+      setSrc(r2Url)
+      setLarge(r2Url)
+      setLoaded(true)
+      setFetching(false)
+      setFailed(false)
+      if (cardId) {
+        setCardImage(cardId, r2Url)
+        loadBlobUrl(r2Url)
+      }
+      return
+    }
+
+    // ── 2. Fallback a pokemontcg.io ───────────────────────────────────────
     const imgs = await fetchCardImages(nombre, numero, setName)
 
     if (!imgs?.small) {
@@ -60,7 +108,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
           if (error) console.warn('[CardImage] Supabase update error:', error.message)
         })
     }
-  }, [nombre, numero, idioma, cardId, fetching])
+  }, [nombre, numero, idioma, cardId, fetching, setName])
 
   useEffect(() => {
     if (imageUrl) {

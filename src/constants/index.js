@@ -1,5 +1,18 @@
-export const STORE_ID  = import.meta.env.VITE_STORE_ID
-export const TENANT_ID = import.meta.env.VITE_TENANT_ID
+export const STORE_ID   = import.meta.env.VITE_STORE_ID
+export const TENANT_ID  = import.meta.env.VITE_TENANT_ID
+
+// Identificador de cliente — usado para cargar componentes/config específicos
+// Valores: 'singles-ut' | 'jonat' | 'ayrton'
+// Cada proyecto Vercel tiene su propio VITE_CLIENT_ID en las env vars
+export const CLIENT_ID  = import.meta.env.VITE_CLIENT_ID ?? 'default'
+
+// Feature flags por plan
+// VITE_PLAN=pro  → habilita Market Intel (historial de precios, trending, EV)
+// VITE_PLAN=basic (o sin definir) → solo features base
+const PLAN = import.meta.env.VITE_PLAN ?? 'basic'
+export const FEATURES = {
+  marketIntel: PLAN === 'pro',
+}
 
 export const CONDICIONES = ['NM', 'LP', 'MP', 'HP', 'DMG']
 export const CONDICION_LABELS = {

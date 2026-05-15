@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useStock }    from '../hooks/useStock'
 import { useMetricas } from '../hooks/useMetricas'
 import { useDolar }    from '../hooks/useDolar'
+import { useSettings, PRICE_SOURCES } from '../hooks/useSettings'
+import { getPrecioEfectivo, usdToArs, FUENTE_LABELS } from '../lib/precioUtils'
 import { supabase }    from '../lib/supabase'
 import Badge           from '../components/ui/Badge'
 import Spinner         from '../components/ui/Spinner'
@@ -12,12 +14,13 @@ import CardModal       from '../components/ui/CardModal'
 import InlineEdit      from '../components/ui/InlineEdit'
 import Toast           from '../components/ui/Toast'
 import { AnimatePresence, motion } from 'framer-motion'
-import { IDIOMAS, CONDICIONES, STORE_ID, CANALES_VENTA } from '../constants'
+import { IDIOMAS, CONDICIONES, STORE_ID, CANALES_VENTA, FEATURES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 import ClaimCartModal    from '../components/stock/ClaimCartModal'
 import { getCardImageUrl, warmBlobUrls } from '../lib/imageCache'
+import CardPriceModal   from '../components/market/CardPriceModal'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -65,12 +68,14 @@ export default function Stock() {
   const [toast,       setToast]       = useState({ visible: false, mensaje: '', tipo: 'success' })
   const [claimCards,   setClaimCards]   = useState(null)    // array para modal de generación
   const [showCartModal, setShowCartModal] = useState(false) // carrito review modal
+  const [priceCard,    setPriceCard]    = useState(null)   // carta para modal de historial de precio
   // ── Carrito de claim persistente (sobrevive cambios de página) ──────────
   const [claimCart,   setClaimCart]   = useState(new Map()) // inventory_id → row data
 
   const { data, isLoading, error } = useStock(filters)
   const { data: m } = useMetricas()
   const { blue, oficial } = useDolar()
+  const { precioFuente, savePrecioFuente } = useSettings()
 
   const set = (k, v) => {
     setSelectedIds(new Set())
@@ -85,12 +90,19 @@ export default function Stock() {
   const rawRows     = data?.rows  ?? []
   const total       = data?.total ?? 0
 
-  // ── Enriquecer filas con ARS calculado cuando Supabase no lo tiene ──────
-  const rows = useMemo(() => rawRows.map(r => ({
-    ...r,
-    _ars_ofic: r.price_ars_oficial ?? (r.price_usd != null && oficial ? Math.round(r.price_usd * oficial) : null),
-    _ars_blue: r.price_ars_blue    ?? (r.price_usd != null && blue    ? Math.round(r.price_usd * blue)    : null),
-  })), [rawRows, blue, oficial])
+  // ── Enriquecer filas con ARS calculado y precio efectivo según proveedor ──
+  const rows = useMemo(() => rawRows.map(r => {
+    const efectivo = getPrecioEfectivo(r, precioFuente)
+    const usdEfectivo = efectivo.usd ?? r.price_usd
+    return {
+      ...r,
+      price_usd_efectivo:  usdEfectivo,
+      precio_fuente_label: efectivo.label,
+      precio_fuente_flag:  (FUENTE_LABELS[efectivo.fuente] ?? {}).flag ?? '💲',
+      _ars_ofic: r.price_ars_oficial ?? (usdEfectivo != null && oficial ? Math.round(usdEfectivo * oficial) : null),
+      _ars_blue: r.price_ars_blue    ?? (usdEfectivo != null && blue    ? Math.round(usdEfectivo * blue)    : null),
+    }
+  }), [rawRows, blue, oficial, precioFuente])
 
   const imageMap = usePrefetchPageImages(rows)
 
@@ -475,7 +487,41 @@ export default function Stock() {
                       <td className="px-3 py-2 text-center">{r.holo ? '✨' : '—'}</td>
                       <td className="px-3 py-2"><Badge label={r.condicion} /></td>
                       <td className="px-3 py-2 font-semibold text-gray-700 text-center">{r.stock}</td>
-                      <td className="px-3 py-2 text-emerald-600 font-semibold whitespace-nowrap">{fmtUSD(r.price_usd)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          {FEATURES.marketIntel ? (
+                            <button
+                              onClick={() => setPriceCard(r)}
+                              title="Ver historial de precio"
+                              className="text-emerald-600 font-semibold hover:underline hover:text-emerald-700 transition cursor-pointer"
+                            >
+                              {fmtUSD(r.price_usd_efectivo ?? r.price_usd)}
+                            </button>
+                          ) : (
+                            <span className="text-emerald-600 font-semibold">
+                              {fmtUSD(r.price_usd_efectivo ?? r.price_usd)}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-400 leading-none">{r.precio_fuente_flag}</span>
+                        </div>
+                        {/* Mini selector de proveedor por carta */}
+                        {r.precios_fuentes && Object.keys(r.precios_fuentes).length > 1 && (
+                          <select
+                            value={r.precio_fuente_override ?? precioFuente}
+                            onChange={async (e) => {
+                              await supabase.from('inventory')
+                                .update({ precio_fuente_override: e.target.value })
+                                .eq('id', r.inventory_id)
+                              queryClient.invalidateQueries({ queryKey: ['stock'] })
+                            }}
+                            className="text-[10px] text-gray-400 bg-transparent border-none outline-none cursor-pointer"
+                          >
+                            {Object.entries(r.precios_fuentes).map(([k, v]) => (
+                              <option key={k} value={k}>{v.label} ${v.usd?.toFixed(2)}</option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className={r.price_ars_oficial != null ? 'text-gray-600' : 'text-gray-400'}>
                           {fmtARS(r._ars_ofic)}
@@ -526,6 +572,11 @@ export default function Stock() {
 
       {/* Modal carta */}
       <CardModal card={modalCard} onClose={() => setModalCard(null)} />
+
+      {/* Modal historial de precio (solo plan pro) */}
+      {FEATURES.marketIntel && (
+        <CardPriceModal card={priceCard} onClose={() => setPriceCard(null)} />
+      )}
 
       {/* Carrito review modal */}
       {showCartModal && (

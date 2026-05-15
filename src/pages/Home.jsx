@@ -7,6 +7,8 @@ import { useDeudas }         from '../hooks/useDeudas'
 import { useLastClaim }      from '../hooks/useLastClaim'
 import { useTop5Cards }      from '../hooks/useTop5Cards'
 import { usePurchasesMonth } from '../hooks/usePurchasesMonth'
+import { FEATURES }          from '../constants'
+import TrendingCards         from '../components/market/TrendingCards'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -635,6 +637,9 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* ── Tendencias del stock (solo plan Pro — Ayrton) ────────────────────── */}
+      {FEATURES.marketIntel && <TrendingCards />}
 
       {/* ── Ingresos y Egresos ────────────────────────────────────────────────── */}
       <div style={{
