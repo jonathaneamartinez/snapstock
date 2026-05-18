@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -211,6 +211,45 @@ function CardTable({ cards, claimId }) {
   const [selected,    setSelected]    = useState(new Set())
   const [sellError,   setSellError]   = useState(null)
 
+  /* ── Tags por carta ("Para") ───────────────────────────────────────── */
+  const [tags,      setTags]      = useState({})   // { [inv_id]: string }
+  const [savingTag, setSavingTag] = useState({})   // { [inv_id]: bool }
+  const [savedTag,  setSavedTag]  = useState({})   // { [inv_id]: bool }
+
+  // Pre-cargar buyer_name actuales desde inventory al montar
+  useEffect(() => {
+    const ids = cards.filter(c => c.inventory_id).map(c => c.inventory_id)
+    if (!ids.length) return
+    supabase.from('inventory')
+      .select('id, buyer_name')
+      .in('id', ids)
+      .then(({ data }) => {
+        if (!data) return
+        const initial = {}
+        data.forEach(row => { if (row.buyer_name) initial[row.id] = row.buyer_name })
+        setTags(initial)
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTagSave = async (inventoryId, tag) => {
+    const trimmed = tag.trim()
+    setSavingTag(p => ({ ...p, [inventoryId]: true }))
+    try {
+      await supabase.from('inventory').update({
+        buyer_name:    trimmed || null,
+        status:        trimmed ? 'reservada'  : 'disponible',
+        estado:        trimmed ? 'reservada'  : 'disponible',
+        canal_reserva: trimmed ? 'claims'     : null,
+        reserved_at:   trimmed ? new Date().toISOString() : null,
+      }).eq('id', inventoryId)
+      setSavedTag(p => ({ ...p, [inventoryId]: true }))
+      setTimeout(() => setSavedTag(p => ({ ...p, [inventoryId]: false })), 2000)
+      refreshAll()
+    } finally {
+      setSavingTag(p => ({ ...p, [inventoryId]: false }))
+    }
+  }
+
   const hasInventoryIds = cards.some(c => c.inventory_id)
 
   const allActionable = cards.filter(c => c.inventory_id)
@@ -332,6 +371,9 @@ function CardTable({ cards, claimId }) {
               <th className="px-3 py-2 text-left font-semibold">Carta</th>
               <th className="px-3 py-2 text-left font-semibold">Set</th>
               <th className="px-3 py-2 text-left font-semibold">Cond.</th>
+              {hasInventoryIds && (
+                <th className="px-3 py-2 text-left font-semibold">Para</th>
+              )}
               <th className="px-3 py-2 text-right font-semibold">USD</th>
               <th className="px-3 py-2 text-right font-semibold">ARS Blue</th>
               <th className="px-3 py-2 text-right font-semibold">P.Venta</th>
@@ -375,6 +417,45 @@ function CardTable({ cards, claimId }) {
                     <span className="truncate block">{c.set || '—'}</span>
                   </td>
                   <td className="px-3 py-1.5 text-gray-500">{c.cond || '—'}</td>
+                  {hasInventoryIds && (
+                    <td
+                      className="px-2 py-1"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {c.inventory_id ? (
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            placeholder="nombre…"
+                            value={tags[c.inventory_id] ?? ''}
+                            onChange={e => setTags(p => ({ ...p, [c.inventory_id]: e.target.value }))}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.target.blur()
+                                handleTagSave(c.inventory_id, e.target.value)
+                              }
+                            }}
+                            onBlur={e => handleTagSave(c.inventory_id, e.target.value)}
+                            disabled={savingTag[c.inventory_id]}
+                            className={`w-[90px] border rounded-lg px-2 py-1 text-xs
+                              focus:outline-none focus:ring-2 transition
+                              ${savedTag[c.inventory_id]
+                                ? 'border-emerald-400 bg-emerald-50 focus:ring-emerald-300'
+                                : 'border-gray-200 bg-white focus:ring-amber-300 focus:border-amber-400'}
+                              disabled:opacity-50`}
+                          />
+                          {savingTag[c.inventory_id] && (
+                            <span className="absolute right-2 text-[10px] text-gray-400 animate-pulse">…</span>
+                          )}
+                          {savedTag[c.inventory_id] && (
+                            <span className="absolute right-1.5 text-[10px] text-emerald-500 font-bold">✓</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="block w-[90px]" />
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-1.5 text-right text-emerald-600 font-medium whitespace-nowrap">
                     {fmtUSD(c.usd) ?? '—'}
                   </td>
@@ -391,7 +472,7 @@ function CardTable({ cards, claimId }) {
           <tfoot className="bg-gray-50 border-t-2 border-gray-200">
             <tr>
               <td
-                colSpan={hasInventoryIds ? 4 : 3}
+                colSpan={hasInventoryIds ? 5 : 3}
                 className="px-3 py-2 text-xs font-bold text-gray-600"
               >
                 Total ({cards.length} cartas)
