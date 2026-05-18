@@ -3,8 +3,9 @@ import { supabase } from '../lib/supabase'
 import { STORE_ID } from '../constants'
 
 export const PRICE_SOURCES = [
-  { id: 'tcgplayer',  label: 'TCGPlayer',  currency: 'USD', flag: '🇺🇸' },
-  { id: 'cardmarket', label: 'CardMarket', currency: 'EUR', flag: '🇪🇺' },
+  { id: 'tcgplayer',     label: 'TCGPlayer',     currency: 'USD', flag: '🇺🇸' },
+  { id: 'cardmarket',    label: 'CardMarket',    currency: 'EUR', flag: '🇪🇺' },
+  { id: 'pricecharting', label: 'PriceCharting', currency: 'USD', flag: '🏷️' },
 ]
 
 export function useSettings() {
