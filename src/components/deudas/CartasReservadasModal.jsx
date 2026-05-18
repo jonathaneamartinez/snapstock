@@ -20,6 +20,10 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
   // Generador de texto
   const [showTexto,   setShowTexto]   = useState(false)
   const [claimNombre, setClaimNombre] = useState('')
+  const [retiro1,     setRetiro1]     = useState('')
+  const [retiro2,     setRetiro2]     = useState('')
+  const [alias,       setAlias]       = useState('')
+  const [titular,     setTitular]     = useState('')
   const [copied,      setCopied]      = useState(false)
 
   useEffect(() => {
@@ -69,6 +73,11 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
       return `• ${nombre} - ${precio}`
     }).join('\n')
 
+    const r1  = retiro1.trim()  || '[lugar retiro 1]'
+    const r2  = retiro2.trim()  || '[lugar retiro 2]'
+    const ali = alias.trim()    || '[alias]'
+    const tit = titular.trim()  || '[titular]'
+
     return `Hola:) te comparto el resumen del CLAIM del dia ${fecha} del grupo ${grupo}.
 
 ${lineasCartas}
@@ -77,10 +86,10 @@ Total: ${fmtARS(totalARS)}
 Fecha de pago
 • Envio: a cargo del comprador
 • Retiros:
-• Sábados en Charly (Caballito) mesa 11
-• Durante la semana en Microcentro
-• Alias: ut.tcg
-• TItular: Melody Castillo
+• ${r1}
+• ${r2}
+• Alias: ${ali}
+• Titular: ${tit}
 Por favor, enviar comprobante una vez realizado el pago.
 
 Cualquier duda, no dudes en consultarme. Muchas gracias`
@@ -185,6 +194,62 @@ Cualquier duda, no dudes en consultarme. Muchas gracias`
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
                              focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
                 />
+              </div>
+
+              {/* Campos de retiro / pago */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                    Retiro 1
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Sábados en Charly, mesa 11"
+                    value={retiro1}
+                    onChange={e => setRetiro1(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                               focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                    Retiro 2
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Lunes en Microcentro"
+                    value={retiro2}
+                    onChange={e => setRetiro2(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                               focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                    Alias
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: ut.tcg"
+                    value={alias}
+                    onChange={e => setAlias(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                               focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                    Titular
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Melody Castillo"
+                    value={titular}
+                    onChange={e => setTitular(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                               focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+                  />
+                </div>
               </div>
 
               {/* Preview del texto */}
