@@ -16,7 +16,7 @@ export function useSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('stores')
-        .select('margen_ganancia, precio_fuente')
+        .select('margen_ganancia, precio_fuente, name, owner_name, whatsapp_number')
         .eq('id', STORE_ID)
         .single()
       if (error) console.warn('[useSettings]', error.message)
@@ -47,8 +47,11 @@ export function useSettings() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   })
 
-  const margen      = data?.margen_ganancia ?? 20
-  const precioFuente = data?.precio_fuente ?? 'tcgplayer'
+  const margen        = data?.margen_ganancia ?? 20
+  const precioFuente  = data?.precio_fuente   ?? 'tcgplayer'
+  const storeName     = data?.name            ?? '—'
+  const ownerName     = data?.owner_name      ?? '—'
+  const whatsappNumber = data?.whatsapp_number ?? '—'
 
-  return { margen, isLoading, saveMargen, savingMargen, precioFuente, savePrecioFuente, savingFuente }
+  return { margen, isLoading, saveMargen, savingMargen, precioFuente, savePrecioFuente, savingFuente, storeName, ownerName, whatsappNumber }
 }
