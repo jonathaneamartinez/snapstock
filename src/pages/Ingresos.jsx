@@ -42,6 +42,41 @@ export default function Ingresos() {
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // ── Normaliza "078/217" → "78", "TG30" → "TG30" ──────────────────────
+  const normalizeNum = (raw) => {
+    const s = String(raw).trim()
+    const left = s.includes('/') ? s.split('/')[0] : s
+    if (/^\d+$/.test(left)) return String(parseInt(left, 10))
+    return left
+  }
+
+  // ── Busca en Supabase cards por nombre + idioma ───────────────────────
+  const searchSupabaseCard = async (nombre, numero, idioma) => {
+    const isJP = ['ja', 'jp'].includes(idioma)
+    let q = supabase.from('cards')
+      .select('name, set_name, card_number, image_url, language')
+      .ilike('name', `%${nombre.trim()}%`)
+    if (isJP) q = q.eq('language', 'ja')
+    if (numero) {
+      const numNorm = normalizeNum(numero)
+      q = q.or(`card_number.eq.${numero},card_number.eq.${numNorm}`)
+    }
+    const { data } = await q.limit(3)
+    return data?.[0] ?? null
+  }
+
+  // ── Busca en Supabase solo por número (sin nombre) ────────────────────
+  const searchSupabaseByNumber = async (numero, idioma) => {
+    const numNorm = normalizeNum(numero)
+    const isJP   = ['ja', 'jp'].includes(idioma)
+    let q = supabase.from('cards')
+      .select('name, set_name, card_number, image_url, language')
+      .or(`card_number.eq.${numero},card_number.eq.${numNorm}`)
+    if (isJP) q = q.eq('language', 'ja')
+    const { data } = await q.limit(1)
+    return data?.[0] ?? null
+  }
+
   // ── Autocomplete: busca mientras escribe ───────────────────────────────
   const handleNombreChange = (val) => {
     setField('nombre', val)
@@ -179,8 +214,11 @@ export default function Ingresos() {
     if (!val.trim()) return
 
     numTimer.current = setTimeout(async () => {
-      if (form.set_id) {
-        // Buscar carta exacta por set + número
+      const numNorm = normalizeNum(val.trim())
+      const isJP   = ['ja', 'jp'].includes(form.idioma)
+
+      if (form.set_id && !isJP) {
+        // Inglés con set seleccionado → API pokemontcg
         setSugLoading(true)
         const card = await fetchCardBySetAndNumber(form.set_id, val.trim())
         setSugLoading(false)
@@ -194,12 +232,65 @@ export default function Ingresos() {
             precio_usd: card.price_usd,
             source:     'market',
           })
+          return
         }
-      } else if (form.nombre) {
-        fetchPreviewImage(form.nombre, val, form.set)
+      }
+
+      // JP, o inglés sin resultado en API → buscar en Supabase
+      if (isJP || !form.set_id) {
+        setSugLoading(true)
+        const dbCard = form.nombre
+          ? await searchSupabaseCard(form.nombre, val.trim(), form.idioma)
+          : await searchSupabaseByNumber(val.trim(), form.idioma)
+        setSugLoading(false)
+        if (dbCard) {
+          selectSuggestion({
+            nombre:     dbCard.name,
+            set:        dbCard.set_name,
+            set_id:     null,
+            numero:     dbCard.card_number,
+            imagen:     dbCard.image_url,
+            precio_usd: null,
+            source:     'stock',
+          })
+          return
+        }
+      }
+
+      // Fallback: buscar imagen con nombre+número+set
+      if (form.nombre) {
+        fetchPreviewImage(form.nombre, numNorm, form.set)
       }
     }, 400)
   }
+
+  // ── Al cambiar idioma con carta ya seleccionada → re-buscar imagen/set ──
+  const prevIdiomaRef = useRef(form.idioma)
+  useEffect(() => {
+    const prev = prevIdiomaRef.current
+    prevIdiomaRef.current = form.idioma
+    if (!form.nombre || form.idioma === prev) return   // sin carta o sin cambio real
+
+    const isJP = ['ja', 'jp'].includes(form.idioma)
+    if (isJP) {
+      // Buscar versión japonesa en Supabase
+      searchSupabaseCard(form.nombre, form.numero, form.idioma).then(dbCard => {
+        if (dbCard) {
+          setPreview({ imagen: dbCard.image_url, precio_usd: null })
+          setForm(f => ({
+            ...f,
+            set:    dbCard.set_name    || f.set,
+            numero: dbCard.card_number || f.numero,
+            set_id: null,
+          }))
+        }
+        // Si no hay versión JP en Supabase, la imagen que tenemos queda igual
+      })
+    } else {
+      // Volvió a inglés → re-buscar imagen en pokemontcg.io
+      fetchPreviewImage(form.nombre, form.numero, form.set)
+    }
+  }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cerrar dropdown al hacer click afuera ──────────────────────────────
   const wrapRef = useRef(null)
