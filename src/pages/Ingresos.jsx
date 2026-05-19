@@ -221,7 +221,7 @@ export default function Ingresos() {
     setLoading(true)
     try {
       const precioVenta = parseFloat(form.precioVenta) || null
-      const precioUsd   = usd ?? precioVenta ?? null
+      const precioUsd   = usd ?? null   // NUNCA usar el precio ARS como USD
       const cantidad    = parseInt(form.cantidad) || 1
 
       // 1. Buscar o crear la carta en `cards`
@@ -480,7 +480,7 @@ export default function Ingresos() {
                 <input type="number" step="0.01" min="0"
                   value={form.precioVenta}
                   onChange={e => setField('precioVenta', e.target.value)}
-                  placeholder={usd != null ? `Sugerido: $${Number(usd).toFixed(2)}` : 'Ej: 25.00'}
+                  placeholder={usd != null ? `Sugerido: ${fmtARS(arsBlue)}` : 'Ej: 14000'}
                   className={inputCls}
                 />
               </div>
