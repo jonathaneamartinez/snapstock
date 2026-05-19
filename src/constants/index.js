@@ -25,8 +25,9 @@ export const CONDICION_LABELS = {
 
 export const IDIOMAS = [
   { code: 'en', label: 'Inglés',    flag: '🇬🇧' },
-  { code: 'es', label: 'Español',   flag: '🇪🇸' },
   { code: 'ja', label: 'Japonés',   flag: '🇯🇵' },
+  { code: 'zh', label: 'Chino',     flag: '🇨🇳' },
+  { code: 'es', label: 'Español',   flag: '🇪🇸' },
   { code: 'fr', label: 'Francés',   flag: '🇫🇷' },
   { code: 'de', label: 'Alemán',    flag: '🇩🇪' },
   { code: 'pt', label: 'Portugués', flag: '🇧🇷' },

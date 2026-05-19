@@ -27,18 +27,23 @@ export const scannerApi = {
    * Usa el índice local card_phash.json del backend — funciona para EN, JP y CN.
    * @returns {Promise<string|null>} URL pública de R2, o null si no se encuentra.
    */
-  cardImageUrl: (name, number, lang = 'en', { setId = '', holo = false } = {}) => {
+  /**
+   * @returns {Promise<{url:string|null, set_name:string|null, number:string|null}>}
+   * number vacío = buscar por nombre solo (útil al cambiar idioma, JP/CN tienen números distintos)
+   */
+  cardImageUrl: (name, number = '', lang = 'en', { setId = '', holo = false } = {}) => {
+    const numNorm = number ? (String(number).split('/')[0].replace(/^0+/, '') || '') : ''
     const params = new URLSearchParams({
       name,
-      number: String(number).split('/')[0].replace(/^0+/, '') || '0',
       lang,
-      ...(setId ? { set_id: setId } : {}),
-      ...(holo  ? { holo: '1'    } : {}),
+      ...(numNorm ? { number: numNorm } : {}),
+      ...(setId   ? { set_id: setId  } : {}),
+      ...(holo    ? { holo: '1'      } : {}),
     })
     return fetch(`${BASE}/card-image-url?${params}`)
       .then(r => r.json())
-      .then(d => d.url ?? null)
-      .catch(() => null)
+      .then(d => ({ url: d.url ?? null, set_name: d.set_name ?? null, number: d.number ?? null }))
+      .catch(() => ({ url: null, set_name: null, number: null }))
   },
 
   identificarSellado: (imagen_base64) =>

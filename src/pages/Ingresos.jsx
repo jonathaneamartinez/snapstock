@@ -60,11 +60,13 @@ export default function Ingresos() {
   /**
    * Busca imagen desde el índice local del backend (card_phash.json → R2).
    * Funciona para EN, JP y CN. Es la fuente primaria para cualquier idioma.
+   * Si numero es vacío, busca solo por nombre (útil al cambiar idioma JP/CN).
+   * @returns {Promise<{url, set_name, number}|null>}
    */
   const fetchImageFromBackend = async (nombre, numero, idioma, setId = '') => {
     if (!nombre) return null
     const lang = normLang(idioma)
-    const num  = normalizeNum(numero || '')
+    const num  = numero ? normalizeNum(numero) : ''
     return scannerApi.cardImageUrl(nombre, num, lang, { setId })
   }
 
@@ -210,9 +212,9 @@ export default function Ingresos() {
       try {
         // 1. Buscar en índice local del backend (cubre EN, JP, CN desde R2)
         if (form.nombre) {
-          const r2url = await fetchImageFromBackend(form.nombre, numNorm, form.idioma, form.set_id || '')
-          if (r2url) {
-            setPreview(prev => ({ ...prev, imagen: r2url }))
+          const res = await fetchImageFromBackend(form.nombre, numNorm, form.idioma, form.set_id || '')
+          if (res?.url) {
+            setPreview(prev => ({ ...prev, imagen: res.url }))
             setSugLoading(false)
             return
           }
@@ -252,16 +254,28 @@ export default function Ingresos() {
     prevIdiomaRef.current = form.idioma
     if (!form.nombre || form.idioma === prev) return
 
-    // Buscar imagen en el índice local del backend para el nuevo idioma
-    fetchImageFromBackend(form.nombre, form.numero, form.idioma, form.set_id || '')
-      .then(r2url => {
-        if (r2url) {
-          setPreview(prev => ({ ...prev, imagen: r2url }))
-        } else if (normLang(form.idioma) === 'en') {
-          // Fallback EN: pokemontcg.io
-          fetchPreviewImage(form.nombre, form.numero, form.set)
+    const lang = normLang(form.idioma)
+
+    if (lang === 'en') {
+      // Inglés → buscar con número en pokemontcg.io (tiene precio también)
+      fetchPreviewImage(form.nombre, form.numero, form.set)
+      return
+    }
+
+    // JP / CN → buscar por nombre solo en el índice R2 (número distinto al EN)
+    fetchImageFromBackend(form.nombre, '', form.idioma)
+      .then(res => {
+        if (res?.url) {
+          setPreview(prev => ({ ...prev, imagen: res.url }))
+          // Actualizar set y número con los del idioma nuevo
+          setForm(f => ({
+            ...f,
+            set:    res.set_name || f.set,
+            numero: res.number   || '',
+            set_id: null,           // el set JP no tiene set_id de pokemontcg.io
+          }))
         }
-        // JP/CN sin resultado: la imagen actual se queda
+        // Sin resultado: imagen actual se queda sin cambios
       })
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
 
