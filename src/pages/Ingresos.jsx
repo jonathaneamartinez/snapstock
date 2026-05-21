@@ -79,8 +79,10 @@ export default function Ingresos() {
     setSugLoading(true)
     sugTimer.current = setTimeout(async () => {
       try {
-        // Si hay set seleccionado, buscar dentro del set por nombre
-        if (form.set_id) {
+        const lang = normLang(form.idioma)
+
+        // Si hay set seleccionado y el idioma es EN → búsqueda pokemontcg.io (con precio)
+        if (form.set_id && lang === 'en') {
           const cards = await fetchCardsBySet(form.set_id, val.trim())
           const mapped = cards.slice(0, 60).map(c => ({
             nombre:     c.name,
@@ -90,6 +92,23 @@ export default function Ingresos() {
             imagen:     c.image_url,
             precio_usd: c.price_usd,
             source:     'market',
+          }))
+          setSuggestions(mapped)
+          setShowSug(mapped.length > 0)
+          return
+        }
+
+        // Si hay set seleccionado y el idioma es JP/CN → buscar en índice pHash del backend
+        if (form.set_id && (lang === 'jp' || lang === 'cn')) {
+          const res = await scannerApi.buscar(val.trim(), lang, form.set_id)
+          const mapped = (res?.results ?? []).map(c => ({
+            nombre:     c.nombre,
+            set:        c.set_name,
+            set_id:     c.set_code,
+            numero:     c.numero,
+            imagen:     c.imagen,
+            precio_usd: null,
+            source:     'phash',
           }))
           setSuggestions(mapped)
           setShowSug(mapped.length > 0)
@@ -148,6 +167,11 @@ export default function Ingresos() {
   const handleNombreFocus = async () => {
     if (!form.set_id) return
     if (suggestions.length > 0) { setShowSug(true); return }
+    const lang = normLang(form.idioma)
+
+    // JP/CN: no pre-cargamos todo el set (puede tener cientos de cartas); esperar que escriba
+    if (lang === 'jp' || lang === 'cn') return
+
     setSugLoading(true)
     const cards = await fetchCardsBySet(form.set_id)
     const mapped = cards.slice(0, 80).map(c => ({
@@ -481,6 +505,7 @@ export default function Ingresos() {
                   <SetSelect
                     value={form.set}
                     setId={form.set_id}
+                    lang={form.idioma}
                     onChange={({ set_name, set_id }) => {
                       setForm(f => ({ ...f, set: set_name, set_id, numero: '', nombre: '' }))
                       setSuggestions([])

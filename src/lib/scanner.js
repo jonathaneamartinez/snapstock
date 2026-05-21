@@ -18,9 +18,21 @@ export const scannerApi = {
       body: JSON.stringify(payload),
     }).then(r => r.json()),
 
-  buscar: (q, idioma = 'en') =>
-    fetch(`${BASE}/scanner/search?q=${encodeURIComponent(q)}&idioma=${idioma}`)
-      .then(r => r.json()),
+  buscar: (q, idioma = 'en', setId = '') => {
+    const params = new URLSearchParams({ q, idioma })
+    if (setId) params.set('set_id', setId)
+    return fetch(`${BASE}/scanner/search?${params}`).then(r => r.json())
+  },
+
+  /**
+   * Devuelve los sets disponibles en el índice local para un idioma (jp/cn/en).
+   * @returns {Promise<Array<{id:string, name:string}>>}
+   */
+  availableSets: (lang = 'en') =>
+    fetch(`${BASE}/available-sets?lang=${lang}`)
+      .then(r => r.json())
+      .then(d => d.sets ?? [])
+      .catch(() => []),
 
   /**
    * Busca la URL de imagen R2 para una carta por nombre + número + idioma.
