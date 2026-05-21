@@ -10,7 +10,6 @@ import Badge           from '../components/ui/Badge'
 import Spinner         from '../components/ui/Spinner'
 import EmptyState      from '../components/ui/EmptyState'
 import CardImage       from '../components/ui/CardImage'
-import CardModal       from '../components/ui/CardModal'
 import InlineEdit      from '../components/ui/InlineEdit'
 import Toast           from '../components/ui/Toast'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -60,7 +59,6 @@ export default function Stock() {
   const queryClient = useQueryClient()
 
   const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0, sortCol: null, sortDir: 'asc' })
-  const [modalCard,   setModalCard]   = useState(null)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -464,7 +462,7 @@ export default function Stock() {
                           className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
                         />
                       </td>
-                      {/* Imagen */}
+                      {/* Imagen — click abre el panel de detalle / precio */}
                       <td className="px-3 py-2">
                         <CardImage
                           imageUrl={r.image_url || imageMap[r.card_id]}
@@ -473,16 +471,7 @@ export default function Stock() {
                           numero={r.numero}
                           idioma={r.idioma}
                           setName={r.set_name}
-                          onOpen={(imgs) => setModalCard({
-                            src:         imgs.src,
-                            nombre:      r.nombre,
-                            set:         r.set_name,
-                            numero:      r.numero,
-                            condicion:   r.condicion,
-                            statusLabel: r.status,
-                            priceUSD:    r.price_usd      != null ? `$${Number(r.price_usd).toFixed(2)}` : null,
-                            priceARS:    r.price_ars_blue != null ? fmtARS(r.price_ars_blue) : null,
-                          })}
+                          onOpen={(imgs) => setPriceCard({ ...r, image_url: imgs?.src || r.image_url })}
                         />
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px]">
@@ -589,13 +578,8 @@ export default function Stock() {
         )}
       </div>
 
-      {/* Modal carta */}
-      <CardModal card={modalCard} onClose={() => setModalCard(null)} />
-
-      {/* Modal historial de precio (solo plan pro) */}
-      {FEATURES.marketIntel && (
-        <CardPriceModal card={priceCard} onClose={() => setPriceCard(null)} />
-      )}
+      {/* Panel lateral: detalle de carta + historial de precio */}
+      <CardPriceModal card={priceCard} onClose={() => setPriceCard(null)} />
 
       {/* Carrito review modal */}
       {showCartModal && (
