@@ -59,6 +59,8 @@ export default function Stock() {
   const queryClient = useQueryClient()
 
   const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0, sortCol: null, sortDir: 'asc' })
+  const [kpiSort,      setKpiSort]      = useState('')   // '' | 'score' | 'demand' | 'liquidity' | 'trend' | 'demand_asc' | 'liquidity_asc'
+  const [kpiStateFilter, setKpiStateFilter] = useState('') // '' | 'buyable' | 'sell_now' | 'normal' | 'con_datos'
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -129,8 +131,42 @@ export default function Stock() {
     })
   }
 
-  // Sin sort client-side: el servidor ya trae las filas en el orden correcto
-  const sortedRows = rows
+  // ── Sort / filter KPI client-side (sobre la página actual) ─────────────
+  const sortedRows = useMemo(() => {
+    let list = [...rows]
+
+    // Filtro por estado de mercado KPI
+    if (kpiStateFilter) {
+      list = list.filter(r => {
+        const kpi = kpiMap[r.card_id]
+        if (kpiStateFilter === 'con_datos') return kpi?.kpi_score != null
+        if (kpiStateFilter === 'sin_datos') return !kpi || kpi.kpi_score == null
+        return kpi?.kpi_state === kpiStateFilter
+      })
+    }
+
+    // Orden por componente KPI
+    if (kpiSort) {
+      const getVal = (r) => {
+        const kpi = kpiMap[r.card_id]
+        if (!kpi) return -1
+        switch (kpiSort) {
+          case 'score':        return kpi.kpi_score               ?? -1
+          case 'demand':       return kpi.kpi_demand_component    ?? -1
+          case 'demand_asc':   return -(kpi.kpi_demand_component  ?? 999)
+          case 'liquidity':    return kpi.kpi_liquidity_component ?? -1
+          case 'liquidity_asc':return -(kpi.kpi_liquidity_component ?? 999)
+          case 'trend':        return kpi.kpi_trend_component     ?? -1
+          case 'price_asc':    return -(r.price_usd_efectivo      ?? 999)
+          default: return -1
+        }
+      }
+      list.sort((a, b) => getVal(b) - getVal(a))
+    }
+
+    return list
+  }, [rows, kpiMap, kpiSort, kpiStateFilter])
+
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
 
@@ -409,8 +445,96 @@ export default function Stock() {
             <option value="">Condición</option>
             {CONDICIONES.map(c => <option key={c}>{c}</option>)}
           </select>
+
+          {/* ── Controles KPI (solo plan pro) ── */}
+          {FEATURES.marketIntel && (<>
+            <select
+              value={kpiStateFilter}
+              onChange={e => setKpiStateFilter(e.target.value)}
+              className={`border rounded-xl px-3 py-1.5 text-sm bg-white transition
+                ${kpiStateFilter
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 font-semibold'
+                  : 'border-gray-200'}`}
+            >
+              <option value="">📡 Señal mercado</option>
+              <option value="con_datos">✅ Con datos KPI</option>
+              <option value="buyable">🟢 Buen momento de compra</option>
+              <option value="sell_now">🔴 Momento de vender</option>
+              <option value="normal">🟡 Mercado estable</option>
+              <option value="sin_datos">⬜ Sin datos aún</option>
+            </select>
+
+            <select
+              value={kpiSort}
+              onChange={e => setKpiSort(e.target.value)}
+              className={`border rounded-xl px-3 py-1.5 text-sm bg-white transition
+                ${kpiSort
+                  ? 'border-purple-300 bg-purple-50 text-purple-700 font-semibold'
+                  : 'border-gray-200'}`}
+            >
+              <option value="">↕ Ordenar por KPI</option>
+              <option value="score">⭐ Mayor oportunidad</option>
+              <option value="demand">🔥 Más demanda</option>
+              <option value="demand_asc">📉 Menos demanda</option>
+              <option value="liquidity">💧 Más líquida</option>
+              <option value="liquidity_asc">🐢 Menos líquida</option>
+              <option value="trend">📈 Precio subiendo</option>
+              <option value="price_asc">💲 Precio más bajo</option>
+            </select>
+
+            {/* Chip activo — reset rápido */}
+            {(kpiSort || kpiStateFilter) && (
+              <button
+                onClick={() => { setKpiSort(''); setKpiStateFilter('') }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-red-200
+                           bg-red-50 text-red-500 text-xs font-semibold hover:bg-red-100 transition"
+              >
+                ✕ Limpiar KPI
+              </button>
+            )}
+          </>)}
         </div>
       </div>
+
+      {/* Banner KPI activo */}
+      {FEATURES.marketIntel && (kpiSort || kpiStateFilter) && (
+        <div className="bg-purple-50 border border-purple-100 rounded-2xl px-4 py-2.5
+                        flex items-center justify-between text-xs">
+          <span className="text-purple-700 font-medium flex items-center gap-1.5">
+            📡
+            {kpiSort && (
+              <span>
+                Orden KPI: <strong>{{
+                  score: '⭐ Mayor oportunidad',
+                  demand: '🔥 Más demanda',
+                  demand_asc: '📉 Menos demanda',
+                  liquidity: '💧 Más líquida',
+                  liquidity_asc: '🐢 Menos líquida',
+                  trend: '📈 Precio subiendo',
+                  price_asc: '💲 Precio más bajo',
+                }[kpiSort]}</strong>
+              </span>
+            )}
+            {kpiSort && kpiStateFilter && <span className="text-purple-400 mx-1">·</span>}
+            {kpiStateFilter && (
+              <span>
+                Señal: <strong>{{
+                  con_datos: '✅ Con datos',
+                  buyable: '🟢 Compra',
+                  sell_now: '🔴 Vender',
+                  normal: '🟡 Estable',
+                  sin_datos: '⬜ Sin datos',
+                }[kpiStateFilter]}</strong>
+              </span>
+            )}
+            <span className="text-purple-400 ml-1">(página actual)</span>
+          </span>
+          <button onClick={() => { setKpiSort(''); setKpiStateFilter('') }}
+                  className="text-purple-400 hover:text-purple-700 font-semibold transition">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -419,8 +543,11 @@ export default function Stock() {
         {!isLoading && !error && rows.length === 0 && (
           <EmptyState emoji="📭" title="Sin resultados" sub="Probá con otros filtros" />
         )}
+        {!isLoading && !error && rows.length > 0 && sortedRows.length === 0 && (
+          <EmptyState emoji="📡" title="Sin resultados para este filtro KPI" sub="Probá con otra señal de mercado" />
+        )}
 
-        {!isLoading && rows.length > 0 && (
+        {!isLoading && sortedRows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 text-gray-400 uppercase sticky top-0 z-10">
@@ -510,6 +637,28 @@ export default function Stock() {
                               kpiState={kpiMap[r.card_id].kpi_state}
                               size="sm"
                             />
+                            {/* Chip del componente activo si hay kpiSort */}
+                            {kpiSort && kpiSort !== 'price_asc' && (() => {
+                              const kd = kpiMap[r.card_id]
+                              const val = {
+                                score: kd.kpi_score,
+                                demand: kd.kpi_demand_component,
+                                demand_asc: kd.kpi_demand_component,
+                                liquidity: kd.kpi_liquidity_component,
+                                liquidity_asc: kd.kpi_liquidity_component,
+                                trend: kd.kpi_trend_component,
+                              }[kpiSort]
+                              const label = {
+                                score: '⭐', demand: '🔥', demand_asc: '🔥',
+                                liquidity: '💧', liquidity_asc: '💧', trend: '📈',
+                              }[kpiSort]
+                              if (val == null) return null
+                              return (
+                                <span className="text-[9px] text-gray-400 font-medium ml-0.5">
+                                  {label}{Math.round(val)}
+                                </span>
+                              )
+                            })()}
                           </div>
                         )}
                         {/* Mini selector de proveedor por carta */}
