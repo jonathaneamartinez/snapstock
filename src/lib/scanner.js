@@ -18,9 +18,10 @@ export const scannerApi = {
       body: JSON.stringify(payload),
     }).then(r => r.json()),
 
-  buscar: (q, idioma = 'en', setId = '') => {
+  buscar: (q, idioma = 'en', setId = '', limit = 5) => {
     const params = new URLSearchParams({ q, idioma })
-    if (setId) params.set('set_id', setId)
+    if (setId)    params.set('set_id', setId)
+    if (limit !== 5) params.set('limit', String(limit))
     return fetch(`${BASE}/scanner/search?${params}`).then(r => r.json())
   },
 

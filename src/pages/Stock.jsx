@@ -468,52 +468,67 @@ export default function Stock() {
             onChange={e => set('busqueda', e.target.value)}
             className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-40
                        focus:outline-none focus:ring-2 focus:ring-blue-200" />
-          <select onChange={e => set('idioma', e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white">
-            <option value="">Idioma</option>
-            {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
-          </select>
-          <select onChange={e => set('condicion', e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white">
-            <option value="">Condición</option>
-            {CONDICIONES.map(c => <option key={c}>{c}</option>)}
-          </select>
+          {/* Wrapper helper para selects con flecha custom centrada */}
+          <div className="relative shrink-0">
+            <select onChange={e => set('idioma', e.target.value)}
+              className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
+              <option value="">Idioma</option>
+              {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
+          </div>
+          <div className="relative shrink-0">
+            <select onChange={e => set('condicion', e.target.value)}
+              className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
+              <option value="">Condición</option>
+              {CONDICIONES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
+          </div>
 
           {/* ── Controles KPI (solo plan pro) ── */}
           {FEATURES.marketIntel && (<>
-            <select
-              value={kpiStateFilter}
-              onChange={e => setKpiStateFilter(e.target.value)}
-              className={`border rounded-xl px-3 py-1.5 text-sm bg-white transition
-                ${kpiStateFilter
-                  ? 'border-blue-300 bg-blue-50 text-blue-700 font-semibold'
-                  : 'border-gray-200'}`}
-            >
-              <option value="">📡 Señal mercado</option>
-              <option value="con_datos">✅ Con datos KPI</option>
-              <option value="buyable">🟢 Buen momento de compra</option>
-              <option value="sell_now">🔴 Momento de vender</option>
-              <option value="normal">🟡 Mercado estable</option>
-              <option value="sin_datos">⬜ Sin datos aún</option>
-            </select>
+            <div className="relative shrink-0">
+              <select
+                value={kpiStateFilter}
+                onChange={e => setKpiStateFilter(e.target.value)}
+                className={`appearance-none rounded-xl pl-3 pr-7 py-1.5 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200 transition
+                  ${kpiStateFilter
+                    ? 'border border-blue-300 bg-blue-50 text-blue-700 font-semibold'
+                    : 'border border-gray-200 bg-white'}`}
+              >
+                <option value="">📡 Señal mercado</option>
+                <option value="con_datos">✅ Con datos KPI</option>
+                <option value="buyable">🟢 Buen momento de compra</option>
+                <option value="sell_now">🔴 Momento de vender</option>
+                <option value="normal">🟡 Mercado estable</option>
+                <option value="sin_datos">⬜ Sin datos aún</option>
+              </select>
+              <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
+                ${kpiStateFilter ? 'text-blue-400' : 'text-gray-400'}`}>▾</span>
+            </div>
 
-            <select
-              value={kpiSort}
-              onChange={e => setKpiSort(e.target.value)}
-              className={`border rounded-xl px-3 py-1.5 text-sm bg-white transition
-                ${kpiSort
-                  ? 'border-purple-300 bg-purple-50 text-purple-700 font-semibold'
-                  : 'border-gray-200'}`}
-            >
-              <option value="">↕ Ordenar por KPI</option>
-              <option value="score">⭐ Mayor oportunidad</option>
-              <option value="demand">🔥 Más demanda</option>
-              <option value="demand_asc">📉 Menos demanda</option>
-              <option value="liquidity">💧 Más líquida</option>
-              <option value="liquidity_asc">🐢 Menos líquida</option>
-              <option value="trend">📈 Precio subiendo</option>
-              <option value="price_asc">💲 Precio más bajo</option>
-            </select>
+            <div className="relative shrink-0">
+              <select
+                value={kpiSort}
+                onChange={e => setKpiSort(e.target.value)}
+                className={`appearance-none rounded-xl pl-3 pr-7 py-1.5 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-200 transition
+                  ${kpiSort
+                    ? 'border border-purple-300 bg-purple-50 text-purple-700 font-semibold'
+                    : 'border border-gray-200 bg-white'}`}
+              >
+                <option value="">↕ Ordenar por KPI</option>
+                <option value="score">⭐ Mayor oportunidad</option>
+                <option value="demand">🔥 Más demanda</option>
+                <option value="demand_asc">📉 Menos demanda</option>
+                <option value="liquidity">💧 Más líquida</option>
+                <option value="liquidity_asc">🐢 Menos líquida</option>
+                <option value="trend">📈 Precio subiendo</option>
+                <option value="price_asc">💲 Precio más bajo</option>
+              </select>
+              <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
+                ${kpiSort ? 'text-purple-400' : 'text-gray-400'}`}>▾</span>
+            </div>
 
             {/* Toggle demo KPI */}
             <button
