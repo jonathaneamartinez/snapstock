@@ -77,12 +77,12 @@ export default function MarketSignalsPanel({ cardId }) {
       {kpi && score != null && (
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: 'Listings activos',  value: kpi.active_listings ?? '—',                  icon: '📦' },
-            { label: 'Precio promedio',   value: fmtUSD(kpi.avg_listing_price_usd ?? null),   icon: '💲' },
-            { label: 'Cambio 7d',         value: fmtPct(kpi.price_change_7d_pct),             icon: kpi.price_change_7d_pct >= 0 ? '📈' : '📉' },
-            { label: 'Demanda',           value: fmtScore(kpi.kpi_demand_component),          icon: '🔥' },
-            { label: 'Liquidez',          value: fmtScore(kpi.kpi_liquidity_component),       icon: '💧' },
-            { label: 'Tendencia',         value: fmtScore(kpi.kpi_trend_component),           icon: '📊' },
+            { label: 'Publicaciones',    value: kpi.active_listings ?? '—',                  icon: '📦' },
+            { label: 'Precio prom.',     value: fmtUSD(kpi.avg_listing_price_usd ?? null),   icon: '💲' },
+            { label: 'Cambio 7d',        value: fmtPct(kpi.price_change_7d_pct),             icon: kpi.price_change_7d_pct >= 0 ? '📈' : '📉' },
+            { label: 'Demanda',          value: fmtScore(kpi.kpi_demand_component),          icon: '🔥' },
+            { label: 'Liquidez',         value: fmtScore(kpi.kpi_liquidity_component),       icon: '💧' },
+            { label: 'Tendencia',        value: fmtScore(kpi.kpi_trend_component),           icon: '📊' },
           ].map(m => (
             <div key={m.label}
               className="bg-gray-50 rounded-xl px-3 py-2 flex items-center gap-2">

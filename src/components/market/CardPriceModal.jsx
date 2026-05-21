@@ -103,12 +103,12 @@ export default function CardPriceModal({ card, onClose }) {
   const demoChartData = demoMode ? genDemoHistory(priceCurrent ?? 11) : null
 
   const metrics = [
-    { icon: '📦', label: 'Listings',  value: kpi?.active_listings ?? '—'                               },
-    { icon: '💲', label: 'Avg eBay',  value: fmtUSD(kpi?.avg_listing_price_usd ?? null)                },
-    { icon: '🔥', label: 'Demanda',   value: score != null ? Math.round(kpi.kpi_demand_component)    : '—' },
-    { icon: '💧', label: 'Liquidez',  value: score != null ? Math.round(kpi.kpi_liquidity_component) : '—' },
-    { icon: '📊', label: 'Tendencia', value: score != null ? Math.round(kpi.kpi_trend_component)     : '—' },
-    { icon: '📡', label: 'Supply',    value: score != null ? Math.round(kpi.kpi_supply_component)    : '—' },
+    { icon: '📦', label: 'Publicaciones', value: kpi?.active_listings ?? '—'                               },
+    { icon: '💲', label: 'Precio prom.',  value: fmtUSD(kpi?.avg_listing_price_usd ?? null)                },
+    { icon: '🔥', label: 'Demanda',       value: score != null ? Math.round(kpi.kpi_demand_component)    : '—' },
+    { icon: '💧', label: 'Liquidez',      value: score != null ? Math.round(kpi.kpi_liquidity_component) : '—' },
+    { icon: '📊', label: 'Tendencia',     value: score != null ? Math.round(kpi.kpi_trend_component)     : '—' },
+    { icon: '📦', label: 'Oferta',        value: score != null ? Math.round(kpi.kpi_supply_component)    : '—' },
   ]
 
   return (
@@ -364,7 +364,7 @@ export default function CardPriceModal({ card, onClose }) {
               {/* ── Sección 3: Sparkline KPI histórico ──────────── */}
               {sparkData.length >= 2 && (
                 <section className="px-5 py-5 border-b border-gray-100">
-                  <h3 className="text-sm font-bold text-gray-800 mb-3">Score KPI — últimos 30d</h3>
+                  <h3 className="text-sm font-bold text-gray-800 mb-3">Puntaje KPI — últimos 30d</h3>
                   <ResponsiveContainer width="100%" height={100}>
                     <AreaChart data={sparkData} margin={{ top: 2, right: 4, left: -20, bottom: 0 }}>
                       <defs>
@@ -382,7 +382,7 @@ export default function CardPriceModal({ card, onClose }) {
                       />
                       <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#9ca3af' }} />
                       <Tooltip
-                        formatter={(v) => [v != null ? `${v} / 100` : '—', 'KPI']}
+                        formatter={(v) => [v != null ? `${v} / 100` : '—', 'Puntaje KPI']}
                         labelFormatter={fmtDate}
                         contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e5e7eb' }}
                       />
@@ -397,6 +397,28 @@ export default function CardPriceModal({ card, onClose }) {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
+
+                  {/* Descripción del KPI */}
+                  <div className="mt-3 bg-blue-50 rounded-xl px-3.5 py-3">
+                    <p className="text-[11px] font-semibold text-blue-700 mb-1">¿Qué es el Puntaje KPI?</p>
+                    <p className="text-[11px] text-blue-600 leading-relaxed">
+                      Es un indicador de <strong>salud comercial</strong> de la carta en el mercado secundario
+                      (eBay). Escala de <strong>0 a 100</strong>, donde mayor puntaje = mayor oportunidad de venta.
+                      Combina cuatro factores:
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      {[
+                        ['🔥', 'Demanda',   'búsquedas y ventas recientes'],
+                        ['💧', 'Liquidez',  'velocidad de venta'],
+                        ['📊', 'Tendencia', 'dirección del precio'],
+                        ['📦', 'Oferta',    'cantidad disponible en mercado'],
+                      ].map(([icon, name, desc]) => (
+                        <p key={name} className="text-[10px] text-blue-500 leading-snug">
+                          {icon} <span className="font-semibold">{name}:</span> {desc}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
                 </section>
               )}
 
