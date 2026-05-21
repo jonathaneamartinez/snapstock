@@ -9,6 +9,7 @@ import { useTop5Cards }      from '../hooks/useTop5Cards'
 import { usePurchasesMonth } from '../hooks/usePurchasesMonth'
 import { FEATURES }          from '../constants'
 import TrendingCards         from '../components/market/TrendingCards'
+import OpportunitiesWidget   from '../components/market/OpportunitiesWidget'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -638,8 +639,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Tendencias del stock (solo plan Pro — Ayrton) ────────────────────── */}
-      {FEATURES.marketIntel && <TrendingCards />}
+      {/* ── Market Intel (solo plan Pro — Ayrton) ───────────────────────────── */}
+      {FEATURES.marketIntel && (
+        <>
+          <TrendingCards />
+          <OpportunitiesWidget limit={5} minKpi={60} />
+        </>
+      )}
 
       {/* ── Ingresos y Egresos ────────────────────────────────────────────────── */}
       <div style={{

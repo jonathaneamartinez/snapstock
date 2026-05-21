@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import PriceHistoryChart from './PriceHistoryChart'
+import MarketSignalsPanel from './MarketSignalsPanel'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null
@@ -16,8 +17,14 @@ const fmtARS = (n) => n != null
  *                          price_usd_efectivo, _ars_blue, _ars_ofic, image_url }
  *   onClose — función para cerrar
  */
+const TABS = [
+  { id: 'price',  label: '📈 Precio' },
+  { id: 'market', label: '🎯 Market KPI' },
+]
+
 export default function CardPriceModal({ card, onClose }) {
   const [days, setDays] = useState(30)
+  const [activeTab, setActiveTab] = useState('price')
 
   if (!card) return null
 
@@ -44,7 +51,8 @@ export default function CardPriceModal({ card, onClose }) {
             transition={{ type: 'spring', damping: 24, stiffness: 320 }}
             className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-50
                        max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-5
-                       sm:inset-x-auto sm:w-full sm:max-w-md"
+                       sm:inset-x-auto sm:w-full sm:max-w-md
+                       max-h-[90dvh] overflow-y-auto"
           >
             {/* Header */}
             <div className="flex items-start justify-between mb-4">
@@ -91,25 +99,47 @@ export default function CardPriceModal({ card, onClose }) {
               ))}
             </div>
 
-            {/* Selector de ventana de tiempo */}
-            <div className="flex items-center gap-1 mb-3">
-              <span className="text-xs text-gray-400 mr-1">Ver:</span>
-              {[7, 14, 30, 60, 90].map(d => (
+            {/* Tabs: Precio histórico / Market KPI */}
+            <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
+              {TABS.map(tab => (
                 <button
-                  key={d}
-                  onClick={() => setDays(d)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
-                    ${days === d
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition
+                    ${activeTab === tab.id
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  {d}d
+                  {tab.label}
                 </button>
               ))}
             </div>
 
-            {/* Gráfico */}
-            <PriceHistoryChart cardId={card.inventory_id} days={days} />
+            {/* Contenido del tab activo */}
+            {activeTab === 'price' ? (
+              <>
+                {/* Selector de ventana de tiempo */}
+                <div className="flex items-center gap-1 mb-3">
+                  <span className="text-xs text-gray-400 mr-1">Ver:</span>
+                  {[7, 14, 30, 60, 90].map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setDays(d)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
+                        ${days === d
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+                <PriceHistoryChart cardId={card.inventory_id} days={days} />
+              </>
+            ) : (
+              /* Market KPI usa card_id global (UUID de la tabla cards, no inventory) */
+              <MarketSignalsPanel cardId={card.card_id ?? card.inventory_id} />
+            )}
           </motion.div>
         </>
       )}

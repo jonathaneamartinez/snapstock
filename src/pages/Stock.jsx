@@ -21,6 +21,8 @@ import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 import ClaimCartModal    from '../components/stock/ClaimCartModal'
 import { getCardImageUrl, warmBlobUrls } from '../lib/imageCache'
 import CardPriceModal   from '../components/market/CardPriceModal'
+import MarketKpiBadge  from '../components/market/MarketKpiBadge'
+import { useMarketKpiBatch } from '../hooks/useMarketKpi'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -105,6 +107,13 @@ export default function Stock() {
   }), [rawRows, blue, oficial, precioFuente])
 
   const imageMap = usePrefetchPageImages(rows)
+
+  // ── Market KPI batch (solo si plan pro) ──────────────────────────────────
+  const kpiCardIds = useMemo(
+    () => FEATURES.marketIntel ? rows.map(r => r.card_id).filter(Boolean) : [],
+    [rows]
+  )
+  const { data: kpiMap = {} } = useMarketKpiBatch(kpiCardIds)
 
   const { sortCol, sortDir = 'asc' } = filters
 
@@ -492,7 +501,7 @@ export default function Stock() {
                           {FEATURES.marketIntel ? (
                             <button
                               onClick={() => setPriceCard(r)}
-                              title="Ver historial de precio"
+                              title="Ver historial de precio y KPI de mercado"
                               className="text-emerald-600 font-semibold hover:underline hover:text-emerald-700 transition cursor-pointer"
                             >
                               {fmtUSD(r.price_usd_efectivo ?? r.price_usd)}
@@ -504,6 +513,16 @@ export default function Stock() {
                           )}
                           <span className="text-[10px] text-gray-400 leading-none">{r.precio_fuente_flag}</span>
                         </div>
+                        {/* KPI badge inline (solo plan pro, si hay datos) */}
+                        {FEATURES.marketIntel && r.card_id && kpiMap[r.card_id]?.kpi_score != null && (
+                          <div className="mt-0.5">
+                            <MarketKpiBadge
+                              kpiScore={kpiMap[r.card_id].kpi_score}
+                              kpiState={kpiMap[r.card_id].kpi_state}
+                              size="sm"
+                            />
+                          </div>
+                        )}
                         {/* Mini selector de proveedor por carta */}
                         {r.precios_fuentes && Object.keys(r.precios_fuentes).length > 1 && (
                           <select
