@@ -61,6 +61,7 @@ export default function Stock() {
   const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0, sortCol: null, sortDir: 'asc' })
   const [kpiSort,      setKpiSort]      = useState('')   // '' | 'score' | 'demand' | 'liquidity' | 'trend' | 'demand_asc' | 'liquidity_asc'
   const [kpiStateFilter, setKpiStateFilter] = useState('') // '' | 'buyable' | 'sell_now' | 'normal' | 'con_datos'
+  const [demoKpi,      setDemoKpi]      = useState(false) // modo demo: muestra datos simulados de KPI
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -113,7 +114,42 @@ export default function Stock() {
     () => FEATURES.marketIntel ? rows.map(r => r.card_id).filter(Boolean) : [],
     [rows]
   )
-  const { data: kpiMap = {} } = useMarketKpiBatch(kpiCardIds)
+  const { data: kpiMapReal = {} } = useMarketKpiBatch(kpiCardIds)
+
+  // ── Demo KPI: genera datos simulados para previsualizar filtros/orden ────
+  const KPI_STATES_DEMO = ['buyable', 'sell_now', 'normal', 'normal', 'normal']
+  const demoKpiMap = useMemo(() => {
+    if (!demoKpi) return {}
+    const seed = (str = '') => {
+      let h = 0
+      for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0
+      return Math.abs(h)
+    }
+    const map = {}
+    rows.forEach(r => {
+      const s = seed(r.card_id || r.inventory_id || r.nombre || '')
+      const score     = 20 + (s % 75)
+      const demand    = 10 + ((s * 7)  % 85)
+      const liquidity = 10 + ((s * 13) % 85)
+      const trend     = 10 + ((s * 19) % 85)
+      const supply    = 10 + ((s * 23) % 85)
+      map[r.card_id]  = {
+        kpi_score:               score,
+        kpi_state:               KPI_STATES_DEMO[s % KPI_STATES_DEMO.length],
+        kpi_demand_component:    demand,
+        kpi_liquidity_component: liquidity,
+        kpi_trend_component:     trend,
+        kpi_supply_component:    supply,
+        avg_listing_price_usd:   5 + (s % 50),
+        active_listings:         1 + (s % 30),
+        price_change_7d_pct:     (s % 20) - 8,
+        snapshot_date:           new Date().toISOString().slice(0, 10),
+      }
+    })
+    return map
+  }, [rows, demoKpi])
+
+  const kpiMap = demoKpi ? demoKpiMap : kpiMapReal
 
   const { sortCol, sortDir = 'asc' } = filters
 
@@ -124,7 +160,6 @@ export default function Stock() {
     setFilters(f => {
       if (f.sortCol === key) {
         if (f.sortDir === 'asc') return { ...f, sortDir: 'desc', page: 0 }
-        // tercer click: quitar sort
         return { ...f, sortCol: null, sortDir: 'asc', page: 0 }
       }
       return { ...f, sortCol: key, sortDir: 'asc', page: 0 }
@@ -135,7 +170,6 @@ export default function Stock() {
   const sortedRows = useMemo(() => {
     let list = [...rows]
 
-    // Filtro por estado de mercado KPI
     if (kpiStateFilter) {
       list = list.filter(r => {
         const kpi = kpiMap[r.card_id]
@@ -145,19 +179,18 @@ export default function Stock() {
       })
     }
 
-    // Orden por componente KPI
     if (kpiSort) {
       const getVal = (r) => {
         const kpi = kpiMap[r.card_id]
         if (!kpi) return -1
         switch (kpiSort) {
-          case 'score':        return kpi.kpi_score               ?? -1
-          case 'demand':       return kpi.kpi_demand_component    ?? -1
-          case 'demand_asc':   return -(kpi.kpi_demand_component  ?? 999)
-          case 'liquidity':    return kpi.kpi_liquidity_component ?? -1
-          case 'liquidity_asc':return -(kpi.kpi_liquidity_component ?? 999)
-          case 'trend':        return kpi.kpi_trend_component     ?? -1
-          case 'price_asc':    return -(r.price_usd_efectivo      ?? 999)
+          case 'score':         return kpi.kpi_score               ?? -1
+          case 'demand':        return kpi.kpi_demand_component    ?? -1
+          case 'demand_asc':    return -(kpi.kpi_demand_component  ?? 999)
+          case 'liquidity':     return kpi.kpi_liquidity_component ?? -1
+          case 'liquidity_asc': return -(kpi.kpi_liquidity_component ?? 999)
+          case 'trend':         return kpi.kpi_trend_component     ?? -1
+          case 'price_asc':     return -(r.price_usd_efectivo      ?? 999)
           default: return -1
         }
       }
@@ -482,6 +515,18 @@ export default function Stock() {
               <option value="price_asc">💲 Precio más bajo</option>
             </select>
 
+            {/* Toggle demo KPI */}
+            <button
+              onClick={() => setDemoKpi(v => !v)}
+              title="Activar datos de ejemplo para previsualizar filtros y orden KPI"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition
+                ${demoKpi
+                  ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-amber-300 hover:text-amber-600'}`}
+            >
+              {demoKpi ? '🟡 Demo ON' : '👁 Demo KPI'}
+            </button>
+
             {/* Chip activo — reset rápido */}
             {(kpiSort || kpiStateFilter) && (
               <button
@@ -495,6 +540,21 @@ export default function Stock() {
           </>)}
         </div>
       </div>
+
+      {/* Banner Demo KPI */}
+      {FEATURES.marketIntel && demoKpi && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5
+                        flex items-center justify-between text-xs">
+          <span className="text-amber-700 font-medium flex items-center gap-2">
+            🟡 <strong>Modo Demo KPI activo</strong>
+            <span className="text-amber-500 font-normal">— Los datos de KPI son simulados para previsualizar filtros y orden. No representan valores reales.</span>
+          </span>
+          <button onClick={() => setDemoKpi(false)}
+                  className="text-amber-400 hover:text-amber-700 font-bold transition ml-3">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Banner KPI activo */}
       {FEATURES.marketIntel && (kpiSort || kpiStateFilter) && (
