@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { STORE_ID } from '../constants'
+import { normLang, sameLang } from '../lib/normLang'
 
 const PAGE_SIZE = 100
 
@@ -140,11 +141,16 @@ export function useStock(filters = {}) {
       }))
 
       // Filtros client-side (búsqueda de texto e idioma)
-      if (idioma)   rows = rows.filter(r => r.idioma === idioma)
-      if (busqueda) rows = rows.filter(r =>
-        r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        r.set_name.toLowerCase().includes(busqueda.toLowerCase())
-      )
+      // sameLang normaliza 'jp'/'ja', 'cn'/'zh', etc. antes de comparar
+      if (idioma)   rows = rows.filter(r => sameLang(r.idioma, idioma))
+      if (busqueda) {
+        const q = busqueda.toLowerCase().trim()
+        rows = rows.filter(r =>
+          r.nombre.toLowerCase().includes(q)     ||
+          r.set_name.toLowerCase().includes(q)   ||
+          r.numero.toLowerCase().includes(q)
+        )
+      }
 
       // Sort + paginación client-side cuando la columna pertenece a `cards`
       if (isForeignSort && sortDef) {
