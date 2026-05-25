@@ -6,12 +6,38 @@ export const TENANT_ID  = import.meta.env.VITE_TENANT_ID
 // Cada proyecto Vercel tiene su propio VITE_CLIENT_ID en las env vars
 export const CLIENT_ID  = import.meta.env.VITE_CLIENT_ID ?? 'default'
 
-// Feature flags por plan
-// VITE_PLAN=pro  → habilita Market Intel (historial de precios, trending, EV)
-// VITE_PLAN=basic (o sin definir) → solo features base
-const PLAN = import.meta.env.VITE_PLAN ?? 'basic'
+// ── Feature flags ──────────────────────────────────────────────────────────
+// Fuente de verdad: clientConfig.features en src/clients/{id}/config.js
+// El VITE_PLAN actúa como fallback si el cliente no define un flag explícito.
+//
+// Para habilitar/deshabilitar una feature para un cliente:
+//   → Editar src/clients/{id}/config.js → features.{flag}: true|false
+//
+// NUNCA modificar esta sección para ocultar features; hacerlo en el config del cliente.
+// ─────────────────────────────────────────────────────────────────────────────
+import { clientConfig as _ayrtonCfg   } from '../clients/ayrton/config'
+import { clientConfig as _jonatCfg    } from '../clients/jonat/config'
+import { clientConfig as _singlesUtCfg } from '../clients/singles-ut/config'
+
+const _CLIENT_CONFIGS = {
+  'ayrton':     _ayrtonCfg,
+  'jonat':      _jonatCfg,
+  'singles-ut': _singlesUtCfg,
+}
+
+const _clientFeatures = _CLIENT_CONFIGS[CLIENT_ID]?.features ?? {}
+const _PLAN = import.meta.env.VITE_PLAN ?? 'basic'
+
+// Un flag es true si el clientConfig lo dice explícitamente true,
+// o si VITE_PLAN=pro y el clientConfig no lo desactiva explícitamente.
+const _feat = (key, planDefault) =>
+  key in _clientFeatures ? !!_clientFeatures[key] : planDefault
+
 export const FEATURES = {
-  marketIntel: PLAN === 'pro',
+  marketIntel: _feat('marketIntel', _PLAN === 'pro'),
+  // Agregar acá nuevas features a medida que se implementen:
+  // jpCnSupport: _feat('jpCnSupport', true),
+  // bulkImport:  _feat('bulkImport',  _PLAN === 'pro'),
 }
 
 export const CONDICIONES = ['NM', 'LP', 'MP', 'HP', 'DMG']

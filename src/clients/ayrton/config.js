@@ -12,6 +12,6 @@ export const clientConfig = {
     reservas:    true,
     ventas:      true,
     compras:     true,
-    marketIntel: true,   // plan Pro — Market Intel, trending, price history
+    marketIntel: false,  // deshabilitado — se activa cuando se les presente la feature
   },
 }
