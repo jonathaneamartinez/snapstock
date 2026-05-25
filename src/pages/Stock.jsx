@@ -10,7 +10,6 @@ import Badge           from '../components/ui/Badge'
 import Spinner         from '../components/ui/Spinner'
 import EmptyState      from '../components/ui/EmptyState'
 import CardImage       from '../components/ui/CardImage'
-import CardModal       from '../components/ui/CardModal'
 import InlineEdit      from '../components/ui/InlineEdit'
 import Toast           from '../components/ui/Toast'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -21,6 +20,8 @@ import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 import ClaimCartModal    from '../components/stock/ClaimCartModal'
 import { getCardImageUrl, warmBlobUrls } from '../lib/imageCache'
 import CardPriceModal   from '../components/market/CardPriceModal'
+import MarketKpiBadge  from '../components/market/MarketKpiBadge'
+import { useMarketKpiBatch } from '../hooks/useMarketKpi'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -58,7 +59,9 @@ export default function Stock() {
   const queryClient = useQueryClient()
 
   const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0, sortCol: null, sortDir: 'asc' })
-  const [modalCard,   setModalCard]   = useState(null)
+  const [kpiSort,      setKpiSort]      = useState('')   // '' | 'score' | 'demand' | 'liquidity' | 'trend' | 'demand_asc' | 'liquidity_asc'
+  const [kpiStateFilter, setKpiStateFilter] = useState('') // '' | 'buyable' | 'sell_now' | 'normal' | 'con_datos'
+  const [demoKpi,      setDemoKpi]      = useState(false) // modo demo: muestra datos simulados de KPI
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -106,6 +109,48 @@ export default function Stock() {
 
   const imageMap = usePrefetchPageImages(rows)
 
+  // ── Market KPI batch (solo si plan pro) ──────────────────────────────────
+  const kpiCardIds = useMemo(
+    () => FEATURES.marketIntel ? rows.map(r => r.card_id).filter(Boolean) : [],
+    [rows]
+  )
+  const { data: kpiMapReal = {} } = useMarketKpiBatch(kpiCardIds)
+
+  // ── Demo KPI: genera datos simulados para previsualizar filtros/orden ────
+  const KPI_STATES_DEMO = ['buyable', 'sell_now', 'normal', 'normal', 'normal']
+  const demoKpiMap = useMemo(() => {
+    if (!demoKpi) return {}
+    const seed = (str = '') => {
+      let h = 0
+      for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0
+      return Math.abs(h)
+    }
+    const map = {}
+    rows.forEach(r => {
+      const s = seed(r.card_id || r.inventory_id || r.nombre || '')
+      const score     = 20 + (s % 75)
+      const demand    = 10 + ((s * 7)  % 85)
+      const liquidity = 10 + ((s * 13) % 85)
+      const trend     = 10 + ((s * 19) % 85)
+      const supply    = 10 + ((s * 23) % 85)
+      map[r.card_id]  = {
+        kpi_score:               score,
+        kpi_state:               KPI_STATES_DEMO[s % KPI_STATES_DEMO.length],
+        kpi_demand_component:    demand,
+        kpi_liquidity_component: liquidity,
+        kpi_trend_component:     trend,
+        kpi_supply_component:    supply,
+        avg_listing_price_usd:   5 + (s % 50),
+        active_listings:         1 + (s % 30),
+        price_change_7d_pct:     (s % 20) - 8,
+        snapshot_date:           new Date().toISOString().slice(0, 10),
+      }
+    })
+    return map
+  }, [rows, demoKpi])
+
+  const kpiMap = demoKpi ? demoKpiMap : kpiMapReal
+
   const { sortCol, sortDir = 'asc' } = filters
 
   // ── Sort server-side: cambiar columna vuelve a página 0 ─────────────────
@@ -115,15 +160,46 @@ export default function Stock() {
     setFilters(f => {
       if (f.sortCol === key) {
         if (f.sortDir === 'asc') return { ...f, sortDir: 'desc', page: 0 }
-        // tercer click: quitar sort
         return { ...f, sortCol: null, sortDir: 'asc', page: 0 }
       }
       return { ...f, sortCol: key, sortDir: 'asc', page: 0 }
     })
   }
 
-  // Sin sort client-side: el servidor ya trae las filas en el orden correcto
-  const sortedRows = rows
+  // ── Sort / filter KPI client-side (sobre la página actual) ─────────────
+  const sortedRows = useMemo(() => {
+    let list = [...rows]
+
+    if (kpiStateFilter) {
+      list = list.filter(r => {
+        const kpi = kpiMap[r.card_id]
+        if (kpiStateFilter === 'con_datos') return kpi?.kpi_score != null
+        if (kpiStateFilter === 'sin_datos') return !kpi || kpi.kpi_score == null
+        return kpi?.kpi_state === kpiStateFilter
+      })
+    }
+
+    if (kpiSort) {
+      const getVal = (r) => {
+        const kpi = kpiMap[r.card_id]
+        if (!kpi) return -1
+        switch (kpiSort) {
+          case 'score':         return kpi.kpi_score               ?? -1
+          case 'demand':        return kpi.kpi_demand_component    ?? -1
+          case 'demand_asc':    return -(kpi.kpi_demand_component  ?? 999)
+          case 'liquidity':     return kpi.kpi_liquidity_component ?? -1
+          case 'liquidity_asc': return -(kpi.kpi_liquidity_component ?? 999)
+          case 'trend':         return kpi.kpi_trend_component     ?? -1
+          case 'price_asc':     return -(r.price_usd_efectivo      ?? 999)
+          default: return -1
+        }
+      }
+      list.sort((a, b) => getVal(b) - getVal(a))
+    }
+
+    return list
+  }, [rows, kpiMap, kpiSort, kpiStateFilter])
+
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
 
@@ -392,18 +468,148 @@ export default function Stock() {
             onChange={e => set('busqueda', e.target.value)}
             className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-40
                        focus:outline-none focus:ring-2 focus:ring-blue-200" />
-          <select onChange={e => set('idioma', e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white">
-            <option value="">Idioma</option>
-            {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
-          </select>
-          <select onChange={e => set('condicion', e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white">
-            <option value="">Condición</option>
-            {CONDICIONES.map(c => <option key={c}>{c}</option>)}
-          </select>
+          {/* Wrapper helper para selects con flecha custom centrada */}
+          <div className="relative shrink-0">
+            <select onChange={e => set('idioma', e.target.value)}
+              className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
+              <option value="">Idioma</option>
+              {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
+          </div>
+          <div className="relative shrink-0">
+            <select onChange={e => set('condicion', e.target.value)}
+              className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
+              <option value="">Condición</option>
+              {CONDICIONES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
+          </div>
+
+          {/* ── Controles KPI (solo plan pro) ── */}
+          {FEATURES.marketIntel && (<>
+            <div className="relative shrink-0">
+              <select
+                value={kpiStateFilter}
+                onChange={e => setKpiStateFilter(e.target.value)}
+                className={`appearance-none rounded-xl pl-3 pr-7 py-1.5 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200 transition
+                  ${kpiStateFilter
+                    ? 'border border-blue-300 bg-blue-50 text-blue-700 font-semibold'
+                    : 'border border-gray-200 bg-white'}`}
+              >
+                <option value="">📡 Señal mercado</option>
+                <option value="con_datos">✅ Con datos KPI</option>
+                <option value="buyable">🟢 Buen momento de compra</option>
+                <option value="sell_now">🔴 Momento de vender</option>
+                <option value="normal">🟡 Mercado estable</option>
+                <option value="sin_datos">⬜ Sin datos aún</option>
+              </select>
+              <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
+                ${kpiStateFilter ? 'text-blue-400' : 'text-gray-400'}`}>▾</span>
+            </div>
+
+            <div className="relative shrink-0">
+              <select
+                value={kpiSort}
+                onChange={e => setKpiSort(e.target.value)}
+                className={`appearance-none rounded-xl pl-3 pr-7 py-1.5 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-200 transition
+                  ${kpiSort
+                    ? 'border border-purple-300 bg-purple-50 text-purple-700 font-semibold'
+                    : 'border border-gray-200 bg-white'}`}
+              >
+                <option value="">↕ Ordenar por KPI</option>
+                <option value="score">⭐ Mayor oportunidad</option>
+                <option value="demand">🔥 Más demanda</option>
+                <option value="demand_asc">📉 Menos demanda</option>
+                <option value="liquidity">💧 Más líquida</option>
+                <option value="liquidity_asc">🐢 Menos líquida</option>
+                <option value="trend">📈 Precio subiendo</option>
+                <option value="price_asc">💲 Precio más bajo</option>
+              </select>
+              <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
+                ${kpiSort ? 'text-purple-400' : 'text-gray-400'}`}>▾</span>
+            </div>
+
+            {/* Toggle demo KPI */}
+            <button
+              onClick={() => setDemoKpi(v => !v)}
+              title="Activar datos de ejemplo para previsualizar filtros y orden KPI"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition
+                ${demoKpi
+                  ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-amber-300 hover:text-amber-600'}`}
+            >
+              {demoKpi ? '🟡 Demo ON' : '👁 Demo KPI'}
+            </button>
+
+            {/* Chip activo — reset rápido */}
+            {(kpiSort || kpiStateFilter) && (
+              <button
+                onClick={() => { setKpiSort(''); setKpiStateFilter('') }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-red-200
+                           bg-red-50 text-red-500 text-xs font-semibold hover:bg-red-100 transition"
+              >
+                ✕ Limpiar KPI
+              </button>
+            )}
+          </>)}
         </div>
       </div>
+
+      {/* Banner Demo KPI */}
+      {FEATURES.marketIntel && demoKpi && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5
+                        flex items-center justify-between text-xs">
+          <span className="text-amber-700 font-medium flex items-center gap-2">
+            🟡 <strong>Modo Demo KPI activo</strong>
+            <span className="text-amber-500 font-normal">— Los datos de KPI son simulados para previsualizar filtros y orden. No representan valores reales.</span>
+          </span>
+          <button onClick={() => setDemoKpi(false)}
+                  className="text-amber-400 hover:text-amber-700 font-bold transition ml-3">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Banner KPI activo */}
+      {FEATURES.marketIntel && (kpiSort || kpiStateFilter) && (
+        <div className="bg-purple-50 border border-purple-100 rounded-2xl px-4 py-2.5
+                        flex items-center justify-between text-xs">
+          <span className="text-purple-700 font-medium flex items-center gap-1.5">
+            📡
+            {kpiSort && (
+              <span>
+                Orden KPI: <strong>{{
+                  score: '⭐ Mayor oportunidad',
+                  demand: '🔥 Más demanda',
+                  demand_asc: '📉 Menos demanda',
+                  liquidity: '💧 Más líquida',
+                  liquidity_asc: '🐢 Menos líquida',
+                  trend: '📈 Precio subiendo',
+                  price_asc: '💲 Precio más bajo',
+                }[kpiSort]}</strong>
+              </span>
+            )}
+            {kpiSort && kpiStateFilter && <span className="text-purple-400 mx-1">·</span>}
+            {kpiStateFilter && (
+              <span>
+                Señal: <strong>{{
+                  con_datos: '✅ Con datos',
+                  buyable: '🟢 Compra',
+                  sell_now: '🔴 Vender',
+                  normal: '🟡 Estable',
+                  sin_datos: '⬜ Sin datos',
+                }[kpiStateFilter]}</strong>
+              </span>
+            )}
+            <span className="text-purple-400 ml-1">(página actual)</span>
+          </span>
+          <button onClick={() => { setKpiSort(''); setKpiStateFilter('') }}
+                  className="text-purple-400 hover:text-purple-700 font-semibold transition">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -412,8 +618,11 @@ export default function Stock() {
         {!isLoading && !error && rows.length === 0 && (
           <EmptyState emoji="📭" title="Sin resultados" sub="Probá con otros filtros" />
         )}
+        {!isLoading && !error && rows.length > 0 && sortedRows.length === 0 && (
+          <EmptyState emoji="📡" title="Sin resultados para este filtro KPI" sub="Probá con otra señal de mercado" />
+        )}
 
-        {!isLoading && rows.length > 0 && (
+        {!isLoading && sortedRows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 text-gray-400 uppercase sticky top-0 z-10">
@@ -455,7 +664,7 @@ export default function Stock() {
                           className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
                         />
                       </td>
-                      {/* Imagen */}
+                      {/* Imagen — click abre el panel de detalle / precio */}
                       <td className="px-3 py-2">
                         <CardImage
                           imageUrl={r.image_url || imageMap[r.card_id]}
@@ -464,16 +673,7 @@ export default function Stock() {
                           numero={r.numero}
                           idioma={r.idioma}
                           setName={r.set_name}
-                          onOpen={(imgs) => setModalCard({
-                            src:         imgs.src,
-                            nombre:      r.nombre,
-                            set:         r.set_name,
-                            numero:      r.numero,
-                            condicion:   r.condicion,
-                            statusLabel: r.status,
-                            priceUSD:    r.price_usd      != null ? `$${Number(r.price_usd).toFixed(2)}` : null,
-                            priceARS:    r.price_ars_blue != null ? fmtARS(r.price_ars_blue) : null,
-                          })}
+                          onOpen={(imgs) => setPriceCard({ ...r, image_url: imgs?.src || r.image_url })}
                         />
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px]">
@@ -492,7 +692,7 @@ export default function Stock() {
                           {FEATURES.marketIntel ? (
                             <button
                               onClick={() => setPriceCard(r)}
-                              title="Ver historial de precio"
+                              title="Ver historial de precio y KPI de mercado"
                               className="text-emerald-600 font-semibold hover:underline hover:text-emerald-700 transition cursor-pointer"
                             >
                               {fmtUSD(r.price_usd_efectivo ?? r.price_usd)}
@@ -504,6 +704,38 @@ export default function Stock() {
                           )}
                           <span className="text-[10px] text-gray-400 leading-none">{r.precio_fuente_flag}</span>
                         </div>
+                        {/* KPI badge inline (solo plan pro, si hay datos) */}
+                        {FEATURES.marketIntel && r.card_id && kpiMap[r.card_id]?.kpi_score != null && (
+                          <div className="mt-0.5">
+                            <MarketKpiBadge
+                              kpiScore={kpiMap[r.card_id].kpi_score}
+                              kpiState={kpiMap[r.card_id].kpi_state}
+                              size="sm"
+                            />
+                            {/* Chip del componente activo si hay kpiSort */}
+                            {kpiSort && kpiSort !== 'price_asc' && (() => {
+                              const kd = kpiMap[r.card_id]
+                              const val = {
+                                score: kd.kpi_score,
+                                demand: kd.kpi_demand_component,
+                                demand_asc: kd.kpi_demand_component,
+                                liquidity: kd.kpi_liquidity_component,
+                                liquidity_asc: kd.kpi_liquidity_component,
+                                trend: kd.kpi_trend_component,
+                              }[kpiSort]
+                              const label = {
+                                score: '⭐', demand: '🔥', demand_asc: '🔥',
+                                liquidity: '💧', liquidity_asc: '💧', trend: '📈',
+                              }[kpiSort]
+                              if (val == null) return null
+                              return (
+                                <span className="text-[9px] text-gray-400 font-medium ml-0.5">
+                                  {label}{Math.round(val)}
+                                </span>
+                              )
+                            })()}
+                          </div>
+                        )}
                         {/* Mini selector de proveedor por carta */}
                         {r.precios_fuentes && Object.keys(r.precios_fuentes).length > 1 && (
                           <select
@@ -570,13 +802,8 @@ export default function Stock() {
         )}
       </div>
 
-      {/* Modal carta */}
-      <CardModal card={modalCard} onClose={() => setModalCard(null)} />
-
-      {/* Modal historial de precio (solo plan pro) */}
-      {FEATURES.marketIntel && (
-        <CardPriceModal card={priceCard} onClose={() => setPriceCard(null)} />
-      )}
+      {/* Panel lateral: detalle de carta + historial de precio */}
+      <CardPriceModal card={priceCard} onClose={() => setPriceCard(null)} />
 
       {/* Carrito review modal */}
       {showCartModal && (

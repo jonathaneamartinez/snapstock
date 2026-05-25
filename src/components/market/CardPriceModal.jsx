@@ -1,118 +1,520 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import PriceHistoryChart from './PriceHistoryChart'
+import {
+  AreaChart, Area, LineChart, Line,
+  XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid,
+} from 'recharts'
 
+import PriceHistoryChart from './PriceHistoryChart'
+import MarketKpiBadge, { KPI_STATE_CONFIG } from './MarketKpiBadge'
+import { useMarketKpi }    from '../../hooks/useMarketKpi'
+import { useMarketSignals } from '../../hooks/useMarketSignals'
+import Spinner             from '../ui/Spinner'
+
+// ── Formatters ───────────────────────────────────────────────────────────────
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null
   ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
   : '—'
+const fmtPct = (n) => n != null
+  ? `${n >= 0 ? '▲' : '▼'} ${Math.abs(Number(n)).toFixed(1)}%`
+  : null
+const fmtDate = (str) => {
+  if (!str) return ''
+  const [, m, d] = str.split('-')
+  return `${d}/${m}`
+}
+
+// ── Demo data ─────────────────────────────────────────────────────────────────
+// Genera 30 días de datos simulados para visualizar el diseño "con datos"
+function genDemoHistory(basePrice = 11.08) {
+  const rows = []
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const iso = d.toISOString().slice(0, 10)
+    const noise = (Math.random() - 0.5) * 2.5
+    rows.push({ date: iso, tcgplayer: Math.max(2, +(basePrice + noise + i * 0.04).toFixed(2)) })
+  }
+  return rows
+}
+function genDemoKpiHistory() {
+  const rows = []
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const iso = d.toISOString().slice(0, 10)
+    rows.push({ date: iso, kpi: Math.round(60 + Math.random() * 25 + i * 0.3) })
+  }
+  return rows
+}
+const DEMO_KPI = {
+  kpi_state:              'buyable',
+  kpi_score:              74,
+  price_change_7d_pct:    5.2,
+  active_listings:        12,
+  avg_listing_price_usd:  12.40,
+  kpi_demand_component:   80,
+  kpi_liquidity_component: 68,
+  kpi_trend_component:    72,
+  kpi_supply_component:   58,
+  snapshot_date:          new Date().toISOString().slice(0, 10),
+}
 
 /**
- * Modal de historial de precio para una carta.
- * Se abre al clickear la celda USD en Stock.jsx.
+ * CardPriceModal — Right-side sheet con detalle completo de la carta.
  *
  * Props:
- *   card    — objeto con { inventory_id, nombre, set_name, numero, idioma,
- *                          price_usd_efectivo, _ars_blue, _ars_ofic, image_url }
- *   onClose — función para cerrar
+ *   card    — { inventory_id, card_id, nombre, set_name, numero, idioma,
+ *               price_usd_efectivo, price_usd, _ars_blue, _ars_ofic, image_url }
+ *   onClose — () => void
  */
 export default function CardPriceModal({ card, onClose }) {
-  const [days, setDays] = useState(30)
+  const [days,     setDays]     = useState(30)
+  const [demoMode, setDemoMode] = useState(false)
+
+  const marketCardId = card?.card_id ?? card?.inventory_id
+
+  const { data: kpiReal,  isLoading: kpiLoading } = useMarketKpi(marketCardId)
+  const { data: sigReal = [] }                    = useMarketSignals(marketCardId, 30)
 
   if (!card) return null
+
+  // Cuando demoMode activo, usar datos simulados en lugar de los reales
+  const kpi     = demoMode ? DEMO_KPI      : kpiReal
+  const signals = demoMode ? genDemoKpiHistory() : sigReal
+
+  const state     = kpi?.kpi_state ?? 'sin_datos'
+  const stateConf = KPI_STATE_CONFIG[state] ?? KPI_STATE_CONFIG.normal
+  const score     = kpi?.kpi_score
+
+  const priceCurrent = card.price_usd_efectivo ?? card.price_usd
+  const change7d     = kpi?.price_change_7d_pct
+  const isPositive   = change7d != null && Number(change7d) >= 0
+
+  // Sparkline KPI (30d)
+  const sparkData = signals.map(s => ({
+    date: s.snapshot_date ?? s.date,
+    kpi:  s.kpi_score != null ? Math.round(s.kpi_score) : (s.kpi ?? null),
+  }))
+
+  // Demo chart data
+  const demoChartData = demoMode ? genDemoHistory(priceCurrent ?? 11) : null
+
+  const metrics = [
+    { icon: '📦', label: 'Publicaciones', value: kpi?.active_listings ?? '—'                               },
+    { icon: '💲', label: 'Precio prom.',  value: fmtUSD(kpi?.avg_listing_price_usd ?? null)                },
+    { icon: '🔥', label: 'Demanda',       value: score != null ? Math.round(kpi.kpi_demand_component)    : '—' },
+    { icon: '💧', label: 'Liquidez',      value: score != null ? Math.round(kpi.kpi_liquidity_component) : '—' },
+    { icon: '📊', label: 'Tendencia',     value: score != null ? Math.round(kpi.kpi_trend_component)     : '—' },
+    { icon: '📦', label: 'Oferta',        value: score != null ? Math.round(kpi.kpi_supply_component)    : '—' },
+  ]
 
   return (
     <AnimatePresence>
       {card && (
         <>
-          {/* Overlay */}
+          {/* ── Overlay ─────────────────────────────────────────────── */}
           <motion.div
             key="overlay"
+            className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm"
             onClick={onClose}
           />
 
-          {/* Panel */}
+          {/* ── Sheet ───────────────────────────────────────────────── */}
           <motion.div
-            key="panel"
-            initial={{ opacity: 0, scale: 0.95, y: 16 }}
-            animate={{ opacity: 1, scale: 1,    y: 0  }}
-            exit={{    opacity: 0, scale: 0.95, y: 16 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 320 }}
-            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-50
-                       max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-5
-                       sm:inset-x-auto sm:w-full sm:max-w-md"
+            key="sheet"
+            className="fixed right-0 top-0 bottom-0 z-50
+                       w-full sm:w-[480px]
+                       bg-white shadow-2xl flex flex-col overflow-hidden"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
           >
-            {/* Header */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                {card.image_url && (
-                  <img
-                    src={card.image_url}
-                    alt={card.nombre}
-                    className="w-10 h-14 object-contain rounded-lg shadow"
-                  />
-                )}
-                <div>
-                  <h2 className="font-bold text-gray-800 text-sm leading-tight">
-                    {card.nombre || '—'}
-                  </h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {card.set_name} {card.numero ? `· #${card.numero}` : ''}
-                    {card.idioma ? ` · ${card.idioma.toUpperCase()}` : ''}
-                  </p>
-                </div>
-              </div>
+
+            {/* ══════════════════════════════════════════════════════
+                HEADER — identidad de la carta + precio hero
+                Layout: imagen grande a la izquierda, info a la derecha
+            ══════════════════════════════════════════════════════ */}
+            <div className="bg-slate-900 px-5 pt-5 pb-6 flex-shrink-0 relative">
+
+              {/* Botón cerrar */}
               <button
                 onClick={onClose}
-                className="w-7 h-7 flex items-center justify-center
-                           rounded-full bg-gray-100 hover:bg-gray-200
-                           text-gray-400 text-base transition"
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center
+                           rounded-full bg-white/10 hover:bg-white/20 text-white/70
+                           text-lg leading-none transition z-10"
+                aria-label="Cerrar"
               >
                 ×
               </button>
-            </div>
 
-            {/* Precios actuales */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {[
-                { label: 'USD',      value: fmtUSD(card.price_usd_efectivo ?? card.price_usd), color: 'text-emerald-600' },
-                { label: 'ARS Blue', value: fmtARS(card._ars_blue),  color: 'text-blue-600'    },
-                { label: 'ARS Ofic.',value: fmtARS(card._ars_ofic),  color: 'text-gray-600'    },
-              ].map(p => (
-                <div key={p.label}
-                  className="bg-gray-50 rounded-2xl px-3 py-2.5 text-center">
-                  <p className="text-[10px] text-gray-400 mb-0.5">{p.label}</p>
-                  <p className={`text-sm font-bold ${p.color}`}>{p.value}</p>
+              {/* Imagen + Info side-by-side */}
+              <div className="flex gap-4 pr-10">
+
+                {/* ── Imagen grande ── */}
+                <div className="flex-shrink-0 self-start">
+                  {card.image_url ? (
+                    <img
+                      src={card.image_url}
+                      alt={card.nombre}
+                      className="w-[120px] rounded-xl shadow-xl object-contain"
+                      style={{ aspectRatio: '5/7' }}
+                    />
+                  ) : (
+                    <div
+                      className="w-[120px] rounded-xl bg-slate-800 flex items-center
+                                 justify-center text-5xl"
+                      style={{ aspectRatio: '5/7' }}
+                    >
+                      🃏
+                    </div>
+                  )}
                 </div>
-              ))}
+
+                {/* ── Info apilada a la derecha ── */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5"
+                     style={{ minHeight: 'calc(120px * 7 / 5)' }}>
+
+                  {/* Nombre + set */}
+                  <div>
+                    <h2 className="text-white font-bold text-[16px] leading-snug">
+                      {card.nombre || '—'}
+                    </h2>
+                    <p className="text-slate-400 text-[11px] mt-1 leading-snug">
+                      {[card.set_name, card.numero ? `#${card.numero}` : null, card.idioma?.toUpperCase()]
+                        .filter(Boolean).join(' · ')}
+                    </p>
+
+                    {/* KPI badge */}
+                    <div className="mt-2.5">
+                      {kpiLoading && !demoMode
+                        ? <MarketKpiBadge loading size="md" />
+                        : <MarketKpiBadge
+                            kpiScore={score}
+                            kpiState={state}
+                            size="md"
+                            showLabel
+                          />
+                      }
+                    </div>
+                  </div>
+
+                  {/* ── Precio hero ── */}
+                  <div className="mt-3">
+                    <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">
+                      Precio de mercado
+                    </p>
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <p className="text-white text-[26px] font-black leading-none">
+                        {fmtUSD(priceCurrent)}
+                      </p>
+                      {/* Delta chip 7d */}
+                      {fmtPct(change7d) && (
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full mb-0.5
+                          ${isPositive
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-red-500/20 text-red-400'
+                          }`}
+                        >
+                          {fmtPct(change7d)}
+                          <span className="text-[10px] font-normal ml-1 opacity-70">7d</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* ARS secundario */}
+                    {(card._ars_blue || card._ars_ofic) && (
+                      <div className="flex items-center gap-3 mt-1.5">
+                        {card._ars_blue && (
+                          <span className="text-slate-400 text-[11px]">
+                            Blue: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_blue)}</span>
+                          </span>
+                        )}
+                        {card._ars_blue && card._ars_ofic && (
+                          <span className="text-slate-700">·</span>
+                        )}
+                        {card._ars_ofic && (
+                          <span className="text-slate-400 text-[11px]">
+                            Oficial: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_ofic)}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Selector de ventana de tiempo */}
-            <div className="flex items-center gap-1 mb-3">
-              <span className="text-xs text-gray-400 mr-1">Ver:</span>
-              {[7, 14, 30, 60, 90].map(d => (
-                <button
-                  key={d}
-                  onClick={() => setDays(d)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
-                    ${days === d
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                >
-                  {d}d
-                </button>
-              ))}
+            {/* ══════════════════════════════════════════════════════
+                BODY — scroll único, secciones separadas
+            ══════════════════════════════════════════════════════ */}
+            <div className="flex-1 overflow-y-auto overscroll-contain">
+
+              {/* Banner demo mode */}
+              {demoMode && (
+                <div className="bg-amber-50 border-b border-amber-100 px-4 py-2 flex items-center justify-between">
+                  <span className="text-xs text-amber-700 font-medium">
+                    👁 Mostrando datos de ejemplo
+                  </span>
+                  <button
+                    onClick={() => setDemoMode(false)}
+                    className="text-xs text-amber-600 hover:text-amber-800 font-semibold transition"
+                  >
+                    Salir
+                  </button>
+                </div>
+              )}
+
+              {/* ── Sección 1: Evolución del precio ─────────────── */}
+              <section className="px-5 py-5 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-gray-800">Evolución del precio</h3>
+                  {/* Selector de período */}
+                  <div className="flex gap-1">
+                    {[7, 30, 60, 90].map(d => (
+                      <button
+                        key={d}
+                        onClick={() => setDays(d)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition
+                          ${days === d
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Demo: gráfico inline con datos simulados */}
+                {demoMode ? (
+                  <DemoLineChart data={demoChartData} days={days} />
+                ) : (
+                  <PriceHistoryChart cardId={card.inventory_id} days={days} />
+                )}
+
+                {/* Botón ver demo — solo cuando no hay datos reales y no estamos en demo */}
+                {!demoMode && (
+                  <DemoTrigger onActivate={() => setDemoMode(true)} />
+                )}
+              </section>
+
+              {/* ── Sección 2: Señales de mercado ───────────────── */}
+              <section className="px-5 py-5 border-b border-gray-100">
+                <h3 className="text-sm font-bold text-gray-800 mb-3">Señales de mercado</h3>
+
+                {kpiLoading && !demoMode ? (
+                  <div className="flex justify-center py-6">
+                    <Spinner size={20} className="text-blue-400" />
+                  </div>
+                ) : score != null ? (
+                  <>
+                    {/* Banner de estado */}
+                    <div className={`rounded-xl px-3.5 py-2.5 mb-3 flex items-start gap-2.5 ${stateConf.bg}`}>
+                      <span className="text-lg mt-0.5">{stateConf.icon}</span>
+                      <div>
+                        <p className={`text-xs font-semibold ${stateConf.text}`}>{stateConf.label}</p>
+                        <p className={`text-xs mt-0.5 ${stateConf.text} opacity-80`}>
+                          {stateConf.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Grid 3 columnas */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {metrics.map(m => (
+                        <div
+                          key={m.label}
+                          className="bg-gray-50 rounded-xl px-2 py-3 flex flex-col items-center gap-1"
+                        >
+                          <span className="text-xl">{m.icon}</span>
+                          <p className="text-sm font-bold text-gray-800 leading-none">{m.value}</p>
+                          <p className="text-[10px] text-gray-400 text-center leading-tight">{m.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-gray-50 rounded-2xl px-4 py-5 text-center">
+                    <p className="text-2xl mb-1.5">📡</p>
+                    <p className="text-xs text-gray-600 font-semibold">Sin datos de mercado</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      El cron nocturno aún no procesó esta carta.
+                    </p>
+                    {!demoMode && (
+                      <button
+                        onClick={() => setDemoMode(true)}
+                        className="mt-3 text-[11px] text-blue-500 hover:text-blue-700
+                                   font-semibold transition underline underline-offset-2"
+                      >
+                        👁 Ver cómo se verá con datos
+                      </button>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* ── Sección 3: Sparkline KPI histórico ──────────── */}
+              {sparkData.length >= 2 && (
+                <section className="px-5 py-5 border-b border-gray-100">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3">Puntaje KPI — últimos 30d</h3>
+                  <ResponsiveContainer width="100%" height={100}>
+                    <AreaChart data={sparkData} margin={{ top: 2, right: 4, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="kpiGrad2" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}   />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={fmtDate}
+                        tick={{ fontSize: 9, fill: '#9ca3af' }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#9ca3af' }} />
+                      <Tooltip
+                        formatter={(v) => [v != null ? `${v} / 100` : '—', 'Puntaje KPI']}
+                        labelFormatter={fmtDate}
+                        contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="kpi"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        fill="url(#kpiGrad2)"
+                        dot={false}
+                        connectNulls
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+
+                  {/* Descripción del KPI */}
+                  <div className="mt-3 bg-blue-50 rounded-xl px-3.5 py-3">
+                    <p className="text-[11px] font-semibold text-blue-700 mb-1">¿Qué es el Puntaje KPI?</p>
+                    <p className="text-[11px] text-blue-600 leading-relaxed">
+                      Es un indicador de <strong>salud comercial</strong> de la carta en el mercado secundario
+                      (eBay). Escala de <strong>0 a 100</strong>, donde mayor puntaje = mayor oportunidad de venta.
+                      Combina cuatro factores:
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      {[
+                        ['🔥', 'Demanda',   'búsquedas y ventas recientes'],
+                        ['💧', 'Liquidez',  'velocidad de venta'],
+                        ['📊', 'Tendencia', 'dirección del precio'],
+                        ['📦', 'Oferta',    'cantidad disponible en mercado'],
+                      ].map(([icon, name, desc]) => (
+                        <p key={name} className="text-[10px] text-blue-500 leading-snug">
+                          {icon} <span className="font-semibold">{name}:</span> {desc}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* ── Footer ───────────────────────────────────────── */}
+              {kpi?.snapshot_date && !demoMode && (
+                <div className="px-5 py-3">
+                  <p className="text-[10px] text-gray-300 text-right">
+                    Datos al {kpi.snapshot_date} · Fuente: eBay Browse API
+                  </p>
+                </div>
+              )}
+
+              {/* Safe area */}
+              <div className="h-8" />
             </div>
 
-            {/* Gráfico */}
-            <PriceHistoryChart cardId={card.inventory_id} days={days} />
           </motion.div>
         </>
       )}
     </AnimatePresence>
+  )
+}
+
+// ── Sub-componentes internos ──────────────────────────────────────────────────
+
+/** Gráfico de línea con datos demo */
+function DemoLineChart({ data, days }) {
+  if (!data) return null
+  const slice = data.slice(-days)
+  const first = slice[0]?.tcgplayer
+  const last  = slice[slice.length - 1]?.tcgplayer
+  const delta = first && last ? ((last - first) / first * 100).toFixed(1) : null
+  const pos   = delta != null && parseFloat(delta) >= 0
+
+  return (
+    <div>
+      {delta !== null && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs text-gray-400">{days}d</span>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full
+            ${pos ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'}`}>
+            {pos ? '▲' : '▼'} {Math.abs(delta)}%
+          </span>
+          <span className="text-xs text-gray-400">
+            ${Number(first).toFixed(2)} → ${Number(last).toFixed(2)} USD
+          </span>
+        </div>
+      )}
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={slice} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis
+            dataKey="date"
+            tickFormatter={fmtDate}
+            tick={{ fontSize: 10, fill: '#9ca3af' }}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#9ca3af' }}
+            tickFormatter={v => `$${v}`}
+            domain={['auto', 'auto']}
+          />
+          <Tooltip
+            formatter={(v) => [`$${Number(v).toFixed(2)}`, 'TCGPlayer']}
+            labelFormatter={fmtDate}
+            contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e5e7eb' }}
+          />
+          <Line
+            type="monotone"
+            dataKey="tcgplayer"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={false}
+            connectNulls
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+/** Botón "Ver demo" — se muestra solo en la sección de evolución cuando no hay datos */
+function DemoTrigger({ onActivate }) {
+  const [visible, setVisible] = useState(false)
+
+  // Se hace visible solo si PriceHistoryChart no está cargando
+  // (se renderiza siempre, la visibilidad la maneja el padre si quiere)
+  return (
+    <div className="mt-3 text-center">
+      <button
+        onClick={onActivate}
+        className="text-[11px] text-blue-400 hover:text-blue-600 font-medium
+                   transition underline underline-offset-2"
+      >
+        👁 Ver ejemplo con datos
+      </button>
+    </div>
   )
 }

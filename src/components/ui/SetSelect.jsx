@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { fetchAllSets } from '../../lib/pokemonTcg'
+import { scannerApi } from '../../lib/scanner'
 
 /**
  * Dropdown buscable con todos los sets del TCG.
@@ -11,28 +12,55 @@ import { fetchAllSets } from '../../lib/pokemonTcg'
  *   disabled  {bool}    — deshabilitar el control
  *   className {string}  — clases extra para el wrapper
  *   size      {'sm'|'md'} — 'sm' = compacto (CardRow), 'md' = formulario (default)
+ *   lang      {string}  — 'en' | 'jp' | 'cn' — filtra sets por idioma (default: 'en')
  */
-export default function SetSelect({ value, setId, onChange, disabled = false, className = '', size = 'md' }) {
+const _normLang = (l = 'en') => {
+  if (['ja', 'jp', 'japanese'].includes(l)) return 'jp'
+  if (['zh', 'cn', 'chinese'].includes(l))  return 'cn'
+  return 'en'
+}
+
+export default function SetSelect({ value, setId, onChange, disabled = false, className = '', size = 'md', lang = 'en' }) {
   const [open,    setOpen]    = useState(false)
   const [query,   setQuery]   = useState('')
   const [sets,    setSets]    = useState([])
   const [loading, setLoading] = useState(false)
-  const wrapRef  = useRef(null)
-  const inputRef = useRef(null)
+  const wrapRef    = useRef(null)
+  const inputRef   = useRef(null)
+  const loadedLang = useRef(null)   // idioma con el que se cargaron los sets
 
-  // Cargar sets al abrir por primera vez
+  const normalizedLang = _normLang(lang)
+
+  // Cargar sets al abrir (o si cambió el idioma)
   const openDropdown = async () => {
     if (disabled) return
     setOpen(true)
     setQuery('')
-    if (sets.length === 0) {
+    if (sets.length === 0 || loadedLang.current !== normalizedLang) {
       setLoading(true)
-      const data = await fetchAllSets()
+      let data = []
+      if (normalizedLang === 'en') {
+        const raw = await fetchAllSets()
+        data = raw  // [{id, name, series, year, total, symbol}]
+      } else {
+        // JP / CN: sets del índice pHash del backend
+        const raw = await scannerApi.availableSets(normalizedLang)
+        data = raw  // [{id, name}]
+      }
       setSets(data)
+      loadedLang.current = normalizedLang
       setLoading(false)
     }
     setTimeout(() => inputRef.current?.focus(), 50)
   }
+
+  // Reiniciar sets cacheados cuando cambia el idioma
+  useEffect(() => {
+    if (loadedLang.current !== null && loadedLang.current !== normalizedLang) {
+      setSets([])
+      loadedLang.current = null
+    }
+  }, [normalizedLang])
 
   // Cerrar al click fuera
   useEffect(() => {
@@ -139,7 +167,11 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
                 }
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-gray-800 block truncate">{s.name}</span>
-                  <span className="text-gray-400 text-[10px]">{s.series} · {s.year} · {s.total} cartas</span>
+                  {(s.series || s.year || s.total) && (
+                    <span className="text-gray-400 text-[10px]">
+                      {[s.series, s.year, s.total ? `${s.total} cartas` : null].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                 </div>
                 {s.id === setId && <span className="text-blue-500 text-[10px] shrink-0">✓</span>}
               </button>

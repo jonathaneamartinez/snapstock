@@ -5,20 +5,29 @@ import { useSettings, PRICE_SOURCES } from '../hooks/useSettings'
 import { revalidarPrecios } from '../lib/revalidarPrecios'
 import Toast  from '../components/ui/Toast'
 import Spinner from '../components/ui/Spinner'
+import { CLIENT_ID } from '../constants'
 
-const USUARIOS = [
-  { nombre: 'Kardia',  tel: '5491122541350' },
-  { nombre: 'Sebas',   tel: '5491125284...' },
-  { nombre: 'Melody',  tel: '5491159730...' },
-  { nombre: 'Mayra',   tel: '5491132583386' },
-]
+// Usuarios autorizados por cliente (WhatsApp)
+const USUARIOS_MAP = {
+  'jonat': [
+    { nombre: 'Jonat', tel: '5491122544135' },
+  ],
+  'singles-ut': [
+    { nombre: 'Kardia',  tel: '5491122541350' },
+    { nombre: 'Sebas',   tel: '5491125284...' },
+    { nombre: 'Melody',  tel: '5491159730...' },
+    { nombre: 'Mayra',   tel: '5491132583386' },
+  ],
+}
+
+const USUARIOS = USUARIOS_MAP[CLIENT_ID] ?? []
 
 const LS_KEY = 'ss_last_price_update'
 
 export default function Settings() {
   const queryClient = useQueryClient()
   const { blue, oficial, isLoading } = useDolar()
-  const { margen, saveMargen, savingMargen, precioFuente, savePrecioFuente, savingFuente } = useSettings()
+  const { margen, saveMargen, savingMargen, precioFuente, savePrecioFuente, savingFuente, storeName, ownerName, whatsappNumber } = useSettings()
   const [margenDraft, setMargenDraft] = useState(null)
   const [toast, setToast] = useState({ visible: false, mensaje: '' })
 
@@ -92,10 +101,10 @@ export default function Settings() {
         <h3 className="font-semibold text-gray-800 mb-4">Perfil de la tienda</h3>
         <div className="space-y-3">
           {[
-            { label: 'Nombre',    value: 'Singles UT'          },
-            { label: 'Dueños',    value: 'Sebas y Melo'        },
-            { label: 'WhatsApp',  value: '+54 9 11 2528-4975'  },
-            { label: 'Plan',      value: 'Membresía activa'    },
+            { label: 'Nombre',    value: storeName                    },
+            { label: 'Dueño',     value: ownerName                    },
+            { label: 'WhatsApp',  value: `+${whatsappNumber}`         },
+            { label: 'Plan',      value: 'Membresía activa'           },
           ].map(r => (
             <div key={r.label}>
               <label className="text-xs text-gray-400 font-medium">{r.label}</label>

@@ -125,13 +125,30 @@ export async function fetchCardsBySet(setId, query = '') {
 }
 
 /**
+ * Normaliza un número de carta para la API:
+ * "078/217" → "78", "TG30" → "TG30", "022" → "22"
+ */
+function normalizeCardNumber(raw) {
+  const s = String(raw).trim().replace(/\.0+$/, '')
+  // Si tiene barra (078/217), tomar solo la parte izquierda
+  const left = s.includes('/') ? s.split('/')[0] : s
+  // Quitar ceros a la izquierda solo si es puramente numérico
+  if (/^\d+$/.test(left)) return String(parseInt(left, 10))
+  return left   // alfanumérico tipo TG30, SWSH007, etc.
+}
+
+/**
  * Busca UNA carta específica por setId + número exacto.
  */
 export async function fetchCardBySetAndNumber(setId, number) {
   if (!setId || !number) return null
-  const num = String(number).trim().replace(/\.0+$/, '')
+  const num = normalizeCardNumber(number)
+  const raw = String(number).trim().replace(/\.0+$/, '')
   try {
-    const card = await apiSearch(`set.id:${setId} number:${num}`)
+    // Intento 1: número normalizado (ej: "78")
+    let card = await apiSearch(`set.id:${setId} number:${num}`)
+    // Intento 2: número original con barra (ej: "078/217") — algunos sets lo usan
+    if (!card && raw !== num) card = await apiSearch(`set.id:${setId} number:${raw}`)
     if (!card) return null
     const prices = card.tcgplayer?.prices ?? {}
     return {
