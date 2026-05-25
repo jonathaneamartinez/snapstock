@@ -5,6 +5,7 @@ import { supabase }  from '../lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer } from 'recharts'
 import Spinner    from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
+import { useI18n } from '../lib/i18n'
 
 const fmtARS = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 
@@ -25,21 +26,20 @@ const CANALES_COLOR = {
   whatsapp:        '#25D366',
 }
 
-// ── Configuración de estados ──────────────────────────────────────────────────
-const ESTADOS = {
-  pendiente: { label: 'Pendiente',      cls: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-400' },
-  pagada:    { label: 'Pagada',         cls: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  deuda:     { label: 'Fue a deuda',    cls: 'bg-red-100 text-red-700',       dot: 'bg-red-500'   },
-  cancelada: { label: 'Volvió al stock',cls: 'bg-gray-100 text-gray-500',     dot: 'bg-gray-400'  },
+// ── Configuración de estados (labels se pasan como prop desde el componente padre) ──
+const ESTADOS_CLS = {
+  pendiente: { cls: 'bg-amber-100 text-amber-700',    dot: 'bg-amber-400'   },
+  pagada:    { cls: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  deuda:     { cls: 'bg-red-100 text-red-700',         dot: 'bg-red-500'    },
+  cancelada: { cls: 'bg-gray-100 text-gray-500',       dot: 'bg-gray-400'   },
 }
 
-const estadoCfg = (e) => ESTADOS[e] ?? ESTADOS.pendiente
-
 // ── Dropdown de estado inline ─────────────────────────────────────────────────
-function EstadoDropdown({ venta, onEstadoChange, loading }) {
+function EstadoDropdown({ venta, onEstadoChange, loading, labels }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-  const cfg = estadoCfg(venta.estado)
+  const cfgBase = ESTADOS_CLS[venta.estado] ?? ESTADOS_CLS.pendiente
+  const cfg = { ...cfgBase, label: labels[venta.estado] ?? venta.estado }
 
   // Cerrar al clickear afuera
   useEffect(() => {
@@ -52,26 +52,26 @@ function EstadoDropdown({ venta, onEstadoChange, loading }) {
   const opciones = [
     {
       value: 'pagada',
-      label: '✅ Pagada',
-      sub:   'Confirmar cobro',
+      label: `✅ ${labels.pagada}`,
+      sub:   labels.confirm,
       cls:   'hover:bg-emerald-50',
     },
     {
       value: 'pendiente',
-      label: '⏳ Pendiente',
-      sub:   'Sin confirmar aún',
+      label: `⏳ ${labels.pendiente}`,
+      sub:   labels.unconfirmed,
       cls:   'hover:bg-amber-50',
     },
     {
       value: 'deuda',
-      label: '🏦 Fue a deuda',
-      sub:   'No pagó — registrar deuda',
+      label: `🏦 ${labels.deuda}`,
+      sub:   labels.nodebts,
       cls:   'hover:bg-red-50',
     },
     ...(venta.inventory_id ? [{
       value: 'cancelada',
-      label: '↩ Volver al stock',
-      sub:   'Devolver carta al inventario',
+      label: `↩ ${labels.cancelada}`,
+      sub:   labels.return_stock,
       cls:   'hover:bg-blue-50',
     }] : []),
   ]
@@ -126,10 +126,23 @@ export default function Ventas() {
   const [month,    setMonth]    = useState(now.getMonth() + 1)
   const [loadingId, setLoadingId] = useState(null)
   const [toast,    setToast]    = useState(null)
+  const { t } = useI18n()
 
   const { data, isLoading } = useVentas(year, month)
 
   const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+  // Labels traducidos para el dropdown de estado
+  const estadoLabels = {
+    pendiente:   t('ventas_status_pending'),
+    pagada:      t('ventas_status_paid'),
+    deuda:       t('ventas_status_debt'),
+    cancelada:   t('ventas_status_returned'),
+    confirm:     t('ventas_status_confirm'),
+    unconfirmed: t('ventas_status_unconfirmed'),
+    nodebts:     t('ventas_status_nodebts'),
+    return_stock:t('ventas_status_return'),
+  }
 
   const ventas = data ?? []
 
@@ -221,7 +234,7 @@ export default function Ventas() {
 
       {/* Selector mes/año */}
       <div className="flex items-center gap-3 flex-wrap">
-        <h2 className="font-extrabold text-gray-900 text-xl flex-1">Ventas del mes</h2>
+        <h2 className="font-extrabold text-gray-900 text-xl flex-1">{t('ventas_title')}</h2>
         <select value={month} onChange={e => setMonth(+e.target.value)}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
           {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
@@ -233,10 +246,10 @@ export default function Ventas() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Vendidas este mes', value: ventas.length,      sub: 'cartas',   color: 'text-blue-600'    },
-          { label: 'Total facturado',   value: fmtARS(totalFacturado), sub: 'ARS', color: 'text-gray-800'    },
-          { label: 'Cobrado',           value: fmtARS(cobrado),    sub: 'ARS',      color: 'text-emerald-600' },
-          { label: 'Pendiente / Deuda', value: fmtARS(pendiente + enDeuda), sub: `${fmtARS(enDeuda)} en deuda`, color: 'text-amber-500' },
+          { label: t('ventas_sold_this_month'), value: ventas.length,      sub: t('ventas_cards'),   color: 'text-blue-600'    },
+          { label: t('ventas_total_billed'),    value: fmtARS(totalFacturado), sub: 'ARS',           color: 'text-gray-800'    },
+          { label: t('ventas_collected'),       value: fmtARS(cobrado),    sub: 'ARS',               color: 'text-emerald-600' },
+          { label: t('ventas_pending_debt'),    value: fmtARS(pendiente + enDeuda), sub: `${fmtARS(enDeuda)} ${t('ventas_in_debt')}`, color: 'text-amber-500' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{k.label}</p>
@@ -253,7 +266,7 @@ export default function Ventas() {
       )}
 
       {!isLoading && ventas.length === 0 && (
-        <EmptyState emoji="📊" title="Sin ventas este mes" sub="Las ventas registradas aparecerán acá" />
+        <EmptyState emoji="📊" title={t('ventas_no_sales')} sub="" />
       )}
 
       {!isLoading && ventas.length > 0 && (
@@ -261,7 +274,7 @@ export default function Ventas() {
           {/* Gráfico por canal */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
             <div className="mb-4">
-              <h3 className="font-semibold text-gray-800">Ventas por canal</h3>
+              <h3 className="font-semibold text-gray-800">{t('ventas_by_channel')}</h3>
               <p className="text-xs text-gray-400">{MESES[month-1]} {year}</p>
             </div>
             <ResponsiveContainer width="100%" height={180}>
@@ -277,14 +290,14 @@ export default function Ventas() {
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-sm text-gray-500">Ganancia neta estimada (30%)</span>
+              <span className="text-sm text-gray-500">{t('ventas_net_profit')}</span>
               <span className="text-emerald-600 font-bold">+{fmtARS(gananciaNeta)}</span>
             </div>
           </div>
 
           {/* Detalle por canal */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-            <h3 className="font-semibold text-gray-800 mb-4">Detalle por canal</h3>
+            <h3 className="font-semibold text-gray-800 mb-4">{t('ventas_channel_detail')}</h3>
             <div className="space-y-3">
               {canalData.map(c => {
                 const pct = totalFacturado > 0 ? (c.monto / totalFacturado) * 100 : 0
@@ -311,12 +324,17 @@ export default function Ventas() {
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="font-semibold text-gray-800">
-              Detalle ventas — {MESES[month-1]} {year}
+              {t('ventas_detail')} — {MESES[month-1]} {year}
             </h3>
             {/* Leyenda de estados */}
             <div className="hidden sm:flex items-center gap-3 text-xs text-gray-400">
-              {Object.entries(ESTADOS).map(([key, cfg]) => (
-                <span key={key} className="flex items-center gap-1">
+              {[
+                { key: 'pendiente', dot: 'bg-amber-400',   label: t('ventas_legend_pending') },
+                { key: 'pagada',    dot: 'bg-emerald-500', label: t('ventas_legend_paid')    },
+                { key: 'deuda',     dot: 'bg-red-500',     label: t('ventas_legend_debt')    },
+                { key: 'cancelada', dot: 'bg-gray-400',    label: t('ventas_legend_stock')   },
+              ].map(cfg => (
+                <span key={cfg.key} className="flex items-center gap-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                   {cfg.label}
                 </span>
@@ -328,7 +346,7 @@ export default function Ventas() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                 <tr>
-                  {['Fecha','Carta','Canal','Comprador','ARS','Estado'].map(h => (
+                  {[t('ventas_col_date'),t('ventas_col_card'),t('ventas_col_channel'),t('ventas_col_buyer'),t('ventas_col_ars'),t('ventas_col_status')].map(h => (
                     <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -365,6 +383,7 @@ export default function Ventas() {
                         venta={v}
                         onEstadoChange={handleEstadoChange}
                         loading={loadingId === v.id}
+                        labels={estadoLabels}
                       />
                     </td>
                   </tr>
@@ -375,13 +394,13 @@ export default function Ventas() {
               <tfoot className="bg-gray-50 border-t-2 border-gray-200 text-xs font-semibold text-gray-600">
                 <tr>
                   <td colSpan={4} className="px-4 py-3">
-                    Total ({ventas.length} ventas)
+                    {t('ventas_total')} ({ventas.length} {t('ventas_total_sales')})
                   </td>
                   <td className="px-4 py-3 text-blue-600 whitespace-nowrap">
                     {fmtARS(totalFacturado)}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-emerald-600">{fmtARS(cobrado)} cobrado</span>
+                    <span className="text-emerald-600">{fmtARS(cobrado)} {t('ventas_collected_label')}</span>
                     {enDeuda > 0 && <span className="text-red-500 ml-2">{fmtARS(enDeuda)} deuda</span>}
                   </td>
                 </tr>

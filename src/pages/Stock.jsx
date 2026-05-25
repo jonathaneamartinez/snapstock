@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { IDIOMAS, CONDICIONES, STORE_ID, CANALES_VENTA, FEATURES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
 import { translateSetName } from '../lib/setTranslations'
+import { useI18n } from '../lib/i18n'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 import ClaimCartModal    from '../components/stock/ClaimCartModal'
@@ -33,27 +34,26 @@ const fmtFecha = (s) => {
 
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
-
-// Columnas con su key de ordenamiento y tipo
-const COLS = [
-  { h: 'Imagen',      key: null          },
-  { h: 'Nombre',      key: 'nombre',      type: 'str'  },
-  { h: 'Set',         key: 'set_name',    type: 'str'  },
-  { h: 'Nº',          key: 'numero',      type: 'num'  },
-  { h: 'Idioma',      key: 'idioma',      type: 'str'  },
-  { h: 'Holo',        key: 'holo',        type: 'bool' },
-  { h: 'Cond.',       key: 'condicion',   type: 'str'  },
-  { h: 'Stock',       key: 'stock',       type: 'num'  },
-  { h: 'USD',         key: 'price_usd',   type: 'num'  },
-  { h: 'ARS Ofic.',   key: '_ars_ofic',   type: 'num'  },
-  { h: 'ARS Blue',    key: '_ars_blue',   type: 'num'  },
-  { h: 'P. Venta',    key: 'precio_venta',type: 'num'  },
-  { h: 'Estado',      key: 'status',      type: 'str'  },
-  { h: 'Comprador',   key: 'buyer_name',  type: 'str'  },
-  { h: 'Contacto',    key: 'buyer_contact',type:'str'  },
-  { h: 'Notas',       key: 'notes',       type: 'str'  },
-  { h: 'F. Reserva',  key: 'reserved_at', type: 'date' },
-  { h: 'F. Escaneada',key: 'fecha_escaneada',type:'date'},
+// Columnas: i18n_key + sort key + type (labels se resuelven con t() dentro del componente)
+const COLS_DEF = [
+  { i: 'stock_col_image',    key: null,                type: null   },
+  { i: 'stock_col_name',     key: 'nombre',            type: 'str'  },
+  { i: 'stock_col_set',      key: 'set_name',          type: 'str'  },
+  { i: 'stock_col_number',   key: 'numero',            type: 'num'  },
+  { i: 'stock_col_language', key: 'idioma',            type: 'str'  },
+  { i: 'stock_col_holo',     key: 'holo',              type: 'bool' },
+  { i: 'stock_col_condition',key: 'condicion',         type: 'str'  },
+  { i: 'stock_col_stock',    key: 'stock',             type: 'num'  },
+  { i: 'stock_col_usd',      key: 'price_usd',         type: 'num'  },
+  { i: 'stock_col_ars_ofic', key: '_ars_ofic',         type: 'num'  },
+  { i: 'stock_col_ars_blue', key: '_ars_blue',         type: 'num'  },
+  { i: 'stock_col_sale',     key: 'precio_venta',      type: 'num'  },
+  { i: 'stock_col_status',   key: 'status',            type: 'str'  },
+  { i: 'stock_col_buyer',    key: 'buyer_name',        type: 'str'  },
+  { i: 'stock_col_contact',  key: 'buyer_contact',     type: 'str'  },
+  { i: 'stock_col_notes',    key: 'notes',             type: 'str'  },
+  { i: 'stock_col_reserved', key: 'reserved_at',       type: 'date' },
+  { i: 'stock_col_scanned',  key: 'fecha_escaneada',   type: 'date' },
 ]
 
 export default function Stock() {
@@ -76,10 +76,14 @@ export default function Stock() {
   // ── Carrito de claim persistente (sobrevive cambios de página) ──────────
   const [claimCart,   setClaimCart]   = useState(new Map()) // inventory_id → row data
 
+  const { t } = useI18n()
   const { data, isLoading, error } = useStock(filters)
   const { data: m } = useMetricas()
   const { blue, oficial } = useDolar()
   const { precioFuente, savePrecioFuente } = useSettings()
+
+  // Columnas con labels traducidos
+  const COLS = COLS_DEF.map(c => ({ ...c, h: t(c.i) }))
 
   const set = (k, v) => {
     setSelectedIds(new Set())
@@ -252,7 +256,7 @@ export default function Stock() {
       .eq('id', inventoryId)
     if (!error) {
       queryClient.invalidateQueries({ queryKey: ['stock'] })
-      showToast('Comprador actualizado')
+      showToast(t('stock_buyer_updated'))
     }
   }
 
@@ -264,7 +268,7 @@ export default function Stock() {
       .eq('id', inventoryId)
     if (!error) {
       queryClient.invalidateQueries({ queryKey: ['stock'] })
-      showToast('Precio de venta actualizado')
+      showToast(t('stock_price_updated'))
     }
   }
 
@@ -322,7 +326,7 @@ export default function Stock() {
     )
 
     if (!toAdd.length) {
-      showToast('Seleccioná cartas disponibles para agregar al claim', 'error')
+      showToast(t('stock_select_available'), 'error')
       return
     }
 
@@ -352,7 +356,7 @@ export default function Stock() {
       .filter(Boolean)
     warmBlobUrls(urlsToWarm)   // sin await, corre en background
 
-    showToast(`${toAdd.length} carta${toAdd.length === 1 ? '' : 's'} agregada${toAdd.length === 1 ? '' : 's'} al claim 🃏`)
+    showToast(`${toAdd.length} ${toAdd.length === 1 ? t('stock_card_singular') : t('stock_card_plural')} ${toAdd.length === 1 ? t('stock_claim_added') : t('stock_claim_added_plural')}`)
   }
 
   // ── Abrir carrito review → luego el usuario puede continuar al generador ─
@@ -400,10 +404,10 @@ export default function Stock() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total cartas',  value: (m?.totalCartas ?? 0).toLocaleString('es-AR'), sub: 'en stock',     color: 'text-blue-600'    },
-          { label: 'Disponibles',   value: disponibles.toLocaleString('es-AR'),           sub: 'para venta',   color: 'text-emerald-600' },
-          { label: 'Reservadas',    value: reservadas.toLocaleString('es-AR'),            sub: 'por entregar', color: 'text-amber-500'   },
-          { label: 'Valor total',   value: `$${valorUSD.toLocaleString('en', { maximumFractionDigits: 0 })}`, sub: 'USD mercado', color: 'text-gray-800' },
+          { label: t('stock_kpi_total'),     value: (m?.totalCartas ?? 0).toLocaleString('es-AR'), sub: t('stock_kpi_in_stock'),   color: 'text-blue-600'    },
+          { label: t('stock_kpi_available'), value: disponibles.toLocaleString('es-AR'),           sub: t('stock_kpi_for_sale'),   color: 'text-emerald-600' },
+          { label: t('stock_kpi_reserved'),  value: reservadas.toLocaleString('es-AR'),            sub: t('stock_kpi_to_deliver'), color: 'text-amber-500'   },
+          { label: t('stock_kpi_value'),     value: `$${valorUSD.toLocaleString('en', { maximumFractionDigits: 0 })}`, sub: t('stock_kpi_usd'), color: 'text-gray-800' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{k.label}</p>
@@ -430,8 +434,8 @@ export default function Stock() {
                          py-3 px-5 bg-violet-600 hover:bg-violet-500
                          text-white font-bold text-sm rounded-2xl shadow-md transition"
             >
-              🃏 Para claimear · {claimCart.size} {claimCart.size === 1 ? 'carta' : 'cartas'}
-              <span className="text-violet-300 text-xs font-normal ml-1">ver carrito →</span>
+              🃏 {t('stock_claim_cart_label')} · {claimCart.size} {claimCart.size === 1 ? t('stock_card_singular') : t('stock_card_plural')}
+              <span className="text-violet-300 text-xs font-normal ml-1">{t('stock_claim_cart_view')}</span>
             </button>
             <button
               onClick={() => setClaimCart(new Map())}
@@ -451,10 +455,10 @@ export default function Stock() {
         <div className="flex flex-wrap gap-2">
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
             {[
-              { v: '',           l: 'Todos'      },
-              { v: 'disponible', l: 'Disponible' },
-              { v: 'reservada',  l: 'Reservada'  },
-              { v: 'vendida',    l: 'Vendida'    },
+              { v: '',           l: t('stock_status_all')       },
+              { v: 'disponible', l: t('stock_status_available') },
+              { v: 'reservada',  l: t('stock_status_reserved')  },
+              { v: 'vendida',    l: t('stock_status_sold')      },
             ].map(e => (
               <button key={e.v} onClick={() => set('estado', e.v)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition
@@ -465,7 +469,7 @@ export default function Stock() {
               </button>
             ))}
           </div>
-          <input type="text" placeholder="Buscar por nombre o set…"
+          <input type="text" placeholder={t('stock_search_placeholder')}
             onChange={e => set('busqueda', e.target.value)}
             className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-40
                        focus:outline-none focus:ring-2 focus:ring-blue-200" />
@@ -473,7 +477,7 @@ export default function Stock() {
           <div className="relative shrink-0">
             <select onChange={e => set('idioma', e.target.value)}
               className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
-              <option value="">Idioma</option>
+              <option value="">{t('stock_filter_language')}</option>
               {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
             </select>
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
@@ -481,7 +485,7 @@ export default function Stock() {
           <div className="relative shrink-0">
             <select onChange={e => set('condicion', e.target.value)}
               className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
-              <option value="">Condición</option>
+              <option value="">{t('stock_filter_condition')}</option>
               {CONDICIONES.map(c => <option key={c}>{c}</option>)}
             </select>
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
@@ -540,7 +544,7 @@ export default function Stock() {
                   ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
                   : 'border-gray-200 bg-white text-gray-500 hover:border-amber-300 hover:text-amber-600'}`}
             >
-              {demoKpi ? '🟡 Demo ON' : '👁 Demo KPI'}
+              {demoKpi ? t('stock_demo_on') : t('stock_demo_kpi')}
             </button>
 
             {/* Chip activo — reset rápido */}
@@ -550,7 +554,7 @@ export default function Stock() {
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-red-200
                            bg-red-50 text-red-500 text-xs font-semibold hover:bg-red-100 transition"
               >
-                ✕ Limpiar KPI
+                {t('stock_clear_kpi')}
               </button>
             )}
           </>)}
@@ -562,8 +566,8 @@ export default function Stock() {
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5
                         flex items-center justify-between text-xs">
           <span className="text-amber-700 font-medium flex items-center gap-2">
-            🟡 <strong>Modo Demo KPI activo</strong>
-            <span className="text-amber-500 font-normal">— Los datos de KPI son simulados para previsualizar filtros y orden. No representan valores reales.</span>
+            🟡 <strong>{t('stock_demo_banner')}</strong>
+            <span className="text-amber-500 font-normal">— {t('stock_demo_banner_sub')}</span>
           </span>
           <button onClick={() => setDemoKpi(false)}
                   className="text-amber-400 hover:text-amber-700 font-bold transition ml-3">
@@ -617,10 +621,10 @@ export default function Stock() {
         {isLoading && <div className="flex justify-center py-16"><Spinner size={32} className="text-blue-400" /></div>}
         {error     && <p className="text-red-500 text-sm p-6">Error: {error.message}</p>}
         {!isLoading && !error && rows.length === 0 && (
-          <EmptyState emoji="📭" title="Sin resultados" sub="Probá con otros filtros" />
+          <EmptyState emoji="📭" title={t('no_results')} sub={t('try_filters')} />
         )}
         {!isLoading && !error && rows.length > 0 && sortedRows.length === 0 && (
-          <EmptyState emoji="📡" title="Sin resultados para este filtro KPI" sub="Probá con otra señal de mercado" />
+          <EmptyState emoji="📡" title={t('stock_no_kpi_results')} sub={t('stock_no_kpi_sub')} />
         )}
 
         {!isLoading && sortedRows.length > 0 && (
@@ -770,7 +774,7 @@ export default function Stock() {
                         <InlineEdit
                           value={r.sale_price_ars ?? r.precio_venta ?? null}
                           type="number"
-                          placeholder="Sin precio"
+                          placeholder={t('stock_price_ph_none')}
                           formatDisplay={v => v != null ? fmtARS(v) : null}
                           onSave={v => saveSalePrice(r.inventory_id, v)}
                         />
@@ -782,7 +786,7 @@ export default function Stock() {
                           ? <InlineEdit
                               value={r.buyer_name ?? null}
                               type="text"
-                              placeholder="Sin nombre"
+                              placeholder={t('stock_buyer_ph_none')}
                               onSave={v => saveBuyerName(r.inventory_id, v)}
                             />
                           : (r.buyer_name || '—')
@@ -897,7 +901,7 @@ export default function Stock() {
                        ${totalPages > 1 ? 'bottom-[96px]' : 'bottom-6'}`}
           >
             <span className="text-sm font-semibold whitespace-nowrap">
-              {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'}
+              {selectedIds.size} {selectedIds.size === 1 ? t('stock_card_singular') : t('stock_card_plural')}
             </span>
             <div className="w-px h-5 bg-white/20" />
             <button
@@ -905,21 +909,21 @@ export default function Stock() {
               disabled={bulkLoading}
               className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
                          disabled:opacity-50 rounded-xl text-xs font-semibold transition whitespace-nowrap">
-              ✓ Marcar vendidas
+              {t('stock_bulk_mark_sold')}
             </button>
             <button
               onClick={handleAddToClaim}
               disabled={bulkLoading}
               className="px-3 py-1.5 bg-violet-500 hover:bg-violet-400
                          disabled:opacity-50 rounded-xl text-xs font-semibold transition whitespace-nowrap">
-              🃏 Agregar al Claim
+              {t('stock_bulk_add_claim')}
             </button>
             <button
               onClick={() => setConfirmDel(true)}
               disabled={bulkLoading}
               className="px-3 py-1.5 bg-red-500 hover:bg-red-400
                          disabled:opacity-50 rounded-xl text-xs font-semibold transition">
-              🗑 Eliminar
+              {t('stock_bulk_delete')}
             </button>
             <button
               onClick={() => setSelectedIds(new Set())}
@@ -944,7 +948,7 @@ export default function Stock() {
                        ${totalPages > 1 ? 'bottom-[96px]' : 'bottom-6'}`}
           >
             <span className="text-xs font-semibold whitespace-nowrap">
-              ✓ {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'} vendida{selectedIds.size === 1 ? '' : 's'} ·
+              ✓ {selectedIds.size} {selectedIds.size === 1 ? t('stock_card_singular') : t('stock_card_plural')} {selectedIds.size === 1 ? t('stock_sold_toast') : t('stock_sold_plural')} ·
             </span>
             <select
               value={bulkChannel}
@@ -959,7 +963,7 @@ export default function Stock() {
             <input
               autoFocus
               type="text"
-              placeholder="Comprador (opcional)"
+              placeholder={t('stock_bulk_buyer_ph')}
               value={bulkBuyer}
               onChange={e => setBulkBuyer(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleMarkSold(bulkBuyer, bulkChannel)}
@@ -973,14 +977,14 @@ export default function Stock() {
               className="px-3 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50
                          disabled:opacity-50 rounded-xl text-xs font-bold transition whitespace-nowrap"
             >
-              {bulkLoading ? '…' : 'Confirmar'}
+              {bulkLoading ? '…' : t('stock_bulk_confirm_sell')}
             </button>
             <button
               onClick={() => { setConfirmSell(false); setBulkBuyer('') }}
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500
                          rounded-xl text-xs font-semibold transition"
             >
-              Cancelar
+              {t('cancel')}
             </button>
           </motion.div>
         )}
@@ -999,20 +1003,20 @@ export default function Stock() {
                        ${totalPages > 1 ? 'bottom-[96px]' : 'bottom-6'}`}
           >
             <span className="text-sm font-semibold whitespace-nowrap">
-              ¿Eliminar {selectedIds.size} {selectedIds.size === 1 ? 'carta' : 'cartas'}? No se puede deshacer.
+              {t('stock_bulk_delete_confirm').replace('{n}', selectedIds.size).replace('{cards}', selectedIds.size === 1 ? t('stock_card_singular') : t('stock_card_plural'))}
             </span>
             <button
               onClick={handleDelete}
               disabled={bulkLoading}
               className="px-3 py-1.5 bg-white text-red-600 hover:bg-red-50
                          disabled:opacity-50 rounded-xl text-xs font-bold transition">
-              {bulkLoading ? '…' : 'Sí, eliminar'}
+              {bulkLoading ? '…' : t('yes_delete')}
             </button>
             <button
               onClick={() => setConfirmDel(false)}
               className="px-3 py-1.5 bg-white/20 hover:bg-white/30
                          rounded-xl text-xs font-semibold transition">
-              Cancelar
+              {t('cancel')}
             </button>
           </motion.div>
         )}

@@ -14,6 +14,7 @@ import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
 import SetSelect  from '../components/ui/SetSelect'
 import ImportarCartasModal from '../components/ingresos/ImportarCartasModal'
+import { useI18n } from '../lib/i18n'
 
 const fmtARS = (n) => n != null ? `$${Math.round(n).toLocaleString('es-AR')}` : '—'
 
@@ -21,6 +22,7 @@ export default function Ingresos() {
   const navigate = useNavigate()
   const { blue, oficial } = useDolar()
   const { margen } = useSettings()
+  const { t } = useI18n()
   const [showImport, setShowImport] = useState(false)
 
   const [form, setForm] = useState({
@@ -439,7 +441,7 @@ export default function Ingresos() {
         if (invErr) throw invErr
       }
 
-      showToast(`✅ ${cantidad > 1 ? `${cantidad} cartas agregadas` : 'Carta agregada'} al stock`)
+      showToast(`✅ ${cantidad > 1 ? `${cantidad} ${t('ingresos_added_many')}` : t('ingresos_added_one')} al stock`)
       setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
       setPreview(null)
     } catch (err) {
@@ -466,13 +468,13 @@ export default function Ingresos() {
           {/* ── Formulario (izq) ────────────────────────────────────────── */}
           <div className="flex-1 p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-semibold text-gray-800">Registrar nuevas cartas</h3>
+              <h3 className="font-semibold text-gray-800">{t('ingresos_form_title')}</h3>
               <button
                 onClick={() => setShowImport(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200
                            text-gray-600 text-xs font-semibold rounded-xl transition"
               >
-                📥 Importar CSV / Excel
+                📥 {t('ingresos_import_csv')}
               </button>
             </div>
 
@@ -480,12 +482,12 @@ export default function Ingresos() {
 
               {/* Nombre con autocomplete */}
               <div ref={wrapRef} className="relative">
-                <label className={labelCls}>Nombre de la carta</label>
+                <label className={labelCls}>{t('ingresos_card_name')}</label>
                 <input
                   value={form.nombre}
                   onChange={e => handleNombreChange(e.target.value)}
                   onFocus={handleNombreFocus}
-                  placeholder={form.set_id ? 'Buscar en el set…' : 'Ej: Charizard ex'}
+                  placeholder={form.set_id ? t('ingresos_search_set') : t('ingresos_search_card')}
                   autoComplete="off"
                   className={inputCls}
                 />
@@ -526,7 +528,7 @@ export default function Ingresos() {
                             ${sug.source === 'market'
                               ? 'bg-blue-100 text-blue-600'
                               : 'bg-gray-100 text-gray-500'}`}>
-                            {sug.source === 'market' ? 'mercado' : 'stock'}
+                            {sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
                           </span>
                         </div>
                       </button>
@@ -538,7 +540,7 @@ export default function Ingresos() {
               {/* Set + Número */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>Set / Edición</label>
+                  <label className={labelCls}>{t('ingresos_set_edition')}</label>
                   <SetSelect
                     value={form.set}
                     setId={form.set_id}
@@ -554,11 +556,11 @@ export default function Ingresos() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Número de carta</label>
+                  <label className={labelCls}>{t('ingresos_card_number')}</label>
                   <input
                     value={form.numero}
                     onChange={e => handleNumeroChange(e.target.value)}
-                    placeholder={form.set_id ? '1, TG30…' : 'Ej: 125'}
+                    placeholder={form.set_id ? '1, TG30…' : t('ingresos_card_number_ph')}
                     disabled={!form.set_id && !form.nombre}
                     className={`${inputCls} disabled:opacity-50`}
                   />
@@ -568,20 +570,20 @@ export default function Ingresos() {
               {/* Cantidad + Condición + Idioma */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className={labelCls}>Cantidad</label>
+                  <label className={labelCls}>{t('ingresos_quantity')}</label>
                   <input type="number" min="1" value={form.cantidad}
                     onChange={e => setField('cantidad', e.target.value)}
                     className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>Condición</label>
+                  <label className={labelCls}>{t('ingresos_condition')}</label>
                   <select value={form.condicion} onChange={e => setField('condicion', e.target.value)}
                     className={`${inputCls} bg-white`}>
                     {CONDICIONES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Idioma</label>
+                  <label className={labelCls}>{t('ingresos_language')}</label>
                   <select value={form.idioma}
                     onChange={e => {
                       setField('idioma', e.target.value)
@@ -597,7 +599,7 @@ export default function Ingresos() {
               {/* Precios de mercado (read-only) */}
               <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
                 <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">
-                  Precio de mercado
+                  {t('ingresos_market_price')}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   {[
@@ -613,35 +615,35 @@ export default function Ingresos() {
                 </div>
                 {usd == null && (
                   <p className="text-[11px] text-gray-400 text-center pt-1">
-                    Seleccioná una carta del autocompletado para ver los precios
+                    {t('ingresos_autocomplete_hint')}
                   </p>
                 )}
               </div>
 
               {/* Precio venta */}
               <div>
-                <label className={labelCls}>Precio de venta (ARS)</label>
+                <label className={labelCls}>{t('ingresos_sale_price')}</label>
                 <input type="number" step="0.01" min="0"
                   value={form.precioVenta}
                   onChange={e => setField('precioVenta', e.target.value)}
-                  placeholder={usd != null ? `Sugerido: ${fmtARS(arsBlue)}` : 'Ej: 14000'}
+                  placeholder={usd != null ? `${t('ingresos_suggested')}: ${fmtARS(arsBlue)}` : 'Ej: 14000'}
                   className={inputCls}
                 />
               </div>
 
               {/* Tip scanner */}
               <p className="text-xs text-gray-400 bg-blue-50 rounded-xl px-4 py-3">
-                También podés usar el{' '}
+                {t('ingresos_scanner_tip_pre')}{' '}
                 <Link to="/scanner" className="text-blue-600 font-semibold hover:underline">
-                  scanner por cámara
+                  {t('ingresos_scanner_tip_link')}
                 </Link>
-                {' '}desde el celular para identificar la carta automáticamente.
+                {' '}{t('ingresos_scanner_tip_post')}
               </p>
 
               <button type="submit" disabled={loading || !form.nombre.trim()}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50
                            text-white font-bold rounded-xl transition flex items-center justify-center gap-2">
-                {loading ? <Spinner size={18} /> : 'Agregar al stock'}
+                {loading ? <Spinner size={18} /> : t('ingresos_add_to_stock')}
               </button>
             </form>
           </div>
@@ -652,7 +654,7 @@ export default function Ingresos() {
             {previewLoad ? (
               <div className="flex flex-col items-center gap-3 text-gray-400">
                 <div className="w-8 h-8 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs">Buscando imagen…</p>
+                <p className="text-xs">{t('ingresos_image_searching')}</p>
               </div>
             ) : preview?.imagen ? (
               <>
@@ -681,7 +683,7 @@ export default function Ingresos() {
                                 rounded-2xl flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-3xl mb-2">🃏</p>
-                    <p className="text-xs text-gray-300">La imagen aparece<br/>al seleccionar la carta</p>
+                    <p className="text-xs text-gray-300">{t('ingresos_image_placeholder')}</p>
                   </div>
                 </div>
               </div>
