@@ -28,16 +28,29 @@ const _CLIENT_CONFIGS = {
 const _clientFeatures = _CLIENT_CONFIGS[CLIENT_ID]?.features ?? {}
 const _PLAN = import.meta.env.VITE_PLAN ?? 'basic'
 
-// Un flag es true si el clientConfig lo dice explícitamente true,
-// o si VITE_PLAN=pro y el clientConfig no lo desactiva explícitamente.
-const _feat = (key, planDefault) =>
-  key in _clientFeatures ? !!_clientFeatures[key] : planDefault
+// ── Lógica de resolución de features ─────────────────────────────────────
+//
+//  VITE_PLAN=pro  → "Modo Editor" — override total, ve TODAS las features
+//                   (usar en Vercel Preview/dev para que el editor pruebe todo)
+//
+//  VITE_PLAN=basic → respeta el clientConfig del cliente
+//                   (usar en Vercel Production para que cada cliente vea solo lo suyo)
+//
+//  Flujo de release:
+//    1. Desarrollar en rama `dev` con VITE_PLAN=pro (editor ve todo)
+//    2. Cuando querés que Ayrton vea una feature: editar ayrton/config.js → true
+//    3. Mergear dev → main → Vercel Production se actualiza
+// ─────────────────────────────────────────────────────────────────────────
+const _feat = (key, clientDefault) => {
+  if (_PLAN === 'pro') return true                          // editor: ve todo
+  return key in _clientFeatures ? !!_clientFeatures[key] : clientDefault
+}
 
 export const FEATURES = {
-  marketIntel: _feat('marketIntel', _PLAN === 'pro'),
-  // Agregar acá nuevas features a medida que se implementen:
-  // jpCnSupport: _feat('jpCnSupport', true),
-  // bulkImport:  _feat('bulkImport',  _PLAN === 'pro'),
+  marketIntel: _feat('marketIntel', false),
+  // Agregar nuevas features acá + en cada clientConfig que corresponda:
+  // bulkImport:  _feat('bulkImport',  false),
+  // priceAlerts: _feat('priceAlerts', false),
 }
 
 export const CONDICIONES = ['NM', 'LP', 'MP', 'HP', 'DMG']
