@@ -154,6 +154,28 @@ const en = {
   stock_kpi_order:         'KPI order:',
   stock_kpi_signal:        'Signal:',
 
+  // ── KPI / Market Intel (collectrics) ─────────────────────────────
+  kpi_signal_label:        '📡 Market signal',
+  kpi_with_data:           '✅ With KPI data',
+  kpi_buyable:             '🟢 Good time to buy',
+  kpi_sell_now:            '🔴 Time to sell',
+  kpi_normal:              '🟡 Stable market',
+  kpi_no_data:             '⬜ No data yet',
+  kpi_sort_label:          '↕ Sort by KPI',
+  kpi_sort_score:          '⭐ Best opportunity',
+  kpi_sort_demand:         '🔥 High demand',
+  kpi_sort_demand_asc:     '📉 Low demand',
+  kpi_sort_liquidity:      '💧 High liquidity',
+  kpi_sort_liquidity_asc:  '🐢 Low liquidity',
+  kpi_sort_trend:          '📈 Price rising',
+  kpi_sort_price_asc:      '💲 Lowest price',
+  kpi_banner_with_data:    '✅ With data',
+  kpi_banner_buyable:      '🟢 Buy',
+  kpi_banner_sell_now:     '🔴 Sell',
+  kpi_banner_normal:       '🟡 Stable',
+  kpi_banner_no_data:      '⬜ No data',
+  kpi_demo_title:          'Activate sample data to preview KPI filters and ordering',
+
   // ── Ventas ────────────────────────────────────────────────────────
   ventas_title:           'Monthly sales',
   ventas_sold_this_month: 'Sold this month',
@@ -189,6 +211,12 @@ const en = {
   ventas_legend_paid:     'Paid',
   ventas_legend_debt:     'Went to debt',
   ventas_legend_stock:    'Returned to stock',
+
+  ventas_toast_returned:    'Card returned to stock ↩',
+  ventas_toast_paid:        'Sale marked as paid ✅',
+  ventas_toast_debt:        'Registered as debt 🏦',
+  ventas_toast_updated:     'Status updated',
+  ventas_toast_cancel_err:  'Sale cancelled, but error restoring stock: ',
 
   // ── Deudas ────────────────────────────────────────────────────────
   deudas_title:           'Active debts',

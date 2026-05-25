@@ -502,12 +502,12 @@ export default function Stock() {
                     ? 'border border-blue-300 bg-blue-50 text-blue-700 font-semibold'
                     : 'border border-gray-200 bg-white'}`}
               >
-                <option value="">📡 Señal mercado</option>
-                <option value="con_datos">✅ Con datos KPI</option>
-                <option value="buyable">🟢 Buen momento de compra</option>
-                <option value="sell_now">🔴 Momento de vender</option>
-                <option value="normal">🟡 Mercado estable</option>
-                <option value="sin_datos">⬜ Sin datos aún</option>
+                <option value="">{t('kpi_signal_label')}</option>
+                <option value="con_datos">{t('kpi_with_data')}</option>
+                <option value="buyable">{t('kpi_buyable')}</option>
+                <option value="sell_now">{t('kpi_sell_now')}</option>
+                <option value="normal">{t('kpi_normal')}</option>
+                <option value="sin_datos">{t('kpi_no_data')}</option>
               </select>
               <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
                 ${kpiStateFilter ? 'text-blue-400' : 'text-gray-400'}`}>▾</span>
@@ -522,14 +522,14 @@ export default function Stock() {
                     ? 'border border-purple-300 bg-purple-50 text-purple-700 font-semibold'
                     : 'border border-gray-200 bg-white'}`}
               >
-                <option value="">↕ Ordenar por KPI</option>
-                <option value="score">⭐ Mayor oportunidad</option>
-                <option value="demand">🔥 Más demanda</option>
-                <option value="demand_asc">📉 Menos demanda</option>
-                <option value="liquidity">💧 Más líquida</option>
-                <option value="liquidity_asc">🐢 Menos líquida</option>
-                <option value="trend">📈 Precio subiendo</option>
-                <option value="price_asc">💲 Precio más bajo</option>
+                <option value="">{t('kpi_sort_label')}</option>
+                <option value="score">{t('kpi_sort_score')}</option>
+                <option value="demand">{t('kpi_sort_demand')}</option>
+                <option value="demand_asc">{t('kpi_sort_demand_asc')}</option>
+                <option value="liquidity">{t('kpi_sort_liquidity')}</option>
+                <option value="liquidity_asc">{t('kpi_sort_liquidity_asc')}</option>
+                <option value="trend">{t('kpi_sort_trend')}</option>
+                <option value="price_asc">{t('kpi_sort_price_asc')}</option>
               </select>
               <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
                 ${kpiSort ? 'text-purple-400' : 'text-gray-400'}`}>▾</span>
@@ -538,7 +538,7 @@ export default function Stock() {
             {/* Toggle demo KPI */}
             <button
               onClick={() => setDemoKpi(v => !v)}
-              title="Activar datos de ejemplo para previsualizar filtros y orden KPI"
+              title={t('kpi_demo_title')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition
                 ${demoKpi
                   ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
@@ -584,30 +584,30 @@ export default function Stock() {
             📡
             {kpiSort && (
               <span>
-                Orden KPI: <strong>{{
-                  score: '⭐ Mayor oportunidad',
-                  demand: '🔥 Más demanda',
-                  demand_asc: '📉 Menos demanda',
-                  liquidity: '💧 Más líquida',
-                  liquidity_asc: '🐢 Menos líquida',
-                  trend: '📈 Precio subiendo',
-                  price_asc: '💲 Precio más bajo',
+                {t('stock_kpi_order')} <strong>{{
+                  score:         t('kpi_sort_score'),
+                  demand:        t('kpi_sort_demand'),
+                  demand_asc:    t('kpi_sort_demand_asc'),
+                  liquidity:     t('kpi_sort_liquidity'),
+                  liquidity_asc: t('kpi_sort_liquidity_asc'),
+                  trend:         t('kpi_sort_trend'),
+                  price_asc:     t('kpi_sort_price_asc'),
                 }[kpiSort]}</strong>
               </span>
             )}
             {kpiSort && kpiStateFilter && <span className="text-purple-400 mx-1">·</span>}
             {kpiStateFilter && (
               <span>
-                Señal: <strong>{{
-                  con_datos: '✅ Con datos',
-                  buyable: '🟢 Compra',
-                  sell_now: '🔴 Vender',
-                  normal: '🟡 Estable',
-                  sin_datos: '⬜ Sin datos',
+                {t('stock_kpi_signal')} <strong>{{
+                  con_datos: t('kpi_banner_with_data'),
+                  buyable:   t('kpi_banner_buyable'),
+                  sell_now:  t('kpi_banner_sell_now'),
+                  normal:    t('kpi_banner_normal'),
+                  sin_datos: t('kpi_banner_no_data'),
                 }[kpiStateFilter]}</strong>
               </span>
             )}
-            <span className="text-purple-400 ml-1">(página actual)</span>
+            <span className="text-purple-400 ml-1">{t('stock_kpi_active_page')}</span>
           </span>
           <button onClick={() => { setKpiSort(''); setKpiStateFilter('') }}
                   className="text-purple-400 hover:text-purple-700 font-semibold transition">

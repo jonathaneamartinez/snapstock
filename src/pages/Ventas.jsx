@@ -178,19 +178,19 @@ export default function Ventas() {
           .eq('id', venta.inventory_id)
 
         if (invErr) {
-          showToast(`Venta cancelada, pero error al restaurar stock: ${invErr.message}`, 'error')
+          showToast(`${t('ventas_toast_cancel_err')}${invErr.message}`, 'error')
         } else {
-          showToast('Carta devuelta al stock ↩')
+          showToast(t('ventas_toast_returned'))
         }
         qc.invalidateQueries({ queryKey: ['stock'] })
         qc.invalidateQueries({ queryKey: ['metricas'] })
       } else if (nuevoEstado === 'pagada') {
-        showToast('Venta marcada como pagada ✅')
+        showToast(t('ventas_toast_paid'))
       } else if (nuevoEstado === 'deuda') {
-        showToast('Registrada como deuda 🏦')
+        showToast(t('ventas_toast_debt'))
         qc.invalidateQueries({ queryKey: ['deudas'] })
       } else {
-        showToast('Estado actualizado')
+        showToast(t('ventas_toast_updated'))
       }
 
       // Refrescar ventas

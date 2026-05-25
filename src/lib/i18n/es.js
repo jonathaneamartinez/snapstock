@@ -154,6 +154,28 @@ const es = {
   stock_kpi_order:         'Orden KPI:',
   stock_kpi_signal:        'Señal:',
 
+  // ── KPI / Market Intel (collectrics) ─────────────────────────────
+  kpi_signal_label:        '📡 Señal mercado',
+  kpi_with_data:           '✅ Con datos KPI',
+  kpi_buyable:             '🟢 Buen momento de compra',
+  kpi_sell_now:            '🔴 Momento de vender',
+  kpi_normal:              '🟡 Mercado estable',
+  kpi_no_data:             '⬜ Sin datos aún',
+  kpi_sort_label:          '↕ Ordenar por KPI',
+  kpi_sort_score:          '⭐ Mayor oportunidad',
+  kpi_sort_demand:         '🔥 Más demanda',
+  kpi_sort_demand_asc:     '📉 Menos demanda',
+  kpi_sort_liquidity:      '💧 Más líquida',
+  kpi_sort_liquidity_asc:  '🐢 Menos líquida',
+  kpi_sort_trend:          '📈 Precio subiendo',
+  kpi_sort_price_asc:      '💲 Precio más bajo',
+  kpi_banner_with_data:    '✅ Con datos',
+  kpi_banner_buyable:      '🟢 Compra',
+  kpi_banner_sell_now:     '🔴 Vender',
+  kpi_banner_normal:       '🟡 Estable',
+  kpi_banner_no_data:      '⬜ Sin datos',
+  kpi_demo_title:          'Activar datos de ejemplo para previsualizar filtros y orden KPI',
+
   // ── Ventas ────────────────────────────────────────────────────────
   ventas_title:           'Ventas del mes',
   ventas_sold_this_month: 'Vendidas este mes',
@@ -189,6 +211,12 @@ const es = {
   ventas_legend_paid:     'Pagada',
   ventas_legend_debt:     'Fue a deuda',
   ventas_legend_stock:    'Volvió al stock',
+
+  ventas_toast_returned:    'Carta devuelta al stock ↩',
+  ventas_toast_paid:        'Venta marcada como pagada ✅',
+  ventas_toast_debt:        'Registrada como deuda 🏦',
+  ventas_toast_updated:     'Estado actualizado',
+  ventas_toast_cancel_err:  'Venta cancelada, pero error al restaurar stock: ',
 
   // ── Deudas ────────────────────────────────────────────────────────
   deudas_title:           'Deudas activas',
