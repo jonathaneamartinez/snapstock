@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { fetchAllSets } from '../../lib/pokemonTcg'
 import { scannerApi } from '../../lib/scanner'
+import { translateSetName } from '../../lib/setTranslations'
 
 /**
  * Dropdown buscable con todos los sets del TCG.
@@ -73,11 +74,14 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
   }, [open])
 
   const filtered = query.trim()
-    ? sets.filter(s =>
-        s.name.toLowerCase().includes(query.toLowerCase()) ||
-        s.series?.toLowerCase().includes(query.toLowerCase()) ||
-        s.year?.includes(query)
-      )
+    ? sets.filter(s => {
+        const q   = query.toLowerCase()
+        const en  = translateSetName(s.name, s.id).toLowerCase()
+        const raw = s.name.toLowerCase()
+        return en.includes(q) || raw.includes(q) ||
+               s.series?.toLowerCase().includes(q) ||
+               s.year?.includes(q)
+      })
     : sets
 
   const handleSelect = (set) => {
@@ -110,7 +114,7 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
                         : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'}`}
       >
         <span className="truncate font-medium">
-          {value || 'Elegir set…'}
+          {value ? translateSetName(value) : 'Elegir set…'}
         </span>
         <div className="flex items-center gap-1 shrink-0">
           {setId && (
@@ -166,7 +170,9 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
                   : <span className="w-5 h-5 shrink-0 text-gray-300 flex items-center justify-center">🃏</span>
                 }
                 <div className="flex-1 min-w-0">
-                  <span className="font-medium text-gray-800 block truncate">{s.name}</span>
+                  <span className="font-medium text-gray-800 block truncate">
+                    {translateSetName(s.name, s.id)}
+                  </span>
                   {(s.series || s.year || s.total) && (
                     <span className="text-gray-400 text-[10px]">
                       {[s.series, s.year, s.total ? `${s.total} cartas` : null].filter(Boolean).join(' · ')}

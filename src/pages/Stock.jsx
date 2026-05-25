@@ -15,6 +15,7 @@ import Toast           from '../components/ui/Toast'
 import { AnimatePresence, motion } from 'framer-motion'
 import { IDIOMAS, CONDICIONES, STORE_ID, CANALES_VENTA, FEATURES } from '../constants'
 import { PAGE_SIZE } from '../hooks/useStock'
+import { translateSetName } from '../lib/setTranslations'
 import { usePrefetchPageImages } from '../hooks/usePrefetchPageImages'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 import ClaimCartModal    from '../components/stock/ClaimCartModal'
@@ -680,7 +681,7 @@ export default function Stock() {
                         <span className="truncate block">{r.nombre || '—'}</span>
                       </td>
                       <td className="px-3 py-2 text-gray-500 max-w-[100px]">
-                        <span className="truncate block">{r.set_name || '—'}</span>
+                        <span className="truncate block">{translateSetName(r.set_name) || '—'}</span>
                       </td>
                       <td className="px-3 py-2 text-gray-500">{r.numero || '—'}</td>
                       <td className="px-3 py-2 text-center">{IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}</td>
