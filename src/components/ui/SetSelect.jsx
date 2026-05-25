@@ -45,8 +45,23 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
         data = raw  // [{id, name, series, year, total, symbol}]
       } else {
         // JP / CN: sets del índice pHash del backend
+        // Deduplicar por nombre en inglés: el índice tiene entradas de TCGdex (nombre JP)
+        // Y entradas locales (nombre EN del slug). Nos quedamos con una por nombre traducido,
+        // priorizando la entrada local (set_id tipo "clay-burst") sobre la de TCGdex ("SV2D").
         const raw = await scannerApi.availableSets(normalizedLang)
-        data = raw  // [{id, name}]
+        const seen = new Map() // englishName → entry
+        for (const s of raw) {
+          const en = translateSetName(s.name, s.id)
+          if (!seen.has(en)) {
+            seen.set(en, s)
+          } else {
+            // Prefiere entrada local (set_id sin patron "LETRAS+DIGITOS" como "SV2D", "S12a")
+            const isLocal = (id) => !/^[A-Za-z]{1,3}\d/.test(id)
+            if (isLocal(s.id) && !isLocal(seen.get(en).id)) seen.set(en, s)
+          }
+        }
+        data = Array.from(seen.values())
+          .sort((a, b) => translateSetName(a.name, a.id).localeCompare(translateSetName(b.name, b.id)))
       }
       setSets(data)
       loadedLang.current = normalizedLang
