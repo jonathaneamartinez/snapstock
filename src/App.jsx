@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Layout      from './components/layout/Layout'
 import LockScreen  from './components/auth/LockScreen'
 import { useAuth } from './hooks/useAuth'
+import { I18nProvider } from './lib/i18n'
 
 /* ─── Lazy load de páginas ────────────────────────────────────────────────
    Cada página se descarga solo cuando el usuario navega a ella.
@@ -40,6 +41,7 @@ function AuthGate({ children }) {
 
 export default function App() {
   return (
+    <I18nProvider>
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <AuthGate>
@@ -68,5 +70,6 @@ export default function App() {
         </AuthGate>
       </BrowserRouter>
     </QueryClientProvider>
+    </I18nProvider>
   )
 }

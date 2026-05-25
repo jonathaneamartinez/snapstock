@@ -7,6 +7,14 @@
     <title>snapstock</title>
   </head>
   <body>
+    <script>
+      // Anti-flash: aplica el tema ANTES de que React renderice
+      ;(function(){
+        var s = localStorage.getItem('snapstock_theme')
+        var dark = s ? s === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (dark) document.documentElement.classList.add('dark')
+      })()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

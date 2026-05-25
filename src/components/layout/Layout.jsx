@@ -11,7 +11,7 @@ export default function Layout() {
   usePriceAutoUpdate()
 
   return (
-    <div className="min-h-screen bg-[#F7F8FC] font-['DM_Sans',sans-serif]">
+    <div className="min-h-screen bg-[#F7F8FC] dark:bg-gray-950 font-['DM_Sans',sans-serif]">
       {/* Overlay mobile — cierra el sidebar al tocar afuera */}
       {mobileOpen && (
         <div
