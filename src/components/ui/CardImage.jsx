@@ -6,16 +6,25 @@ import { setCardImage, getCardImageUrl } from '../../lib/imageCache'
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 const SCANNER_URL = import.meta.env.VITE_SCANNER_URL
 
-// R2 solo para JP/CN — pokemontcg.io no las tiene
-async function fetchR2ImageUrl(nombre, numero, idioma, setName) {
+// Limpia nombre para scanner: quita [Reverse Holo], #25, etc.
+function cleanNameForScanner(nombre) {
+  return (nombre || '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/\s*#[A-Za-z0-9]+\s*$/, '')
+    .trim()
+}
+
+// Busca la URL de imagen en el scanner (EN via CDN pokemontcg.io, JP/CN via R2)
+async function fetchScannerImageUrl(nombre, numero, idioma, setName) {
   if (!SCANNER_URL || !nombre) return null
+  const clean = cleanNameForScanner(nombre)
+  if (!clean) return null
   const lang = (idioma === 'ja' || idioma === 'jp') ? 'jp'
              : (idioma === 'zh' || idioma === 'cn') ? 'cn'
-             : null
-  if (!lang) return null   // EN/otros → skip R2, va directo a pokemontcg.io
+             : 'en'
   try {
     const params = new URLSearchParams({
-      name:   nombre.toLowerCase(),
+      name:   clean.toLowerCase(),
       number: String(numero ?? ''),
       lang,
       ...(setName ? { set_id: setName.toLowerCase().replace(/\s+/g, '-') } : {}),
@@ -51,8 +60,8 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     setFetching(true)
     setFailed(false)
 
-    // 1. R2 solo para JP/CN
-    const r2Url = await fetchR2ImageUrl(nombre, numero, idioma, setName)
+    // 1. Scanner (EN via CDN pokemontcg.io, JP/CN via R2)
+    const r2Url = await fetchScannerImageUrl(nombre, numero, idioma, setName)
     if (r2Url) {
       setSrc(r2Url); setLarge(r2Url); setLoaded(true)
       setFetching(false); setFailed(false)
