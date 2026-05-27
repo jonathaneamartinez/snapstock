@@ -184,14 +184,15 @@ export default function ImportarCartasModal({ onClose, onDone }) {
       try {
         // 1. Buscar o crear carta en `cards`
         let cardId = null
-        const { data: existing, error: searchErr } = await supabase
+        const { data: existingArr, error: searchErr } = await supabase
           .from('cards')
           .select('id')
           .ilike('name', r.nombre.trim())
-          .maybeSingle()
+          .limit(1)
 
         if (searchErr) throw new Error(`Búsqueda falló: ${searchErr.message}`)
 
+        const existing = existingArr?.[0] ?? null
         if (existing) {
           cardId = existing.id
         } else {
