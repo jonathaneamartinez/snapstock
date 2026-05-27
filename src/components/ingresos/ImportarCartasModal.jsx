@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { supabase }   from '../../lib/supabase'
 import { scannerApi } from '../../lib/scanner'
 import { STORE_ID, CONDICIONES } from '../../constants'
@@ -133,9 +133,6 @@ export default function ImportarCartasModal({ onClose, onDone }) {
   const fileRef  = useRef(null)
   const rowsRef  = useRef([])   // Ref para evitar stale closure — siempre tiene el valor actual
 
-  // Sincronizar ref con state
-  useEffect(() => { rowsRef.current = rows }, [rows])
-
   /* ── Parsear archivo ─────────────────────────────────────────────── */
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -153,6 +150,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
         setError('No se encontraron filas válidas. El archivo necesita al menos una columna llamada "nombre" o "name". El resto de los datos (set, precio, condición) son opcionales y se pueden completar después.')
         return
       }
+      rowsRef.current = parsed   // actualizar ref ANTES del render
       setRows(parsed)
       setStep('preview')
     } catch (err) {
