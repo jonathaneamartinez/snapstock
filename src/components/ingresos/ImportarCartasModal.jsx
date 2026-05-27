@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase }   from '../../lib/supabase'
 import { scannerApi } from '../../lib/scanner'
 import { STORE_ID, CONDICIONES } from '../../constants'
@@ -130,7 +130,11 @@ export default function ImportarCartasModal({ onClose, onDone }) {
   const [results,     setResults]    = useState({ ok: 0, error: 0 })
   const [failedRows,  setFailedRows] = useState([])   // [{ row, motivo }]
   const [error,       setError]      = useState(null)
-  const fileRef = useRef(null)
+  const fileRef  = useRef(null)
+  const rowsRef  = useRef([])   // Ref para evitar stale closure — siempre tiene el valor actual
+
+  // Sincronizar ref con state
+  useEffect(() => { rowsRef.current = rows }, [rows])
 
   /* ── Parsear archivo ─────────────────────────────────────────────── */
   const handleFile = async (e) => {
@@ -157,7 +161,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
   }
 
   /* ── Confirmar e importar ────────────────────────────────────────── */
-  const handleImport = async (rowsToImport = rows) => {
+  const handleImport = async (rowsToImport = rowsRef.current) => {
     // Validar STORE_ID antes de empezar
     if (!STORE_ID) {
       setError('Error de configuración: STORE_ID no está definido. Contactá al administrador.')
@@ -281,6 +285,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
   /* ── Reintentar solo las fallidas ───────────────────────────────── */
   const handleRetry = () => {
     const toRetry = failedRows.map(f => f.row)
+    rowsRef.current = toRetry
     setRows(toRetry)
     handleImport(toRetry)
   }
