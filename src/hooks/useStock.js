@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { STORE_ID } from '../constants'
 import { normLang, sameLang } from '../lib/normLang'
 
-const PAGE_SIZE = 100
+const PAGE_SIZE = 50
 
 // Mapeo de key de columna UI → columna real en Supabase (y tabla si es foreign)
 const SORT_MAP = {
