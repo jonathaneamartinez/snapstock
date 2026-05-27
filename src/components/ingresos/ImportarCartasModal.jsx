@@ -518,7 +518,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
 
           {step === 'preview' && (
             <button
-              onClick={handleImport}
+              onClick={() => handleImport()}
               className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl
                          hover:bg-blue-500 transition"
             >
