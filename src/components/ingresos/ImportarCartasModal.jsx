@@ -121,12 +121,15 @@ const normCond = (v) => {
    Modal principal
 ════════════════════════════════════════════════════════════════════════ */
 export default function ImportarCartasModal({ onClose, onDone }) {
-  const [step,       setStep]       = useState('upload')  // upload | preview | importing | done
-  const [rows,       setRows]       = useState([])
-  const [progress,   setProgress]   = useState(0)
-  const [results,    setResults]    = useState({ ok: 0, error: 0 })
-  const [failedRows, setFailedRows] = useState([])   // [{ row, motivo }]
-  const [error,      setError]      = useState(null)
+  const [step,        setStep]       = useState('upload')  // upload | preview | importing | done
+  const [rows,        setRows]       = useState([])
+  const [progress,    setProgress]   = useState(0)
+  const [currentIdx,  setCurrentIdx] = useState(0)        // carta actual procesando
+  const [liveOk,      setLiveOk]     = useState(0)        // ok en tiempo real
+  const [currentCard, setCurrentCard] = useState('')      // nombre de la carta actual
+  const [results,     setResults]    = useState({ ok: 0, error: 0 })
+  const [failedRows,  setFailedRows] = useState([])   // [{ row, motivo }]
+  const [error,       setError]      = useState(null)
   const fileRef = useRef(null)
 
   /* ── Parsear archivo ─────────────────────────────────────────────── */
@@ -155,24 +158,37 @@ export default function ImportarCartasModal({ onClose, onDone }) {
 
   /* ── Confirmar e importar ────────────────────────────────────────── */
   const handleImport = async (rowsToImport = rows) => {
+    // Validar STORE_ID antes de empezar
+    if (!STORE_ID) {
+      setError('Error de configuración: STORE_ID no está definido. Contactá al administrador.')
+      return
+    }
+
     setStep('importing')
     setProgress(0)
+    setCurrentIdx(0)
+    setLiveOk(0)
+    setCurrentCard('')
     setFailedRows([])
     let ok = 0
     const failed = []
 
     for (let i = 0; i < rowsToImport.length; i++) {
-      setProgress(Math.round((i / rowsToImport.length) * 100))
       const r = rowsToImport[i]
+      setCurrentIdx(i + 1)
+      setCurrentCard(r.nombre || '')
+      setProgress(Math.round((i / rowsToImport.length) * 100))
 
       try {
         // 1. Buscar o crear carta en `cards`
         let cardId = null
-        const { data: existing } = await supabase
+        const { data: existing, error: searchErr } = await supabase
           .from('cards')
           .select('id')
           .ilike('name', r.nombre.trim())
           .maybeSingle()
+
+        if (searchErr) throw new Error(`Búsqueda falló: ${searchErr.message}`)
 
         if (existing) {
           cardId = existing.id
@@ -185,7 +201,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
             if (first) imageUrl = first.imagen || first.image_url
           } catch {}
 
-          const { data: newCard } = await supabase
+          const { data: newCard, error: insertCardErr } = await supabase
             .from('cards')
             .insert({
               name:        r.nombre.trim(),
@@ -197,6 +213,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
             .select('id')
             .single()
 
+          if (insertCardErr) throw new Error(`Crear carta falló: ${insertCardErr.message}`)
           if (newCard) cardId = newCard.id
         }
 
@@ -208,7 +225,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
         const priceUsd = r.precio_usd ? parseFloat(r.precio_usd) : null
         const priceArs = r.precio_ars ? parseFloat(r.precio_ars) : null
 
-        const { data: existingInv } = await supabase
+        const { data: existingInv, error: invSearchErr } = await supabase
           .from('inventory')
           .select('id, quantity')
           .eq('store_id', STORE_ID)
@@ -217,8 +234,10 @@ export default function ImportarCartasModal({ onClose, onDone }) {
           .eq('status', 'disponible')
           .maybeSingle()
 
+        if (invSearchErr) throw new Error(`Buscar inventario falló: ${invSearchErr.message}`)
+
         if (existingInv) {
-          await supabase
+          const { error: updateErr } = await supabase
             .from('inventory')
             .update({
               quantity:       (existingInv.quantity || 1) + qty,
@@ -226,25 +245,28 @@ export default function ImportarCartasModal({ onClose, onDone }) {
               ...(priceArs && { sale_price_ars: priceArs }),
             })
             .eq('id', existingInv.id)
+          if (updateErr) throw new Error(`Actualizar stock falló: ${updateErr.message}`)
         } else {
-          await supabase
+          const { error: insertInvErr } = await supabase
             .from('inventory')
             .insert({
-              store_id:    STORE_ID,
-              card_id:     cardId,
-              quantity:    qty,
-              condicion:   cond,
-              condition:   cond,
-              status:      'disponible',
-              estado:      'disponible',
-              price_usd:   priceUsd,
+              store_id:      STORE_ID,
+              card_id:       cardId,
+              quantity:      qty,
+              condicion:     cond,
+              condition:     cond,
+              status:        'disponible',
+              estado:        'disponible',
+              price_usd:     priceUsd,
               sale_price_ars: priceArs,
-              scan_date:   new Date().toISOString(),
+              scan_date:     new Date().toISOString(),
             })
+          if (insertInvErr) throw new Error(`Insertar en inventario falló: ${insertInvErr.message}`)
         }
         ok++
+        setLiveOk(ok)
       } catch (err) {
-        console.warn(`[Import] fila ${i} error:`, err.message)
+        console.warn(`[Import] fila ${i} (${r.nombre}) error:`, err.message)
         failed.push({ row: r, motivo: err.message || 'Error desconocido' })
       }
     }
@@ -252,6 +274,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
     setResults({ ok, error: failed.length })
     setFailedRows(failed)
     setProgress(100)
+    setCurrentCard('')
     setStep('done')
   }
 
@@ -377,18 +400,58 @@ export default function ImportarCartasModal({ onClose, onDone }) {
 
           {/* ── STEP: importing ──────────────────────────────────── */}
           {step === 'importing' && (
-            <div className="py-8 space-y-4 text-center">
-              <Spinner size={36} className="text-blue-500 mx-auto" />
-              <p className="text-sm font-semibold text-gray-700">
-                Importando {rows.length} cartas…
-              </p>
-              <div className="w-full bg-gray-100 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
+            <div className="py-6 space-y-5">
+              {/* Encabezado con spinner y contador principal */}
+              <div className="flex items-center gap-3">
+                <Spinner size={22} className="text-blue-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800">
+                    Importando cartas…
+                  </p>
+                  {currentCard && (
+                    <p className="text-xs text-gray-400 truncate mt-0.5">
+                      {currentCard}
+                    </p>
+                  )}
+                </div>
+                <span className="text-sm font-bold text-blue-600 shrink-0 tabular-nums">
+                  {currentIdx}/{rows.length}
+                </span>
               </div>
-              <p className="text-xs text-gray-400">{progress}%</p>
+
+              {/* Barra de progreso */}
+              <div className="space-y-1.5">
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-blue-500 h-3 rounded-full transition-all duration-200"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>{progress}%</span>
+                  <span className="text-emerald-600 font-medium">
+                    {liveOk > 0 && `✓ ${liveOk} importadas`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Stats en tiempo real */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-400 mb-1">Total</p>
+                  <p className="text-lg font-bold text-gray-700 tabular-nums">{rows.length}</p>
+                </div>
+                <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                  <p className="text-xs text-emerald-500 mb-1">OK</p>
+                  <p className="text-lg font-bold text-emerald-600 tabular-nums">{liveOk}</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-400 mb-1">Pendientes</p>
+                  <p className="text-lg font-bold text-gray-500 tabular-nums">
+                    {rows.length - currentIdx}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
