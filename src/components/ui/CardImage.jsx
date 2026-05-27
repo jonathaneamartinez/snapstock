@@ -1,24 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchCardImages } from '../../lib/pokemonTcg'
 import { supabase } from '../../lib/supabase'
-import { setCardImage, loadBlobUrl, getCardImageUrl } from '../../lib/imageCache'
+import { setCardImage, getCardImageUrl } from '../../lib/imageCache'
 
-// Dorso genérico de carta Pokémon (sin dependencia de CDN externo)
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
-
 const SCANNER_URL = import.meta.env.VITE_SCANNER_URL
 
-/**
- * Busca la URL de imagen en nuestro R2 vía el scanner de Railway.
- * Más rápido y sin rate-limit que pokemontcg.io.
- * Devuelve null si no encuentra o si el scanner no está disponible.
- */
+// R2 solo para JP/CN — pokemontcg.io no las tiene
 async function fetchR2ImageUrl(nombre, numero, idioma, setName) {
   if (!SCANNER_URL || !nombre) return null
+  const lang = (idioma === 'ja' || idioma === 'jp') ? 'jp'
+             : (idioma === 'zh' || idioma === 'cn') ? 'cn'
+             : null
+  if (!lang) return null   // EN/otros → skip R2, va directo a pokemontcg.io
   try {
-    const lang = (idioma === 'ja' || idioma === 'jp') ? 'jp'
-               : (idioma === 'zh' || idioma === 'cn') ? 'cn'
-               : 'en'
     const params = new URLSearchParams({
       name:   nombre.toLowerCase(),
       number: String(numero ?? ''),
@@ -38,16 +33,16 @@ async function fetchR2ImageUrl(nombre, numero, idioma, setName) {
 }
 
 export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, setName, onOpen }) {
-  const ref                     = useRef(null)
-  // Usar prop > caché de sesión > null (evita fade-in innecesario al navegar de vuelta)
-  const _initial                = imageUrl || getCardImageUrl(cardId) || null
+  const ref      = useRef(null)
+  // Estado inicial desde prop > sessionStorage cache > null
+  const _initial = imageUrl || getCardImageUrl(cardId) || null
   const [src,      setSrc]      = useState(_initial)
   const [largeSrc, setLarge]    = useState(_initial)
   const [loaded,   setLoaded]   = useState(!!_initial)
   const [fetching, setFetching] = useState(false)
   const [failed,   setFailed]   = useState(false)
-  const fetchCount              = useRef(0)
-  const retryTimer              = useRef(null)
+  const fetchCount = useRef(0)
+  const retryTimer = useRef(null)
   const [triedApiFallback, setTriedApiFallback] = useState(false)
 
   const doFetch = useCallback(async () => {
@@ -56,33 +51,25 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     setFetching(true)
     setFailed(false)
 
-    // ── 1. Intentar imagen propia desde R2 (más rápido, sin rate-limit) ──
+    // 1. R2 solo para JP/CN
     const r2Url = await fetchR2ImageUrl(nombre, numero, idioma, setName)
     if (r2Url) {
-      setSrc(r2Url)
-      setLarge(r2Url)
-      setLoaded(true)
-      setFetching(false)
-      setFailed(false)
-      if (cardId) {
-        setCardImage(cardId, r2Url)
-        loadBlobUrl(r2Url)
-      }
+      setSrc(r2Url); setLarge(r2Url); setLoaded(true)
+      setFetching(false); setFailed(false)
+      if (cardId) setCardImage(cardId, r2Url)
       return
     }
 
-    // ── 2. Fallback a pokemontcg.io ───────────────────────────────────────
+    // 2. pokemontcg.io
     const imgs = await fetchCardImages(nombre, numero, setName)
-
     if (!imgs?.small) {
       setFetching(false)
       setFailed(true)
-      // Auto-retry: si es el primer o segundo intento, reintentamos en 8s
       if (fetchCount.current <= 2) {
         retryTimer.current = setTimeout(() => {
           setFailed(false)
           doFetch()
-        }, 8000 * fetchCount.current) // 8s, 16s…
+        }, 8000 * fetchCount.current)
       }
       return
     }
@@ -93,14 +80,10 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     setFetching(false)
     setFailed(false)
 
-    // Guardar en cache en memoria para el generador de claims
     const bestUrl = imgs.large || imgs.small
-    if (cardId) {
-      setCardImage(cardId, bestUrl)
-      loadBlobUrl(bestUrl)
-    }
+    if (cardId) setCardImage(cardId, bestUrl)
 
-    // Persistir image_url en Supabase para que la próxima vez cargue desde DB
+    // Persistir en Supabase para que la próxima sesión cargue directo desde DB
     if (cardId && imgs.large) {
       supabase
         .from('cards')
@@ -113,16 +96,14 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
   }, [nombre, numero, idioma, cardId, fetching, setName])
 
   useEffect(() => {
+    // Prop disponible → usar directamente
     if (imageUrl) {
       setSrc(imageUrl); setLarge(imageUrl); setLoaded(true)
-      if (cardId) {
-        setCardImage(cardId, imageUrl)
-        loadBlobUrl(imageUrl)
-      }
+      if (cardId) setCardImage(cardId, imageUrl)
       return
     }
 
-    // Caché de sesión: URL ya conocida de una visita anterior
+    // Cache de sesión → usar sin fetch
     const cached = getCardImageUrl(cardId)
     if (cached) {
       setSrc(cached); setLarge(cached); setLoaded(true)
@@ -152,7 +133,6 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     if (src && onOpen) onOpen({ src: largeSrc || src, nombre, numero })
   }
 
-  // Click en dorso → reintentar fetch
   const handleRetry = () => {
     setFailed(false)
     setSrc(null)
@@ -192,7 +172,6 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
         ) : fetching ? (
           <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
         ) : failed ? (
-          // Muestra el dorso de carta como placeholder clickeable para reintentar
           <img
             src={CARD_BACK}
             alt="Reintentar"
