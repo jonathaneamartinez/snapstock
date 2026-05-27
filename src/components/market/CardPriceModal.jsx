@@ -11,6 +11,7 @@ import MarketKpiBadge, { KPI_STATE_CONFIG } from './MarketKpiBadge'
 import { useMarketKpi }    from '../../hooks/useMarketKpi'
 import { useMarketSignals } from '../../hooks/useMarketSignals'
 import Spinner             from '../ui/Spinner'
+import { isFeatureEnabled } from '../../lib/featureGate'
 
 // ── Formatters ───────────────────────────────────────────────────────────────
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
@@ -74,6 +75,7 @@ export default function CardPriceModal({ card, onClose }) {
   const [days,     setDays]     = useState(30)
   const [demoMode, setDemoMode] = useState(false)
 
+  const showMarket   = isFeatureEnabled('marketIntel')
   const marketCardId = card?.card_id ?? card?.inventory_id
 
   const { data: kpiReal,  isLoading: kpiLoading } = useMarketKpi(marketCardId)
@@ -191,18 +193,20 @@ export default function CardPriceModal({ card, onClose }) {
                         .filter(Boolean).join(' · ')}
                     </p>
 
-                    {/* KPI badge */}
-                    <div className="mt-2.5">
-                      {kpiLoading && !demoMode
-                        ? <MarketKpiBadge loading size="md" />
-                        : <MarketKpiBadge
-                            kpiScore={score}
-                            kpiState={state}
-                            size="md"
-                            showLabel
-                          />
-                      }
-                    </div>
+                    {/* KPI badge — solo plan Pro */}
+                    {showMarket && (
+                      <div className="mt-2.5">
+                        {kpiLoading && !demoMode
+                          ? <MarketKpiBadge loading size="md" />
+                          : <MarketKpiBadge
+                              kpiScore={score}
+                              kpiState={state}
+                              size="md"
+                              showLabel
+                            />
+                        }
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Precio hero ── */}
@@ -214,8 +218,8 @@ export default function CardPriceModal({ card, onClose }) {
                       <p className="text-white text-[26px] font-black leading-none">
                         {fmtUSD(priceCurrent)}
                       </p>
-                      {/* Delta chip 7d */}
-                      {fmtPct(change7d) && (
+                      {/* Delta chip 7d — solo plan Pro */}
+                      {showMarket && fmtPct(change7d) && (
                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full mb-0.5
                           ${isPositive
                             ? 'bg-emerald-500/20 text-emerald-400'
@@ -255,6 +259,9 @@ export default function CardPriceModal({ card, onClose }) {
                 BODY — scroll único, secciones separadas
             ══════════════════════════════════════════════════════ */}
             <div className="flex-1 overflow-y-auto overscroll-contain">
+
+              {/* ── Secciones Market Intel — solo plan Pro ──────── */}
+              {showMarket && (<>
 
               {/* Banner demo mode */}
               {demoMode && (
@@ -430,6 +437,8 @@ export default function CardPriceModal({ card, onClose }) {
                   </p>
                 </div>
               )}
+
+              </>)} {/* fin showMarket */}
 
               {/* Safe area */}
               <div className="h-8" />
