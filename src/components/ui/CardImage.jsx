@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchCardImages } from '../../lib/pokemonTcg'
 import { supabase } from '../../lib/supabase'
-import { setCardImage, loadBlobUrl } from '../../lib/imageCache'
+import { setCardImage, loadBlobUrl, getCardImageUrl } from '../../lib/imageCache'
 
 // Dorso genérico de carta Pokémon (sin dependencia de CDN externo)
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
@@ -39,9 +39,11 @@ async function fetchR2ImageUrl(nombre, numero, idioma, setName) {
 
 export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, setName, onOpen }) {
   const ref                     = useRef(null)
-  const [src,      setSrc]      = useState(imageUrl || null)
-  const [largeSrc, setLarge]    = useState(imageUrl || null)
-  const [loaded,   setLoaded]   = useState(!!imageUrl)
+  // Usar prop > caché de sesión > null (evita fade-in innecesario al navegar de vuelta)
+  const _initial                = imageUrl || getCardImageUrl(cardId) || null
+  const [src,      setSrc]      = useState(_initial)
+  const [largeSrc, setLarge]    = useState(_initial)
+  const [loaded,   setLoaded]   = useState(!!_initial)
   const [fetching, setFetching] = useState(false)
   const [failed,   setFailed]   = useState(false)
   const fetchCount              = useRef(0)
@@ -119,6 +121,14 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
       }
       return
     }
+
+    // Caché de sesión: URL ya conocida de una visita anterior
+    const cached = getCardImageUrl(cardId)
+    if (cached) {
+      setSrc(cached); setLarge(cached); setLoaded(true)
+      return
+    }
+
     if (!nombre) return
 
     // Lazy load: fetch solo cuando entra en pantalla

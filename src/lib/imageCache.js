@@ -1,20 +1,49 @@
 /**
- * imageCache.js — Cache en memoria + proxy CORS para imágenes de cartas
+ * imageCache.js — Cache en memoria + sessionStorage + proxy CORS para imágenes de cartas
  *
  * Problema raíz: images.pokemontcg.io no envía headers CORS, por lo que
  * fetch() desde el browser falla y el canvas se tainta.
  * Solución: /api/img-proxy fetcha la imagen server-side y la devuelve
  * con Access-Control-Allow-Origin: *, haciendo el blobUrl CORS-safe.
+ *
+ * sessionStorage: persiste cardId→imageUrl durante la sesión del tab.
+ * Al navegar de vuelta a Stock, las URLs ya están disponibles sin refetch.
  */
+
+const SESSION_KEY = 'sst_img_urls'
 
 // cardId (string) → imageUrl original
 const _urlByCardId = new Map()
+
+// Hidratar desde sessionStorage al cargar el módulo (síncrono)
+;(() => {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY)
+    if (!raw) return
+    for (const [k, v] of Object.entries(JSON.parse(raw))) {
+      if (k && v) _urlByCardId.set(k, v)
+    }
+  } catch {}
+})()
 
 // imageUrl → blobUrl CORS-safe (solo se guarda cuando tuvo ÉXITO)
 const _blobByUrl = new Map()
 
 // En-flight: imageUrl → Promise<blobUrl|null> (evita fetch duplicado)
 const _inflight = new Map()
+
+// Guardar en sessionStorage en batch (máx 1 write por segundo)
+let _saveScheduled = false
+function _scheduleSave() {
+  if (_saveScheduled) return
+  _saveScheduled = true
+  setTimeout(() => {
+    _saveScheduled = false
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(Object.fromEntries(_urlByCardId)))
+    } catch {} // falla en privado sin storage — ignorar
+  }, 1000)
+}
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -35,6 +64,7 @@ function proxyUrl(imageUrl) {
 export function setCardImage(cardId, imageUrl) {
   if (cardId != null && imageUrl) {
     _urlByCardId.set(String(cardId), imageUrl)
+    _scheduleSave()
   }
 }
 

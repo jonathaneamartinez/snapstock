@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchCardImages } from '../lib/pokemonTcg'
-import { setCardImage, loadBlobUrl } from '../lib/imageCache'
+import { setCardImage, loadBlobUrl, getCardImageUrl } from '../lib/imageCache'
 
 const CONCURRENCY = 5   // máx llamadas paralelas a la API
 
@@ -19,8 +19,8 @@ export function usePrefetchPageImages(rows) {
   useEffect(() => {
     if (!rows?.length) { setImageMap({}); return }
 
-    // Solo las que no tienen imagen
-    const missing = rows.filter(r => !r.image_url && r.nombre && r.card_id)
+    // Solo las que no tienen imagen en Supabase ni en caché de sesión
+    const missing = rows.filter(r => !r.image_url && !getCardImageUrl(r.card_id) && r.nombre && r.card_id)
     if (!missing.length) { setImageMap({}); return }
 
     abortRef.current = false
