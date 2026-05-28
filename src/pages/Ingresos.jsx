@@ -713,7 +713,8 @@ export default function Ingresos() {
                 <div className="w-40 h-56 bg-white border-2 border-dashed border-gray-200
                                 rounded-2xl flex items-center justify-center">
                   <div className="text-center">
-                    <p className="text-3xl mb-2">🃏</p>
+                    <img src="https://images.pokemontcg.io/back.png" alt=""
+                      className="w-12 h-auto object-contain opacity-30 mx-auto mb-2" />
                     <p className="text-xs text-gray-300">{t('ingresos_image_placeholder')}</p>
                   </div>
                 </div>

@@ -392,8 +392,9 @@ export default function CardResult({
                         className="w-12 h-16 object-cover rounded-md"
                         onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
                     : null}
-                  <div className="w-12 h-16 rounded-md bg-white/10 items-center justify-center text-white/20 text-xl"
-                    style={{ display: op.imagen ? 'none' : 'flex' }}>🃏</div>
+                  <img src="https://images.pokemontcg.io/back.png" alt=""
+                    className="w-12 h-16 object-cover rounded-md opacity-25"
+                    style={{ display: op.imagen ? 'none' : 'block' }} />
                   <span className="text-white/50 text-xs w-16 text-center truncate leading-tight">
                     {op.set || op.set_id}
                   </span>

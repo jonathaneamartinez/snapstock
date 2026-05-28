@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 
+const CARD_BACK = 'https://images.pokemontcg.io/back.png'
+
 const fmtARS = (n) =>
   n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
 
@@ -48,7 +50,7 @@ export default function ClaimCartModal({ cart, onClose, onContinue, onRemove, on
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {cards.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-300">
-              <span className="text-5xl mb-3">🃏</span>
+              <img src={CARD_BACK} alt="" className="w-16 h-auto object-contain opacity-40 mb-3" />
               <p className="text-sm">El carrito está vacío.</p>
             </div>
           ) : (
@@ -72,7 +74,7 @@ export default function ClaimCartModal({ cart, onClose, onContinue, onRemove, on
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-base">🃏</div>
+                      <img src={CARD_BACK} alt="" className="w-full h-full object-cover opacity-60" />
                     )}
                   </div>
 

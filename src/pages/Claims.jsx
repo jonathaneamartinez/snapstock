@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,8 @@ import Spinner       from '../components/ui/Spinner'
 import EmptyState    from '../components/ui/EmptyState'
 import { AnimatePresence, motion } from 'framer-motion'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
+
+const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 
 const fmtFecha = (s) =>
   s ? new Date(s).toLocaleDateString('es-AR', {
@@ -214,6 +216,47 @@ function CardTable({ cards, claimId }) {
   const [selected,    setSelected]    = useState(new Set())
   const [sellError,   setSellError]   = useState(null)
 
+  /* ── Tags por inventory_id ──────────────────────────────────────────── */
+  const [localTags,  setLocalTags]  = useState(() => {
+    const map = {}
+    cards.forEach(c => { if (c.inventory_id) map[c.inventory_id] = c.tags ?? [] })
+    return map
+  })
+  const [tagInputs,  setTagInputs]  = useState({})  // inventory_id → string en edición
+  const saveTimer = useRef({})
+
+  const persistTags = (inventoryId, newTags) => {
+    clearTimeout(saveTimer.current[inventoryId])
+    saveTimer.current[inventoryId] = setTimeout(async () => {
+      if (!claimId) return
+      const updatedCards = cards.map(c =>
+        c.inventory_id === inventoryId ? { ...c, tags: newTags } : c
+      )
+      await supabase.from('claims').update({ cards_data: updatedCards }).eq('id', claimId)
+      qc.invalidateQueries({ queryKey: ['claims'] })
+    }, 600)
+  }
+
+  const addTag = (inventoryId, raw) => {
+    const tag = raw.trim()
+    if (!tag) return
+    const current = localTags[inventoryId] ?? []
+    if (current.some(t => t.toLowerCase() === tag.toLowerCase())) {
+      setTagInputs(p => ({ ...p, [inventoryId]: '' }))
+      return
+    }
+    const newTags = [...current, tag]
+    setLocalTags(p => ({ ...p, [inventoryId]: newTags }))
+    setTagInputs(p => ({ ...p, [inventoryId]: '' }))
+    persistTags(inventoryId, newTags)
+  }
+
+  const removeTag = (inventoryId, tag) => {
+    const newTags = (localTags[inventoryId] ?? []).filter(t => t !== tag)
+    setLocalTags(p => ({ ...p, [inventoryId]: newTags }))
+    persistTags(inventoryId, newTags)
+  }
+
   const hasInventoryIds = cards.some(c => c.inventory_id)
 
   const allActionable = cards.filter(c => c.inventory_id)
@@ -335,6 +378,7 @@ function CardTable({ cards, claimId }) {
               <th className="px-3 py-2 text-left font-semibold">{t('claims_col_card')}</th>
               <th className="px-3 py-2 text-left font-semibold">{t('claims_col_set')}</th>
               <th className="px-3 py-2 text-left font-semibold">{t('claims_col_cond')}</th>
+              <th className="px-3 py-2 text-left font-semibold">Tags</th>
               <th className="px-3 py-2 text-right font-semibold">USD</th>
               <th className="px-3 py-2 text-right font-semibold">{t('claims_col_ars_blue')}</th>
               <th className="px-3 py-2 text-right font-semibold">{t('claims_col_sale')}</th>
@@ -378,6 +422,50 @@ function CardTable({ cards, claimId }) {
                     <span className="truncate block">{c.set || '—'}</span>
                   </td>
                   <td className="px-3 py-1.5 text-gray-500">{c.cond || '—'}</td>
+
+                  {/* ── Tags ─────────────────────────────────────────── */}
+                  <td
+                    className="px-3 py-1.5 max-w-[160px]"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="flex flex-wrap gap-1 items-center">
+                      {(localTags[c.inventory_id] ?? []).map(tag => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-0.5 pl-2 pr-1 py-0.5
+                                     bg-violet-100 text-violet-700 text-[10px] font-semibold
+                                     rounded-full whitespace-nowrap"
+                        >
+                          {tag}
+                          <button
+                            onClick={() => removeTag(c.inventory_id, tag)}
+                            className="text-violet-400 hover:text-violet-700 leading-none ml-0.5 text-[11px]"
+                          >×</button>
+                        </span>
+                      ))}
+                      {c.inventory_id && (
+                        <input
+                          type="text"
+                          value={tagInputs[c.inventory_id] ?? ''}
+                          onChange={e => setTagInputs(p => ({ ...p, [c.inventory_id]: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ',') {
+                              e.preventDefault()
+                              addTag(c.inventory_id, tagInputs[c.inventory_id] ?? '')
+                            }
+                          }}
+                          onBlur={e => {
+                            if (e.target.value.trim()) addTag(c.inventory_id, e.target.value)
+                          }}
+                          placeholder={localTags[c.inventory_id]?.length ? '+ tag' : '+ persona'}
+                          className="text-[10px] bg-transparent border-none outline-none
+                                     text-gray-500 placeholder:text-gray-300
+                                     w-14 min-w-0 cursor-text"
+                        />
+                      )}
+                    </div>
+                  </td>
+
                   <td className="px-3 py-1.5 text-right text-emerald-600 font-medium whitespace-nowrap">
                     {fmtUSD(c.usd) ?? '—'}
                   </td>
@@ -394,7 +482,7 @@ function CardTable({ cards, claimId }) {
           <tfoot className="bg-gray-50 border-t-2 border-gray-200">
             <tr>
               <td
-                colSpan={hasInventoryIds ? 4 : 3}
+                colSpan={hasInventoryIds ? 5 : 4}
                 className="px-3 py-2 text-xs font-bold text-gray-600"
               >
                 Total ({cards.length} {t('claims_col_cards')})
@@ -682,7 +770,7 @@ export default function Claims() {
         {error && <p className="text-red-500 text-sm p-5">{error.message}</p>}
         {!isLoading && claims.length === 0 && (
           <div className="p-8">
-            <EmptyState emoji="🃏" title={t('claims_no_claims')} sub={t('claims_no_claims_sub')} />
+            <EmptyState img={CARD_BACK} title={t('claims_no_claims')} sub={t('claims_no_claims_sub')} />
           </div>
         )}
 

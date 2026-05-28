@@ -604,7 +604,7 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
                     {card.image_url
                       ? <img src={card.image_url} alt={card.name} className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
-                      : <div className="w-6 h-8 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300">🃏</div>
+                      : <img src="https://images.pokemontcg.io/back.png" alt="" className="w-6 h-8 object-cover rounded shrink-0 opacity-50 bg-gray-100" />
                     }
                     <div className="flex-1 min-w-0">
                       <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
