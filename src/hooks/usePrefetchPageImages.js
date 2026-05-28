@@ -5,12 +5,21 @@ import { setCardImage, getCardImageUrl } from '../lib/imageCache'
 
 const SCANNER_URL = import.meta.env.VITE_SCANNER_URL
 
-// Limpia el nombre antes de enviarlo al scanner:
-// "Pikachu [Reverse Holo] #25" → "Pikachu"
+// ─── Shared batch state (module-level singleton) ─────────────────────────────
+// Tracks which card_ids are currently being resolved by the batch request.
+// CardImage reads this to avoid firing 50 individual scanner requests while
+// the batch is already in flight.
+const _pendingBatchIds = new Set()
+
+/** Returns true if this card_id is being resolved by the current batch. */
+export function isBatchPending(cardId) {
+  return cardId != null && _pendingBatchIds.has(String(cardId))
+}
+
 function cleanNameForScanner(nombre) {
   return (nombre || '')
-    .replace(/\s*\[[^\]]*\]/g, '')        // quita [Reverse Holo] etc.
-    .replace(/\s*#[A-Za-z0-9]+\s*$/, '')  // quita #25, #TG30
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/\s*#[A-Za-z0-9]+\s*$/, '')
     .trim()
 }
 
@@ -29,7 +38,7 @@ async function batchScannerLookup(rows) {
   if (!SCANNER_URL || !rows.length) return {}
   try {
     const body = rows.map(r => ({
-      key:    r.nombre,           // usamos nombre como key para el lookup
+      key:    r.nombre,
       name:   cleanNameForScanner(r.nombre),
       number: r.numero || '',
       lang:   normLang(r.idioma),
@@ -42,21 +51,27 @@ async function batchScannerLookup(rows) {
       signal:  AbortSignal.timeout(8000),
     })
     if (!res.ok) return {}
-    return await res.json()  // { nombre: { url, set_name, number } }
+    return await res.json()
   } catch {
     return {}
   }
 }
 
 /**
- * Cuando `rows` cambia (nueva página), busca imágenes en background
- * para las cartas que no tienen image_url, en 2 pasos:
+ * Cuando `rows` cambia (nueva página):
  *
- * 1. Batch al scanner (1 request para todas) → EN via pokemontcg.io CDN + JP/CN via R2
- * 2. Para EN no encontradas por scanner → pokemontcg.io API (fallback)
+ * 1. Preloads inmediatos: dispara new Image() para todas las URLs ya conocidas
+ *    → el browser las descarga en background, de modo que cuando el <img> se
+ *    renderice la respuesta ya está en caché HTTP y aparece instantáneamente.
  *
- * Retorna imageMap: { [card_id]: url } — se va completando mientras llegan.
- * También persiste en Supabase para que la próxima vez carguen directo.
+ * 2. Para las cartas SIN image_url (missing):
+ *    - Las marca en _pendingBatchIds (CardImage lo consulta para NO hacer fetch
+ *      individual mientras el batch está en vuelo → evita 50 requests simultáneos).
+ *    - Hace 1 solo request batch al scanner.
+ *    - Fallback pokemontcg.io para las EN no encontradas.
+ *    - Persiste en Supabase para que la próxima sesión cargue directo desde DB.
+ *
+ * Retorna imageMap: { [card_id]: url } — se va completando conforme llegan.
  */
 export function usePrefetchPageImages(rows) {
   const [imageMap, setImageMap] = useState({})
@@ -65,8 +80,20 @@ export function usePrefetchPageImages(rows) {
   useEffect(() => {
     if (!rows?.length) { setImageMap({}); return }
 
+    // ── Preload inmediato para URLs ya conocidas en DB ────────────────────────
+    // Arranca la descarga en el browser antes de que el <img> siquiera se renderice.
+    rows.forEach(r => {
+      if (r.image_url) {
+        const img = new Image()
+        img.src = r.image_url
+      }
+    })
+
     const missing = rows.filter(r => !r.image_url && !getCardImageUrl(r.card_id) && r.nombre && r.card_id)
     if (!missing.length) { setImageMap({}); return }
+
+    // Marcar todas las cartas missing como "batch en vuelo"
+    missing.forEach(r => _pendingBatchIds.add(String(r.card_id)))
 
     abortRef.current = false
     setImageMap({})
@@ -74,7 +101,7 @@ export function usePrefetchPageImages(rows) {
     const toSave = []
 
     ;(async () => {
-      // ── Paso 1: batch al scanner ──────────────────────────────────────
+      // ── Paso 1: batch al scanner ──────────────────────────────────────────
       const scannerResults = await batchScannerLookup(missing)
 
       if (abortRef.current) return
@@ -84,20 +111,23 @@ export function usePrefetchPageImages(rows) {
       for (const row of missing) {
         if (abortRef.current) break
 
+        // Desmarcar antes de resolver (CardImage puede arrancar su propio fetch
+        // solo si el batch ya terminó sin encontrarla)
+        _pendingBatchIds.delete(String(row.card_id))
+
         const hit = scannerResults[row.nombre]
         if (hit?.url) {
           setImageMap(prev => ({ ...prev, [row.card_id]: hit.url }))
           setCardImage(row.card_id, hit.url)
           if (hit.url.startsWith('http')) toSave.push({ id: row.card_id, image_url: hit.url })
         } else {
-          // Solo EN cards tienen fallback en pokemontcg.io
           if (normLang(row.idioma) === 'en') {
             notFoundByScanner.push(row)
           }
         }
       }
 
-      // ── Paso 2: fallback pokemontcg.io para EN no encontradas ─────────
+      // ── Paso 2: fallback pokemontcg.io para EN no encontradas ─────────────
       if (notFoundByScanner.length > 0 && !abortRef.current) {
         const CONCURRENCY = 6
         const queue = [...notFoundByScanner]
@@ -129,13 +159,17 @@ export function usePrefetchPageImages(rows) {
         })
       }
 
-      // ── Guardar en Supabase (batch) ───────────────────────────────────
+      // ── Guardar en Supabase (batch) ───────────────────────────────────────
       if (toSave.length > 0 && !abortRef.current) {
         batchSaveToSupabase(toSave)
       }
     })()
 
-    return () => { abortRef.current = true }
+    return () => {
+      abortRef.current = true
+      // Limpiar pending para que CardImage no quede bloqueada en unmount
+      missing.forEach(r => _pendingBatchIds.delete(String(r.card_id)))
+    }
   }, [rows])
 
   return imageMap

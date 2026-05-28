@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchCardImages } from '../../lib/pokemonTcg'
 import { supabase } from '../../lib/supabase'
 import { setCardImage, getCardImageUrl } from '../../lib/imageCache'
+import { isBatchPending } from '../../hooks/usePrefetchPageImages'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 const SCANNER_URL = import.meta.env.VITE_SCANNER_URL
@@ -50,12 +51,15 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
   const [loaded,   setLoaded]   = useState(!!_initial)
   const [fetching, setFetching] = useState(false)
   const [failed,   setFailed]   = useState(false)
-  const fetchCount = useRef(0)
-  const retryTimer = useRef(null)
+  const fetchCount     = useRef(0)
+  const retryTimer     = useRef(null)
+  const batchWaitTimer = useRef(null)   // timer que espera a que el batch resuelva
+  const srcRef         = useRef(_initial) // ref espejo de src — accesible desde closures de timers
   const [triedApiFallback, setTriedApiFallback] = useState(false)
 
   const doFetch = useCallback(async () => {
-    if (fetching || !nombre) return
+    // srcRef.current es siempre fresco; evita fetch doble si el batch ya resolvió
+    if (fetching || srcRef.current || !nombre) return
     fetchCount.current++
     setFetching(true)
     setFailed(false)
@@ -63,6 +67,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     // 1. Scanner (EN via CDN pokemontcg.io, JP/CN via R2)
     const r2Url = await fetchScannerImageUrl(nombre, numero, idioma, setName)
     if (r2Url) {
+      srcRef.current = r2Url  // sincronizar ref antes del setState
       setSrc(r2Url); setLarge(r2Url); setLoaded(true)
       setFetching(false); setFailed(false)
       if (cardId) setCardImage(cardId, r2Url)
@@ -83,13 +88,14 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
       return
     }
 
+    const bestUrl = imgs.large || imgs.small
+    srcRef.current = bestUrl  // sincronizar ref antes del setState
     setSrc(imgs.small)
     setLarge(imgs.large || imgs.small)
     setLoaded(true)
     setFetching(false)
     setFailed(false)
 
-    const bestUrl = imgs.large || imgs.small
     if (cardId) setCardImage(cardId, bestUrl)
 
     // Persistir en Supabase para que la próxima sesión cargue directo desde DB
@@ -105,8 +111,9 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
   }, [nombre, numero, idioma, cardId, fetching, setName])
 
   useEffect(() => {
-    // Prop disponible → usar directamente
+    // Prop disponible → usar directamente (el batch resolvió y pasó imageUrl)
     if (imageUrl) {
+      srcRef.current = imageUrl  // ← batch resolvió: cancela cualquier doFetch pendiente
       setSrc(imageUrl); setLarge(imageUrl); setLoaded(true)
       if (cardId) setCardImage(cardId, imageUrl)
       return
@@ -115,6 +122,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     // Cache de sesión → usar sin fetch
     const cached = getCardImageUrl(cardId)
     if (cached) {
+      srcRef.current = cached
       setSrc(cached); setLarge(cached); setLoaded(true)
       return
     }
@@ -126,7 +134,18 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
       ([entry]) => {
         if (!entry.isIntersecting) return
         observer.disconnect()
-        doFetch()
+
+        // Si el batch de la página está procesando esta carta, esperamos a que
+        // resuelva en lugar de disparar 50 requests individuales al scanner.
+        // Timeout de 4.5 s (< 8 s del batch timeout) como fallback si el batch
+        // tardó demasiado o no encontró la carta.
+        if (cardId && isBatchPending(cardId)) {
+          batchWaitTimer.current = setTimeout(() => {
+            if (!srcRef.current) doFetch()
+          }, 4500)
+        } else {
+          doFetch()
+        }
       },
       { rootMargin: '200px' }
     )
@@ -134,6 +153,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
     return () => {
       observer.disconnect()
       if (retryTimer.current) clearTimeout(retryTimer.current)
+      if (batchWaitTimer.current) clearTimeout(batchWaitTimer.current)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl, nombre, numero, idioma, cardId])
@@ -144,6 +164,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
 
   const handleRetry = () => {
     setFailed(false)
+    srcRef.current = null
     setSrc(null)
     doFetch()
   }
@@ -168,6 +189,7 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
               ${loaded ? 'opacity-100' : 'opacity-0'}`}
             onLoad={() => setLoaded(true)}
             onError={() => {
+              srcRef.current = null
               setSrc(null)
               setLoaded(false)
               if (!triedApiFallback && nombre) {
