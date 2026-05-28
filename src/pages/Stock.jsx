@@ -62,7 +62,6 @@ export default function Stock() {
   const [filters,     setFilters]     = useState({ estado: 'disponible', page: 0, sortCol: null, sortDir: 'asc' })
   const [kpiSort,      setKpiSort]      = useState('')   // '' | 'score' | 'demand' | 'liquidity' | 'trend' | 'demand_asc' | 'liquidity_asc'
   const [kpiStateFilter, setKpiStateFilter] = useState('') // '' | 'buyable' | 'sell_now' | 'normal' | 'con_datos'
-  const [demoKpi,      setDemoKpi]      = useState(false) // modo demo: muestra datos simulados de KPI
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -131,40 +130,7 @@ export default function Stock() {
   )
   const { data: kpiMapReal = {} } = useMarketKpiBatch(kpiCardIds)
 
-  // ── Demo KPI: genera datos simulados para previsualizar filtros/orden ────
-  const KPI_STATES_DEMO = ['buyable', 'sell_now', 'normal', 'normal', 'normal']
-  const demoKpiMap = useMemo(() => {
-    if (!demoKpi) return {}
-    const seed = (str = '') => {
-      let h = 0
-      for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0
-      return Math.abs(h)
-    }
-    const map = {}
-    rows.forEach(r => {
-      const s = seed(r.card_id || r.inventory_id || r.nombre || '')
-      const score     = 20 + (s % 75)
-      const demand    = 10 + ((s * 7)  % 85)
-      const liquidity = 10 + ((s * 13) % 85)
-      const trend     = 10 + ((s * 19) % 85)
-      const supply    = 10 + ((s * 23) % 85)
-      map[r.card_id]  = {
-        kpi_score:               score,
-        kpi_state:               KPI_STATES_DEMO[s % KPI_STATES_DEMO.length],
-        kpi_demand_component:    demand,
-        kpi_liquidity_component: liquidity,
-        kpi_trend_component:     trend,
-        kpi_supply_component:    supply,
-        avg_listing_price_usd:   5 + (s % 50),
-        active_listings:         1 + (s % 30),
-        price_change_7d_pct:     (s % 20) - 8,
-        snapshot_date:           new Date().toISOString().slice(0, 10),
-      }
-    })
-    return map
-  }, [rows, demoKpi])
-
-  const kpiMap = demoKpi ? demoKpiMap : kpiMapReal
+  const kpiMap = kpiMapReal
 
   const { sortCol, sortDir = 'asc' } = filters
 
@@ -255,7 +221,7 @@ export default function Stock() {
   // ── Toast helper ────────────────────────────────────────────────────────
   const showToast = (mensaje, tipo = 'success') => {
     setToast({ visible: true, mensaje, tipo })
-    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
   // ── Guardar comprador inline (Feature 1) ─────────────────────────────────
@@ -546,18 +512,6 @@ export default function Stock() {
                 ${kpiSort ? 'text-purple-400' : 'text-gray-400'}`}>▾</span>
             </div>
 
-            {/* Toggle demo KPI */}
-            <button
-              onClick={() => setDemoKpi(v => !v)}
-              title={t('kpi_demo_title')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition
-                ${demoKpi
-                  ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
-                  : 'border-gray-200 bg-white text-gray-500 hover:border-amber-300 hover:text-amber-600'}`}
-            >
-              {demoKpi ? t('stock_demo_on') : t('stock_demo_kpi')}
-            </button>
-
             {/* Chip activo — reset rápido */}
             {(kpiSort || kpiStateFilter) && (
               <button
@@ -571,21 +525,6 @@ export default function Stock() {
           </>)}
         </div>
       </div>
-
-      {/* Banner Demo KPI */}
-      {FEATURES.marketIntel && demoKpi && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5
-                        flex items-center justify-between text-xs">
-          <span className="text-amber-700 font-medium flex items-center gap-2">
-            🟡 <strong>{t('stock_demo_banner')}</strong>
-            <span className="text-amber-500 font-normal">— {t('stock_demo_banner_sub')}</span>
-          </span>
-          <button onClick={() => setDemoKpi(false)}
-                  className="text-amber-400 hover:text-amber-700 font-bold transition ml-3">
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* Banner KPI activo */}
       {FEATURES.marketIntel && (kpiSort || kpiStateFilter) && (
