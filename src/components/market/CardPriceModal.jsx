@@ -143,9 +143,11 @@ export default function CardPriceModal({ card, onClose }) {
 
             {/* ══════════════════════════════════════════════════════
                 HEADER — identidad de la carta + precio hero
-                Layout: imagen grande a la izquierda, info a la derecha
+                Layout:
+                  Fila 1 → carta grande (izq) + nombre/set/KPI (der)
+                  Fila 2 → precio hero full-width (separador)
             ══════════════════════════════════════════════════════ */}
-            <div className="bg-slate-900 px-5 pt-5 pb-6 flex-shrink-0 relative">
+            <div className="bg-slate-900 px-5 pt-5 pb-5 flex-shrink-0 relative">
 
               {/* Botón cerrar */}
               <button
@@ -158,22 +160,22 @@ export default function CardPriceModal({ card, onClose }) {
                 ×
               </button>
 
-              {/* Imagen + Info side-by-side */}
+              {/* ── Fila 1: Imagen + Identidad ── */}
               <div className="flex gap-4 pr-10">
 
-                {/* ── Imagen grande ── */}
+                {/* Imagen — el doble que antes */}
                 <div className="flex-shrink-0 self-start">
                   {card.image_url ? (
                     <img
                       src={card.image_url}
                       alt={card.nombre}
-                      className="w-[120px] rounded-xl shadow-xl object-contain"
+                      className="w-[160px] rounded-xl shadow-2xl object-contain"
                       style={{ aspectRatio: '5/7' }}
                     />
                   ) : (
                     <div
-                      className="w-[120px] rounded-xl bg-slate-800 flex items-center
-                                 justify-center text-5xl"
+                      className="w-[160px] rounded-xl bg-slate-800 flex items-center
+                                 justify-center text-6xl"
                       style={{ aspectRatio: '5/7' }}
                     >
                       🃏
@@ -181,78 +183,75 @@ export default function CardPriceModal({ card, onClose }) {
                   )}
                 </div>
 
-                {/* ── Info apilada a la derecha ── */}
-                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5"
-                     style={{ minHeight: 'calc(120px * 7 / 5)' }}>
+                {/* Identidad: nombre, set, KPI — sin precio (va abajo) */}
+                <div className="flex-1 min-w-0 flex flex-col justify-start gap-2 pt-1">
 
-                  {/* Nombre + set */}
                   <div>
-                    <h2 className="text-white font-bold text-[16px] leading-snug">
+                    <h2 className="text-white font-bold text-[17px] leading-snug">
                       {card.nombre || '—'}
                     </h2>
-                    <p className="text-slate-400 text-[11px] mt-1 leading-snug">
+                    <p className="text-slate-400 text-[11px] mt-1.5 leading-snug">
                       {[card.set_name, card.numero ? `#${card.numero}` : null, card.idioma?.toUpperCase()]
                         .filter(Boolean).join(' · ')}
                     </p>
-
-                    {/* KPI badge — solo plan Pro */}
-                    {showMarket && (
-                      <div className="mt-2.5">
-                        {kpiLoading && !demoMode
-                          ? <MarketKpiBadge loading size="md" />
-                          : <MarketKpiBadge
-                              kpiScore={score}
-                              kpiState={state}
-                              size="md"
-                              showLabel
-                            />
-                        }
-                      </div>
-                    )}
                   </div>
 
-                  {/* ── Precio hero ── */}
-                  <div className="mt-3">
-                    <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">
-                      {t('market_price_label')}
-                    </p>
-                    <div className="flex items-end gap-2 flex-wrap">
-                      <p className="text-white text-[26px] font-black leading-none">
-                        {fmtUSD(priceCurrent)}
-                      </p>
-                      {/* Delta chip 7d — solo plan Pro */}
-                      {showMarket && fmtPct(change7d) && (
-                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full mb-0.5
-                          ${isPositive
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : 'bg-red-500/20 text-red-400'
-                          }`}
-                        >
-                          {fmtPct(change7d)}
-                          <span className="text-[10px] font-normal ml-1 opacity-70">7d</span>
+                  {/* KPI badge — solo plan Pro */}
+                  {showMarket && (
+                    <div className="mt-1">
+                      {kpiLoading && !demoMode
+                        ? <MarketKpiBadge loading size="md" />
+                        : <MarketKpiBadge
+                            kpiScore={score}
+                            kpiState={state}
+                            size="md"
+                            showLabel
+                          />
+                      }
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Fila 2: Precio hero — full width ── */}
+              <div className="mt-4 pt-3.5 border-t border-slate-700/50">
+                <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-1">
+                  {t('market_price_label')}
+                </p>
+                <div className="flex items-end gap-3 flex-wrap">
+                  <p className="text-white text-[30px] font-black leading-none">
+                    {fmtUSD(priceCurrent)}
+                  </p>
+                  {/* Delta chip 7d — solo plan Pro */}
+                  {showMarket && fmtPct(change7d) && (
+                    <span className={`text-sm font-bold px-2.5 py-1 rounded-full mb-0.5
+                      ${isPositive
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-red-500/20 text-red-400'
+                      }`}
+                    >
+                      {fmtPct(change7d)}
+                      <span className="text-[11px] font-normal ml-1 opacity-70">7d</span>
+                    </span>
+                  )}
+                  {/* ARS en la misma línea si hay espacio */}
+                  {(card._ars_blue || card._ars_ofic) && (
+                    <div className="flex items-center gap-3 mb-0.5">
+                      {card._ars_blue && (
+                        <span className="text-slate-400 text-[11px]">
+                          Blue: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_blue)}</span>
+                        </span>
+                      )}
+                      {card._ars_blue && card._ars_ofic && (
+                        <span className="text-slate-700 text-[11px]">·</span>
+                      )}
+                      {card._ars_ofic && (
+                        <span className="text-slate-400 text-[11px]">
+                          Oficial: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_ofic)}</span>
                         </span>
                       )}
                     </div>
-
-                    {/* ARS secundario */}
-                    {(card._ars_blue || card._ars_ofic) && (
-                      <div className="flex items-center gap-3 mt-1.5">
-                        {card._ars_blue && (
-                          <span className="text-slate-400 text-[11px]">
-                            Blue: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_blue)}</span>
-                          </span>
-                        )}
-                        {card._ars_blue && card._ars_ofic && (
-                          <span className="text-slate-700">·</span>
-                        )}
-                        {card._ars_ofic && (
-                          <span className="text-slate-400 text-[11px]">
-                            Oficial: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_ofic)}</span>
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
