@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import { useMarketKpi } from '../../hooks/useMarketKpi'
 import { useMarketSignals } from '../../hooks/useMarketSignals'
+import { useI18n } from '../../lib/i18n'
 import { KPI_STATE_CONFIG } from './MarketKpiBadge'
 import Spinner from '../ui/Spinner'
 
@@ -31,6 +32,7 @@ const fmtScore = (n) => n != null ? Math.round(n) : '—'
  *   cardId — UUID de la carta (cards.id global, no inventory.id)
  */
 export default function MarketSignalsPanel({ cardId }) {
+  const { t } = useI18n()
   const { data: kpi, isLoading: kpiLoading } = useMarketKpi(cardId)
   const { data: signals, isLoading: sigLoading } = useMarketSignals(cardId, 30)
 
@@ -141,9 +143,9 @@ export default function MarketSignalsPanel({ cardId }) {
       ) : (
         <div className="bg-gray-50 rounded-2xl px-4 py-4 text-center">
           <p className="text-2xl mb-1">📡</p>
-          <p className="text-xs text-gray-500 font-medium">Acumulando datos de mercado</p>
+          <p className="text-xs text-gray-500 font-medium">{t('market_accumulating')}</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            El histórico del KPI se construye día a día. Volvé mañana.
+            {t('market_kpi_builds_daily')}
           </p>
         </div>
       )}
@@ -151,7 +153,7 @@ export default function MarketSignalsPanel({ cardId }) {
       {/* ── Nota de fuente ───────────────────────────────────────── */}
       {kpi?.snapshot_date && (
         <p className="text-[10px] text-gray-300 text-right">
-          Datos al {kpi.snapshot_date} · Fuente: eBay Browse API
+          {t('market_data_as_of')} {kpi.snapshot_date} {t('market_source_ebay')}
         </p>
       )}
     </div>

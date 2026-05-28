@@ -3,6 +3,7 @@ import {
   ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
 import { usePriceHistory } from '../../hooks/usePriceHistory'
+import { useI18n } from '../../lib/i18n'
 import Spinner from '../ui/Spinner'
 
 const SOURCE_COLORS = {
@@ -30,6 +31,7 @@ function fmtDate(str) {
  * Recibe cardId (inventory UUID) y muestra líneas por fuente.
  */
 export default function PriceHistoryChart({ cardId, days = 30 }) {
+  const { t } = useI18n()
   const { data, isLoading, error } = usePriceHistory(cardId, days)
 
   if (isLoading) return (
@@ -40,15 +42,15 @@ export default function PriceHistoryChart({ cardId, days = 30 }) {
 
   if (error) return (
     <p className="text-xs text-red-400 text-center py-6">
-      Error al cargar historial: {error.message}
+      {t('market_error_history')}{error.message}
     </p>
   )
 
   if (!data || data.length === 0) return (
     <div className="flex flex-col items-center justify-center h-40 text-gray-400">
       <span className="text-3xl mb-2">📈</span>
-      <p className="text-xs">Sin datos aún — el historial se acumula día a día.</p>
-      <p className="text-xs text-gray-300 mt-1">Volvé mañana para ver el primer punto.</p>
+      <p className="text-xs">{t('market_price_no_data')}</p>
+      <p className="text-xs text-gray-300 mt-1">{t('market_price_come_back')}</p>
     </div>
   )
 

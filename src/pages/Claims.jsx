@@ -195,7 +195,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
             className="ml-auto w-7 h-7 flex items-center justify-center rounded-full
                        bg-white/10 hover:bg-white/20 text-white/50 hover:text-white
                        text-base transition shrink-0"
-            title="Deseleccionar todo"
+            title={t('claims_deselect')}
           >
             ×
           </button>
@@ -210,6 +210,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
 /* ─── Tabla de cartas del claim (con workflow post-claim) ────────────── */
 function CardTable({ cards, claimId }) {
   const qc = useQueryClient()
+  const { t } = useI18n()
   const [selected,    setSelected]    = useState(new Set())
   const [sellError,   setSellError]   = useState(null)
 
@@ -308,7 +309,7 @@ function CardTable({ cards, claimId }) {
   }
 
   if (!cards?.length) return (
-    <p className="text-xs text-gray-400 text-center py-3">Sin datos de cartas guardados.</p>
+    <p className="text-xs text-gray-400 text-center py-3">{t('claims_no_data_cards')}</p>
   )
 
   const totalARS = cards.reduce((s, c) => s + (c.sale ?? c.ars ?? 0), 0)
@@ -331,12 +332,12 @@ function CardTable({ cards, claimId }) {
                   />
                 </th>
               )}
-              <th className="px-3 py-2 text-left font-semibold">Carta</th>
-              <th className="px-3 py-2 text-left font-semibold">Set</th>
-              <th className="px-3 py-2 text-left font-semibold">Cond.</th>
+              <th className="px-3 py-2 text-left font-semibold">{t('claims_col_card')}</th>
+              <th className="px-3 py-2 text-left font-semibold">{t('claims_col_set')}</th>
+              <th className="px-3 py-2 text-left font-semibold">{t('claims_col_cond')}</th>
               <th className="px-3 py-2 text-right font-semibold">USD</th>
-              <th className="px-3 py-2 text-right font-semibold">ARS Blue</th>
-              <th className="px-3 py-2 text-right font-semibold">P.Venta</th>
+              <th className="px-3 py-2 text-right font-semibold">{t('claims_col_ars_blue')}</th>
+              <th className="px-3 py-2 text-right font-semibold">{t('claims_col_sale')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -396,7 +397,7 @@ function CardTable({ cards, claimId }) {
                 colSpan={hasInventoryIds ? 4 : 3}
                 className="px-3 py-2 text-xs font-bold text-gray-600"
               >
-                Total ({cards.length} cartas)
+                Total ({cards.length} {t('claims_col_cards')})
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-emerald-600 whitespace-nowrap">
                 {fmtUSD(totalUSD)}
@@ -415,7 +416,7 @@ function CardTable({ cards, claimId }) {
       {/* Aclaración cuando no hay inventory_id (claims anteriores) */}
       {!hasInventoryIds && (
         <p className="text-[10px] text-gray-400 text-center pb-1">
-          Este claim fue generado antes de la actualización — las acciones de inventario no están disponibles.
+          {t('claims_old_claim')}
         </p>
       )}
 
@@ -424,10 +425,10 @@ function CardTable({ cards, claimId }) {
         <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-start gap-2">
           <span>⚠️</span>
           <div>
-            <p className="font-bold mb-0.5">No se pudo registrar en Ventas</p>
+            <p className="font-bold mb-0.5">{t('claims_sell_error')}</p>
             <p>{sellError}</p>
             <p className="mt-1 text-red-500">
-              Probablemente faltan permisos en Supabase (RLS). Pedile al admin que ejecute el SQL de políticas.
+              {t('claims_sell_error_rls')}
             </p>
           </div>
           <button onClick={() => setSellError(null)} className="ml-auto text-red-400 hover:text-red-600 text-base leading-none">×</button>
@@ -452,6 +453,7 @@ function CardTable({ cards, claimId }) {
 
 /* ─── Fila de claim expandible ───────────────────────────────────────── */
 function ClaimRow({ claim }) {
+  const { t } = useI18n()
   const [expanded,    setExpanded]    = useState(false)
   const [fullImg,     setFullImg]     = useState(null)
   const [regenCards,  setRegenCards]  = useState(null)
@@ -520,10 +522,10 @@ function ClaimRow({ claim }) {
                 className="text-xs text-violet-600 hover:text-violet-800 font-medium
                            bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition"
               >
-                ✨ Re-generar
+                {t('claims_regen')}
               </button>
             ) : (
-              <span className="text-xs text-gray-400">Sin imágenes</span>
+              <span className="text-xs text-gray-400">{t('claims_no_images')}</span>
             )}
             <span className="text-gray-300 text-sm ml-auto">{expanded ? '▲' : '▼'}</span>
           </div>
@@ -553,7 +555,7 @@ function ClaimRow({ claim }) {
                   {hasImages && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 mb-3">
-                        {claim.image_urls.length} {claim.image_urls.length === 1 ? 'imagen' : 'imágenes'} guardadas · Clic para ampliar
+                        {claim.image_urls.length} {claim.image_urls.length === 1 ? t('claims_img_saved') : t('claims_imgs_saved')} {t('claims_click_enlarge')}
                       </p>
                       <div className="flex gap-3 flex-wrap">
                         {claim.image_urls.map((url, i) => (
@@ -591,14 +593,14 @@ function ClaimRow({ claim }) {
                   {!hasImages && hasCards && (
                     <div className="flex items-center gap-3 py-2">
                       <p className="text-xs text-gray-500 flex-1">
-                        Las imágenes no están guardadas en el servidor, pero podés regenerarlas desde los datos del claim.
+                        {t('claims_regen_tip')}
                       </p>
                       <button
                         onClick={openRegen}
                         className="shrink-0 px-4 py-2 bg-violet-600 hover:bg-violet-500
                                    text-white text-xs font-bold rounded-xl transition"
                       >
-                        ✨ Re-generar imágenes
+                        {t('claims_regen_images')}
                       </button>
                     </div>
                   )}
@@ -606,10 +608,10 @@ function ClaimRow({ claim }) {
                   {hasCards && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 mb-2">
-                        📋 Cartas del claim ({claim.cards_data.length})
+                        📋 {t('claims_cards_of_claim')} ({claim.cards_data.length})
                         {claim.cards_data.some(c => c.inventory_id) && (
                           <span className="ml-2 text-[10px] text-violet-500 font-normal">
-                            · Seleccioná para marcar vendidas/reservadas
+                            · {t('claims_select_tip')}
                           </span>
                         )}
                       </p>
@@ -619,7 +621,7 @@ function ClaimRow({ claim }) {
 
                   {!hasImages && !hasCards && (
                     <p className="text-sm text-gray-400 text-center py-4">
-                      Este claim no tiene datos guardados.
+                      {t('claims_no_data_full')}
                     </p>
                   )}
                 </div>
@@ -647,6 +649,7 @@ function ClaimRow({ claim }) {
 ════════════════════════════════════════════════════════════════════════ */
 export default function Claims() {
   const navigate = useNavigate()
+  const { t } = useI18n()
   const { data, isLoading, error } = useClaims()
   const claims = data ?? []
 
@@ -658,7 +661,7 @@ export default function Claims() {
         <div>
           <h2 className="text-lg font-bold text-gray-800">🃏 Claims</h2>
           <p className="text-sm text-gray-400 mt-0.5">
-            Historial de imágenes generadas · {claims.length} claims
+            {t('claims_history_sub')} · {claims.length} claims
           </p>
         </div>
         <button
@@ -666,7 +669,7 @@ export default function Claims() {
           className="px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-xl
                      hover:bg-violet-500 transition"
         >
-          + Nuevo claim
+          {t('claims_new')}
         </button>
       </div>
 
@@ -679,7 +682,7 @@ export default function Claims() {
         {error && <p className="text-red-500 text-sm p-5">{error.message}</p>}
         {!isLoading && claims.length === 0 && (
           <div className="p-8">
-            <EmptyState emoji="🃏" title="Sin claims todavía" sub="Generá el primero desde Stock" />
+            <EmptyState emoji="🃏" title={t('claims_no_claims')} sub={t('claims_no_claims_sub')} />
           </div>
         )}
 
@@ -687,7 +690,7 @@ export default function Claims() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-400 text-xs uppercase">
               <tr>
-                {['Fecha', 'Título', 'Estilo', 'Cartas', 'Imágenes', 'Tema'].map(h => (
+                {[t('claims_col_date'), t('claims_col_title'), t('claims_col_style'), t('claims_col_cards'), t('claims_col_images'), t('claims_col_theme')].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>

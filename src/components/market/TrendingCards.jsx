@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTrendingCards } from '../../hooks/useTrendingCards'
+import { useI18n } from '../../lib/i18n'
 import CardPriceModal from './CardPriceModal'
 
 const C = {
@@ -27,6 +28,7 @@ const fmtDelta = (n) => {
  * Muestra las cartas del inventario propio con mayor variación de precio en N días.
  */
 export default function TrendingCards() {
+  const { t } = useI18n()
   const [days,      setDays]      = useState(7)
   const [priceCard, setPriceCard] = useState(null)
 
@@ -50,7 +52,7 @@ export default function TrendingCards() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18 }}>📈</span>
             <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>
-              Tendencias del stock
+              {t('dash_trending_title')}
             </span>
             <span style={{
               background: '#f0fdf4', color: '#16a34a',
@@ -105,10 +107,10 @@ export default function TrendingCards() {
           }}>
             <span style={{ fontSize: 32 }}>🌱</span>
             <span style={{ fontSize: 13, fontWeight: 500 }}>
-              Acumulando datos de precios…
+              {t('dash_trending_no_data')}
             </span>
             <span style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', maxWidth: 220 }}>
-              El historial se guarda diariamente. En {days} días vas a ver las tendencias reales de tu stock.
+              {t('dash_trending_no_data_pre')} {days} {t('dash_trending_no_data_post')}
             </span>
           </div>
         ) : (
@@ -191,7 +193,7 @@ export default function TrendingCards() {
 
         {hasData && (
           <p style={{ fontSize: 10, color: '#9ca3af', margin: 0, textAlign: 'right' }}>
-            Clickeá una carta para ver su historial completo
+            {t('dash_trending_click')}
           </p>
         )}
       </div>

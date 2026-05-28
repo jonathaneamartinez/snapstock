@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useClaimGenerator } from '../../hooks/useClaimGenerator'
+import { useI18n } from '../../lib/i18n'
 import Spinner from '../ui/Spinner'
 import ClaimViewer from './ClaimViewer'
 
@@ -27,18 +28,19 @@ function PreviewB({ dark }) {
   )
 }
 
-const STYLES = [
-  { id: 'A', label: 'Collage', desc: '6 × 5 · 30 cartas/imagen', Preview: PreviewA },
-  { id: 'B', label: 'Grid',    desc: '5 × 5 · 25 cartas/imagen', Preview: PreviewB },
-]
-
 export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
+  const { t } = useI18n()
   const [style,     setStyle]     = useState('A')
   const [dark,      setDark]      = useState(true)
   const [showPrice, setShowPrice] = useState(true)
   const [title,     setTitle]     = useState('Disponibles')
 
   const { generating, progress, images, error, generate, reset } = useClaimGenerator()
+
+  const STYLES = [
+    { id: 'A', label: 'Collage', desc: t('claim_opt_style_desc_a'), Preview: PreviewA },
+    { id: 'B', label: 'Grid',    desc: t('claim_opt_style_desc_b'), Preview: PreviewB },
+  ]
 
   const handleGenerate = () =>
     generate({ cards, style, dark, showPrice, title })
@@ -70,9 +72,9 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
           <div>
-            <h3 className="font-bold text-gray-800 text-sm">🃏 Preparar claim</h3>
+            <h3 className="font-bold text-gray-800 text-sm">{t('claim_opt_prepare')}</h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              {cards.length} cartas · {pagesEst} {pagesEst === 1 ? 'imagen' : 'imágenes'}
+              {cards.length} {t('claims_col_cards')} · {pagesEst} {pagesEst === 1 ? t('claim_opt_image') : t('claim_opt_images')}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
@@ -82,12 +84,12 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
 
           {/* Título */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Título</label>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">{t('claims_col_title')}</label>
             <input
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Ej: Disponibles · Singles UT"
+              placeholder={t('claim_opt_title_ph')}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
@@ -95,7 +97,7 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
 
           {/* Estilos */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-2">Estilo</label>
+            <label className="block text-xs font-semibold text-gray-500 mb-2">{t('claims_col_style')}</label>
             <div className="grid grid-cols-2 gap-2">
               {STYLES.map(s => (
                 <button
@@ -117,8 +119,8 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
           {/* Toggles */}
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: 'Fondo oscuro', sub: 'Negro / azul', val: dark,      set: setDark      },
-              { label: 'Mostrar precios', sub: 'Overlay inferior', val: showPrice, set: setShowPrice },
+              { label: t('claim_opt_dark_label'),  sub: t('claim_opt_dark_sub'),  val: dark,      set: setDark      },
+              { label: t('claim_opt_price_label'), sub: t('claim_opt_price_sub'), val: showPrice, set: setShowPrice },
             ].map(opt => (
               <div key={opt.label}
                 className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
@@ -145,7 +147,7 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span className="flex items-center gap-1.5">
                   <Spinner size={11} className="text-blue-500" />
-                  Generando…
+                  {t('claim_opt_generating')}
                 </span>
                 <span className="font-semibold text-blue-600">{progress}%</span>
               </div>
@@ -173,8 +175,8 @@ export default function ClaimOptionsModal({ cards, onClose, onConfirmed }) {
                        flex items-center justify-center gap-2 text-sm"
           >
             {generating
-              ? <><Spinner size={14} className="text-white" /> Generando…</>
-              : `✨ Generar ${pagesEst} ${pagesEst === 1 ? 'imagen' : 'imágenes'}`
+              ? <><Spinner size={14} className="text-white" /> {t('claim_opt_generating')}</>
+              : `${t('claim_opt_generate')} ${pagesEst} ${pagesEst === 1 ? t('claim_opt_image') : t('claim_opt_images')}`
             }
           </button>
         </div>

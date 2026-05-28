@@ -10,6 +10,7 @@ import PriceHistoryChart from './PriceHistoryChart'
 import MarketKpiBadge, { KPI_STATE_CONFIG } from './MarketKpiBadge'
 import { useMarketKpi }    from '../../hooks/useMarketKpi'
 import { useMarketSignals } from '../../hooks/useMarketSignals'
+import { useI18n }         from '../../lib/i18n'
 import Spinner             from '../ui/Spinner'
 import { isFeatureEnabled } from '../../lib/featureGate'
 
@@ -72,6 +73,7 @@ const DEMO_KPI = {
  *   onClose — () => void
  */
 export default function CardPriceModal({ card, onClose }) {
+  const { t } = useI18n()
   const [days,     setDays]     = useState(30)
   const [demoMode, setDemoMode] = useState(false) // Solo activable desde Stock.jsx demo banner
 
@@ -105,12 +107,12 @@ export default function CardPriceModal({ card, onClose }) {
   const demoChartData = demoMode ? genDemoHistory(priceCurrent ?? 11) : null
 
   const metrics = [
-    { icon: '📦', label: 'Publicaciones', value: kpi?.active_listings ?? '—'                               },
-    { icon: '💲', label: 'Precio prom.',  value: fmtUSD(kpi?.avg_listing_price_usd ?? null)                },
-    { icon: '🔥', label: 'Demanda',       value: score != null ? Math.round(kpi.kpi_demand_component)    : '—' },
-    { icon: '💧', label: 'Liquidez',      value: score != null ? Math.round(kpi.kpi_liquidity_component) : '—' },
-    { icon: '📊', label: 'Tendencia',     value: score != null ? Math.round(kpi.kpi_trend_component)     : '—' },
-    { icon: '📦', label: 'Oferta',        value: score != null ? Math.round(kpi.kpi_supply_component)    : '—' },
+    { icon: '📦', label: t('market_metric_listings'),  value: kpi?.active_listings ?? '—'                               },
+    { icon: '💲', label: t('market_metric_avg_price'), value: fmtUSD(kpi?.avg_listing_price_usd ?? null)                },
+    { icon: '🔥', label: t('market_metric_demand'),    value: score != null ? Math.round(kpi.kpi_demand_component)    : '—' },
+    { icon: '💧', label: t('market_metric_liquidity'), value: score != null ? Math.round(kpi.kpi_liquidity_component) : '—' },
+    { icon: '📊', label: t('market_metric_trend'),     value: score != null ? Math.round(kpi.kpi_trend_component)     : '—' },
+    { icon: '📦', label: t('market_metric_supply'),    value: score != null ? Math.round(kpi.kpi_supply_component)    : '—' },
   ]
 
   return (
@@ -212,7 +214,7 @@ export default function CardPriceModal({ card, onClose }) {
                   {/* ── Precio hero ── */}
                   <div className="mt-3">
                     <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">
-                      Precio de mercado
+                      {t('market_price_label')}
                     </p>
                     <div className="flex items-end gap-2 flex-wrap">
                       <p className="text-white text-[26px] font-black leading-none">
@@ -267,13 +269,13 @@ export default function CardPriceModal({ card, onClose }) {
               {demoMode && (
                 <div className="bg-amber-50 border-b border-amber-100 px-4 py-2 flex items-center justify-between">
                   <span className="text-xs text-amber-700 font-medium">
-                    👁 Mostrando datos de ejemplo
+                    {t('market_demo_showing')}
                   </span>
                   <button
                     onClick={() => setDemoMode(false)}
                     className="text-xs text-amber-600 hover:text-amber-800 font-semibold transition"
                   >
-                    Salir
+                    {t('market_demo_exit')}
                   </button>
                 </div>
               )}
@@ -281,7 +283,7 @@ export default function CardPriceModal({ card, onClose }) {
               {/* ── Sección 1: Evolución del precio ─────────────── */}
               <section className="px-5 py-5 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-gray-800">Evolución del precio</h3>
+                  <h3 className="text-sm font-bold text-gray-800">{t('market_price_evolution')}</h3>
                   {/* Selector de período */}
                   <div className="flex gap-1">
                     {[7, 30, 60, 90].map(d => (
@@ -309,7 +311,7 @@ export default function CardPriceModal({ card, onClose }) {
 
               {/* ── Sección 2: Señales de mercado ───────────────── */}
               <section className="px-5 py-5 border-b border-gray-100">
-                <h3 className="text-sm font-bold text-gray-800 mb-3">Señales de mercado</h3>
+                <h3 className="text-sm font-bold text-gray-800 mb-3">{t('market_signals_title')}</h3>
 
                 {kpiLoading && !demoMode ? (
                   <div className="flex justify-center py-6">
@@ -345,9 +347,9 @@ export default function CardPriceModal({ card, onClose }) {
                 ) : (
                   <div className="bg-gray-50 rounded-2xl px-4 py-5 text-center">
                     <p className="text-2xl mb-1.5">📡</p>
-                    <p className="text-xs text-gray-600 font-semibold">Sin datos de mercado aún</p>
+                    <p className="text-xs text-gray-600 font-semibold">{t('market_no_data_title')}</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      Se actualiza automáticamente cada noche con datos de eBay y PokeTrace.
+                      {t('market_auto_update')}
                     </p>
                   </div>
                 )}
@@ -356,7 +358,7 @@ export default function CardPriceModal({ card, onClose }) {
               {/* ── Sección 3: Sparkline KPI histórico ──────────── */}
               {sparkData.length >= 2 && (
                 <section className="px-5 py-5 border-b border-gray-100">
-                  <h3 className="text-sm font-bold text-gray-800 mb-3">Puntaje KPI — últimos 30d</h3>
+                  <h3 className="text-sm font-bold text-gray-800 mb-3">{t('market_kpi_score_title')}</h3>
                   <ResponsiveContainer width="100%" height={100}>
                     <AreaChart data={sparkData} margin={{ top: 2, right: 4, left: -20, bottom: 0 }}>
                       <defs>
@@ -374,7 +376,7 @@ export default function CardPriceModal({ card, onClose }) {
                       />
                       <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#9ca3af' }} />
                       <Tooltip
-                        formatter={(v) => [v != null ? `${v} / 100` : '—', 'Puntaje KPI']}
+                        formatter={(v) => [v != null ? `${v} / 100` : '—', t('market_kpi_score_label')]}
                         labelFormatter={fmtDate}
                         contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e5e7eb' }}
                       />
@@ -392,18 +394,16 @@ export default function CardPriceModal({ card, onClose }) {
 
                   {/* Descripción del KPI */}
                   <div className="mt-3 bg-blue-50 rounded-xl px-3.5 py-3">
-                    <p className="text-[11px] font-semibold text-blue-700 mb-1">¿Qué es el Puntaje KPI?</p>
+                    <p className="text-[11px] font-semibold text-blue-700 mb-1">{t('market_kpi_what')}</p>
                     <p className="text-[11px] text-blue-600 leading-relaxed">
-                      Es un indicador de <strong>salud comercial</strong> de la carta en el mercado secundario
-                      (eBay). Escala de <strong>0 a 100</strong>, donde mayor puntaje = mayor oportunidad de venta.
-                      Combina cuatro factores:
+                      {t('market_kpi_desc')}
                     </p>
                     <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5">
                       {[
-                        ['🔥', 'Demanda',   'búsquedas y ventas recientes'],
-                        ['💧', 'Liquidez',  'velocidad de venta'],
-                        ['📊', 'Tendencia', 'dirección del precio'],
-                        ['📦', 'Oferta',    'cantidad disponible en mercado'],
+                        ['🔥', t('market_metric_demand'),    t('market_kpi_demand_desc')],
+                        ['💧', t('market_metric_liquidity'), t('market_kpi_liquidity_desc')],
+                        ['📊', t('market_metric_trend'),     t('market_kpi_trend_desc')],
+                        ['📦', t('market_metric_supply'),    t('market_kpi_supply_desc')],
                       ].map(([icon, name, desc]) => (
                         <p key={name} className="text-[10px] text-blue-500 leading-snug">
                           {icon} <span className="font-semibold">{name}:</span> {desc}
@@ -418,7 +418,7 @@ export default function CardPriceModal({ card, onClose }) {
               {kpi?.snapshot_date && !demoMode && (
                 <div className="px-5 py-3">
                   <p className="text-[10px] text-gray-300 text-right">
-                    Datos al {kpi.snapshot_date} · Fuente: eBay Browse API
+                    {t('market_data_as_of')} {kpi.snapshot_date} {t('market_source_ebay')}
                   </p>
                 </div>
               )}
