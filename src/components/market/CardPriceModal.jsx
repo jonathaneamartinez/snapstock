@@ -304,7 +304,7 @@ export default function CardPriceModal({ card, onClose }) {
                 {demoMode ? (
                   <DemoLineChart data={demoChartData} days={days} />
                 ) : (
-                  <PriceHistoryChart cardId={card.inventory_id} days={days} />
+                  <PriceHistoryChart cardId={card.card_id ?? card.inventory_id} days={days} />
                 )}
 
                 {/* Botón ver demo — solo cuando no hay datos reales y no estamos en demo */}
