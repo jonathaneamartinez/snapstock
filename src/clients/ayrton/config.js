@@ -3,9 +3,9 @@
  * Importar vía: import { clientConfig } from '../../clients/ayrton/config'
  */
 export const clientConfig = {
-  name:         'Ayrton TCG',
+  name:         'UT Ayr',
   displayName:  'Ayrton & Agus',
-  ownerNames:   ['Ayrton', 'Agustín'],
+  ownerNames:   [],
   accentColor:  '#4680FF',
   logo:         null,
   features: {

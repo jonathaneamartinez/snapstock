@@ -3,9 +3,9 @@
  * Importar vía: import { clientConfig } from '../../clients/singles-ut/config'
  */
 export const clientConfig = {
-  name:         'Singles UT',
+  name:         'UT - LA',
   displayName:  'Sebas y Melo',
-  ownerNames:   ['Sebas', 'Melody', 'Mayra'],
+  ownerNames:   [],
   accentColor:  '#4680FF',    // azul por defecto
   logo:         null,         // null = initials fallback · string URL = avatar imagen
   features: {

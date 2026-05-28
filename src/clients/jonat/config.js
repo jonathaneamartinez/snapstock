@@ -3,9 +3,9 @@
  * Importar vía: import { clientConfig } from '../../clients/jonat/config'
  */
 export const clientConfig = {
-  name:         'Jonat TCG',
-  displayName:  'Jonat TCG',
-  ownerNames:   ['Jonat'],
+  name:         'Jonathan',
+  displayName:  'Kardia',
+  ownerNames:   [],
   accentColor:  '#4680FF',
   logo:         null,
   features: {
