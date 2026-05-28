@@ -4,11 +4,19 @@ import {
   searchCardsByName,
   fetchCardsBySet,
   fetchCardBySetAndNumber,
+  fetchCardImages,
 } from '../../lib/pokemonTcg'
+import { scannerApi }         from '../../lib/scanner'
 import { useDolar }           from '../../hooks/useDolar'
 import { STORE_ID, CONDICIONES, IDIOMAS, FIRST_ED_SETS } from '../../constants'
 import Spinner    from '../ui/Spinner'
 import SetSelect  from '../ui/SetSelect'
+
+const normLang = (idioma) => {
+  if (['ja', 'jp', 'japanese'].includes(idioma)) return 'jp'
+  if (['zh', 'cn', 'chinese'].includes(idioma))  return 'cn'
+  return 'en'
+}
 
 /* ─── Formatters ─────────────────────────────────────────────────────────── */
 const fmtARS = (n) =>
@@ -47,6 +55,7 @@ const emptyRow = () => ({
   price_ars:        '',
   suggestions:      [],
   searching:        false,
+  _setCards:        [],       // cartas preloadeadas del set seleccionado
 })
 
 /* ─── Debounce ────────────────────────────────────────────────────────────── */
@@ -98,7 +107,8 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       supabase.from('cards').select('id, name, image_url, set_name').ilike('name', `%${query}%`).limit(8),
     ])
 
-    const fromTcg = tcgCards.status === 'fulfilled' ? (tcgCards.value ?? []) : []
+    // searchCardsByName ahora devuelve { results, totalCount }
+    const fromTcg = tcgCards.status === 'fulfilled' ? (tcgCards.value?.results ?? []) : []
     const fromDb  = dbRes.status === 'fulfilled'
       ? (dbRes.value?.data ?? []).map(c => ({
           id: c.id, name: c.name, set_name: c.set_name || null,
@@ -118,7 +128,47 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     updateRow(key, { suggestions: merged, searching: false })
   }
 
-  const debouncedSearch = useDebounce(searchCards, 300)
+  const debouncedSearch = useDebounce(searchCards, 150)
+
+  /* ── Preload de cartas del set seleccionado ────────────────────────────── */
+  const preloadSetCards = async (setId, language, key) => {
+    if (!setId) return
+    const lang = normLang(language)
+    updateRow(key, { searching: true, _setCards: [] })
+    try {
+      let mapped = []
+      if (lang === 'en') {
+        const cards = await fetchCardsBySet(setId)
+        mapped = cards.map(c => ({
+          name:               c.name,
+          set_name:           c.set_name,
+          set_id:             c.set_id || setId,
+          card_number:        c.card_number,
+          image_url:          c.image_url,
+          price_usd:          c.price_usd,
+          subtypes:           c.subtypes || [],
+          has_first_ed_price: c.has_first_ed_price || false,
+          source:             'tcg',
+        }))
+      } else {
+        const res = await scannerApi.buscar('', lang, setId, 200)
+        mapped = (res?.results ?? []).map(c => ({
+          name:               c.nombre || c.name,
+          set_name:           c.set_name || c.set,
+          set_id:             setId,
+          card_number:        c.numero  || c.number,
+          image_url:          c.imagen  || c.image_url,
+          price_usd:          null,
+          subtypes:           [],
+          has_first_ed_price: false,
+          source:             'scanner',
+        }))
+      }
+      updateRow(key, { _setCards: mapped, searching: false })
+    } catch (_) {
+      updateRow(key, { searching: false })
+    }
+  }
 
   /* ── Helpers de filas ──────────────────────────────────────────────────── */
   const updateRow = (key, patch) =>
@@ -130,7 +180,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   const addRow = () =>
     setRows(prev => [...prev, emptyRow()])
 
-  const selectCard = (key, card) => {
+  const selectCard = async (key, card) => {
     const usd = card.price_usd ? parseFloat(card.price_usd).toFixed(2) : ''
     const ars = usd && blue ? String(Math.round(parseFloat(usd) * blue)) : ''
     const firstEd = detectFirstEdition(card)
@@ -152,6 +202,15 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       first_ed_reason:  firstEd.reason,
       suggestions:      [],
     })
+    // Si no tiene precio, buscar desde la API (siempre mostrar precio de mercado)
+    if (!card.price_usd) {
+      const imgs = await fetchCardImages(card.name, card.card_number, card.set_name)
+      if (imgs?.price_usd) {
+        const newUsd = parseFloat(imgs.price_usd).toFixed(2)
+        const newArs = blue ? String(Math.round(parseFloat(newUsd) * blue)) : ''
+        updateRow(key, { price_usd: newUsd, price_ars: newArs })
+      }
+    }
   }
 
   /* ── Submit ────────────────────────────────────────────────────────────── */
@@ -357,6 +416,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                   onSearch={q => debouncedSearch(q, row._key)}
                   onSelect={card => selectCard(row._key, card)}
                   onRemove={() => removeRow(row._key)}
+                  onPreload={(setId, lang) => preloadSetCards(setId, lang, row._key)}
                 />
               ))}
             </div>
@@ -425,7 +485,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 ══════════════════════════════════════════════════════════════════════════ */
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
-function CardRow({ row, isLast, blue, onChange, onSearch, onSelect, onRemove }) {
+function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreload }) {
   const wrapRef    = useRef(null)
   const numTimer   = useRef(null)
   const [numInput, setNumInput] = useState(row.card_number || '')
@@ -453,27 +513,61 @@ function CardRow({ row, isLast, blue, onChange, onSearch, onSelect, onRemove }) 
     }, 400)
   }
 
-  // ── Al hacer focus en nombre con set ya elegido → cargar cartas del set ──
+  // ── Al hacer focus en nombre con set ya elegido → cargas instantáneas ───
   const handleNameFocus = async () => {
-    if (!row.set_id || row.card_id) return
+    if (row.card_id) return
+    // Preloaded → mostrar al instante (0ms)
+    if (row._setCards?.length > 0) {
+      const q = row.card_name.trim().toLowerCase()
+      const filtered = q
+        ? row._setCards.filter(c =>
+            c.name?.toLowerCase().includes(q) ||
+            c.card_number?.toLowerCase()?.startsWith(q)
+          ).slice(0, 60)
+        : row._setCards.slice(0, 60)
+      if (filtered.length > 0) { onChange({ suggestions: filtered }); return }
+    }
+    if (!row.set_id) return
     if (row.suggestions.length > 0) return
+    // Fallback: fetch de la API si el preload todavía no terminó
     onChange({ searching: true, suggestions: [] })
     const cards = await fetchCardsBySet(row.set_id)
     onChange({ searching: false, suggestions: cards.slice(0, 80) })
   }
 
   // ── Búsqueda por nombre (con o sin set) ──────────────────────────────────
-  const handleNameChange = async (val) => {
+  const handleNameChange = (val) => {
     onChange({ card_name: val, card_id: null })
-    if (!val.trim() || val.length < 2) { onChange({ suggestions: [] }); return }
+
+    if (!val.trim() || val.length < 2) {
+      // Si hay cartas preloadeadas del set, mostrarlas todas (no ocultar el dropdown)
+      if (row._setCards?.length > 0 && row.set_id) {
+        onChange({ suggestions: row._setCards.slice(0, 60) })
+      } else {
+        onChange({ suggestions: [] })
+      }
+      return
+    }
+
+    // Filtro instantáneo desde caché si el set está preloadeado
+    if (row._setCards?.length > 0) {
+      const q = val.trim().toLowerCase()
+      const filtered = row._setCards.filter(c =>
+        c.name?.toLowerCase().includes(q) ||
+        c.card_number?.toLowerCase()?.startsWith(q)
+      ).slice(0, 60)
+      onChange({ suggestions: filtered })
+      return
+    }
 
     if (row.set_id) {
-      // Buscar dentro del set por nombre
+      // Fallback: fetch del set con filtro (si el preload aún no terminó)
       onChange({ searching: true })
-      const cards = await fetchCardsBySet(row.set_id, val.trim())
-      onChange({ searching: false, suggestions: cards.slice(0, 60) })
+      fetchCardsBySet(row.set_id, val.trim()).then(cards => {
+        onChange({ searching: false, suggestions: cards.slice(0, 60) })
+      })
     } else {
-      onSearch(val)   // búsqueda global sin set
+      onSearch(val)   // búsqueda global sin set → debounced 150ms
     }
   }
 
@@ -582,7 +676,10 @@ function CardRow({ row, isLast, blue, onChange, onSearch, onSelect, onRemove }) 
           <SetSelect
             value={row.set_name}
             setId={row.set_id}
-            onChange={patch => onChange(patch)}
+            onChange={patch => {
+              onChange({ ...patch, _setCards: [], suggestions: [] })
+              if (patch.set_id) onPreload(patch.set_id, row.language)
+            }}
             className="flex-1 min-w-[160px]"
             size="sm"
           />
@@ -608,7 +705,11 @@ function CardRow({ row, isLast, blue, onChange, onSearch, onSelect, onRemove }) 
           <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Idioma</span>
           <select
             value={row.language}
-            onChange={e => onChange({ language: e.target.value })}
+            onChange={e => {
+              const newLang = e.target.value
+              onChange({ language: newLang, _setCards: [], suggestions: [] })
+              if (row.set_id) onPreload(row.set_id, newLang)
+            }}
             className="border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs
                        focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
           >
