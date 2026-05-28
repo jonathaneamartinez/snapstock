@@ -454,7 +454,7 @@ export default function Ingresos() {
 
   const showToast = (msg, tipo = 'success') => {
     setToast({ visible: true, msg, tipo })
-    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
   const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"

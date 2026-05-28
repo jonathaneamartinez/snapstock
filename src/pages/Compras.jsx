@@ -30,7 +30,7 @@ export default function Compras() {
 
   const showToast = (mensaje, tipo = 'success') => {
     setToast({ visible: true, mensaje, tipo })
-    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['purchases'] })

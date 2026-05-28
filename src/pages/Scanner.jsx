@@ -396,7 +396,7 @@ export default function Scanner() {
 
   const showToast = (msg, tipo = 'success') => {
     setToast({ visible: true, msg, tipo })
-    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
   // Color de las esquinas del guide box
