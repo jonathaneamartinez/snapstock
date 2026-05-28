@@ -37,7 +37,13 @@ export default function Ingresos() {
   const [suggestions,   setSuggestions]   = useState([])
   const [sugLoading,    setSugLoading]    = useState(false)
   const [showSug,       setShowSug]       = useState(false)
+  const [loadingMore,   setLoadingMore]   = useState(false)
+  const [hasMore,       setHasMore]       = useState(false)
   const sugTimer       = useRef(null)
+  const sugPageRef     = useRef(1)         // página actual en pokemontcg.io
+  const sugTotalRef    = useRef(0)         // totalCount de la query actual
+  const sugQueryRef    = useRef('')        // query activa (para "cargar más")
+  const sentinelRef    = useRef(null)      // div al final del dropdown → dispara siguiente página
   // Cache de cartas del set seleccionado (para JP/CN — permite filtrar client-side)
   const allSetCardsRef = useRef([])
 
@@ -125,6 +131,43 @@ export default function Ingresos() {
     setSugLoading(false)
   }, [])
 
+  // ── Carga la siguiente página de resultados (infinite scroll) ──────────
+  const loadMoreSuggestions = useCallback(async () => {
+    if (loadingMore || !hasMore) return
+    if (normLang(form.idioma) !== 'en' || !sugQueryRef.current) return
+    setLoadingMore(true)
+    const nextPage = sugPageRef.current + 1
+    try {
+      const { results, totalCount } = await searchCardsByName(sugQueryRef.current, 20, nextPage)
+      if (!results.length) { setHasMore(false); return }
+      const mapped = results.map(c => ({
+        nombre:     c.name,
+        set:        c.set_name,
+        set_id:     null,
+        numero:     c.card_number,
+        imagen:     c.image_url,
+        precio_usd: c.price_usd,
+        source:     'market',
+      }))
+      sugPageRef.current  = nextPage
+      sugTotalRef.current = totalCount
+      setSuggestions(prev => [...prev, ...mapped])
+      setHasMore((nextPage * 20) < totalCount)
+    } catch (_) {}
+    finally { setLoadingMore(false) }
+  }, [loadingMore, hasMore, form.idioma])
+
+  // IntersectionObserver sobre el sentinel al final del dropdown
+  useEffect(() => {
+    if (!sentinelRef.current || !showSug || !hasMore) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreSuggestions() },
+      { threshold: 0.1 }
+    )
+    obs.observe(sentinelRef.current)
+    return () => obs.disconnect()
+  }, [showSug, hasMore, loadingMore, loadMoreSuggestions])
+
   // ── Autocomplete: busca mientras escribe ───────────────────────────────
   const handleNombreChange = (val) => {
     setField('nombre', val)
@@ -137,7 +180,7 @@ export default function Ingresos() {
       return
     }
 
-    if (!val.trim() || val.length < 2) { setSuggestions([]); setShowSug(false); return }
+    if (!val.trim() || val.length < 2) { setSuggestions([]); setShowSug(false); setHasMore(false); return }
     setSugLoading(true)
 
     // ── Caso B: sin set, EN → pokemontcg.io (precios incluidos, caché sesión) ──
@@ -147,8 +190,10 @@ export default function Ingresos() {
         const lang = normLang(form.idioma)
 
         if (lang === 'en') {
-          const cards = await searchCardsByName(val.trim(), 20)
-          const mapped = cards.map(c => ({
+          sugPageRef.current  = 1
+          sugQueryRef.current = val.trim()
+          const { results, totalCount } = await searchCardsByName(val.trim(), 20, 1)
+          const mapped = results.map(c => ({
             nombre:     c.name,
             set:        c.set_name,
             set_id:     null,
@@ -157,7 +202,9 @@ export default function Ingresos() {
             precio_usd: c.price_usd,
             source:     'market',
           }))
+          sugTotalRef.current = totalCount
           setSuggestions(mapped)
+          setHasMore(mapped.length < totalCount)
           setShowSug(mapped.length > 0)
         } else {
           const res = await scannerApi.buscar(val.trim(), lang, '', 20)
@@ -471,7 +518,7 @@ export default function Ingresos() {
                                   bg-white border border-gray-200 rounded-2xl shadow-xl
                                   max-h-72 overflow-y-auto">
                     {suggestions.map((sug, i) => (
-                      <button key={i} type="button"
+                      <button key={`${sug.nombre}|${sug.set}|${sug.numero}|${i}`} type="button"
                         onMouseDown={() => selectSuggestion(sug)}
                         className="w-full flex items-center gap-3 px-4 py-2.5
                                    hover:bg-blue-50 text-left border-b border-gray-100
@@ -501,6 +548,16 @@ export default function Ingresos() {
                         </div>
                       </button>
                     ))}
+
+                    {/* Sentinel de infinite scroll — cuando aparece en pantalla carga +20 */}
+                    {hasMore && (
+                      <div ref={sentinelRef} className="flex items-center justify-center py-3 border-t border-gray-100">
+                        {loadingMore
+                          ? <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+                          : <span className="text-[11px] text-gray-400">↓ más resultados</span>
+                        }
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

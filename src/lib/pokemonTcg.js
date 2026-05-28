@@ -241,52 +241,56 @@ function extractPrice(card) {
   return null
 }
 
-// Caché para autocompletado por nombre (evita re-llamar la API con la misma query)
+// Caché para autocompletado por nombre (evita re-llamar la API con la misma query + page)
 const _nameSearchCache    = new Map()
 const _nameSearchInflight = new Map()
 
 /**
  * Busca múltiples cartas por nombre parcial en la PokémonTCG API.
- * Ideal para autocomplete: devuelve hasta `limit` resultados con set, imagen y precio.
- * Resultados cacheados en memoria (por sesión) para que retipear la misma query sea instantáneo.
+ * Soporta paginación: page=1 devuelve los primeros `limit` resultados, page=2 los siguientes, etc.
+ *
+ * @returns {Promise<{ results: Array, totalCount: number }>}
+ *   results    — cartas de esta página
+ *   totalCount — total de cartas que existen para la query (para saber si hay más páginas)
  */
-export async function searchCardsByName(nombre, limit = 20) {
-  if (!nombre || nombre.length < 2) return []
+export async function searchCardsByName(nombre, limit = 20, page = 1) {
+  if (!nombre || nombre.length < 2) return { results: [], totalCount: 0 }
   const { cleanName } = extractEmbeddedNumber(nombre)
-  const cacheKey = `${cleanName.toLowerCase().trim()}|${limit}`
+  const cacheKey = `${cleanName.toLowerCase().trim()}|${limit}|${page}`
   if (_nameSearchCache.has(cacheKey))    return _nameSearchCache.get(cacheKey)
   if (_nameSearchInflight.has(cacheKey)) return _nameSearchInflight.get(cacheKey)
 
   const q = `name:*${noApostrophe(normalize(cleanName)).replace(/\s+/g, '*')}*`
   const promise = (async () => {
-  try {
-    const params = new URLSearchParams({ q, pageSize: limit, orderBy: 'name' })
-    const res  = await fetch(`${BASE}/cards?${params}`)
-    if (!res.ok) return []
-    const json = await res.json()
-    const results = (json.data ?? []).map(c => {
-      const prices = c.tcgplayer?.prices ?? {}
-      const has1stEd = !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal'])
-      const subtypes = c.subtypes ?? []
-      return {
-        id:               null,
-        name:             c.name,
-        set_name:         c.set?.name   || null,
-        set_series:       c.set?.series || null,
-        card_number:      c.number      || null,
-        image_url:        c.images?.small || c.images?.large || null,
-        price_usd:        extractPrice(c),
-        subtypes,
-        has_first_ed_price: has1stEd,
-        source:           'market',
-      }
-    })
-    _nameSearchCache.set(cacheKey, results)
-    return results
-  } catch (err) {
-    console.warn('[pokemonTcg] searchCardsByName error:', err?.message)
-    return []
-  }
+    try {
+      const params = new URLSearchParams({ q, pageSize: String(limit), page: String(page), orderBy: 'name' })
+      const res  = await fetch(`${BASE}/cards?${params}`)
+      if (!res.ok) return { results: [], totalCount: 0 }
+      const json = await res.json()
+      const results = (json.data ?? []).map(c => {
+        const prices  = c.tcgplayer?.prices ?? {}
+        const has1stEd = !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal'])
+        return {
+          id:                 null,
+          name:               c.name,
+          set_name:           c.set?.name   || null,
+          set_series:         c.set?.series || null,
+          card_number:        c.number      || null,
+          image_url:          c.images?.small || c.images?.large || null,
+          price_usd:          extractPrice(c),
+          subtypes:           c.subtypes ?? [],
+          has_first_ed_price: has1stEd,
+          source:             'market',
+        }
+      })
+      const totalCount = json.totalCount ?? results.length
+      const payload = { results, totalCount }
+      _nameSearchCache.set(cacheKey, payload)
+      return payload
+    } catch (err) {
+      console.warn('[pokemonTcg] searchCardsByName error:', err?.message)
+      return { results: [], totalCount: 0 }
+    }
   })()
   _nameSearchInflight.set(cacheKey, promise)
   promise.finally(() => _nameSearchInflight.delete(cacheKey))
