@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, TrendingUp, Users,
-  ShoppingCart, PlusCircle, Settings, Scan, X, Layers,
+  ShoppingCart, PlusCircle, Settings, Scan, X, Layers, BookOpen,
 } from 'lucide-react'
 import { useI18n }     from '../../lib/i18n'
 import { STORE_CONFIG } from '../../constants'
@@ -19,6 +19,7 @@ export default function Sidebar({ open, onClose }) {
     { to: '/deudas',    labelKey: 'nav_deudas',    icon: Users           },
     { to: '/compras',   labelKey: 'nav_compras',   icon: ShoppingCart    },
     { to: '/claims',    labelKey: 'nav_claims',    icon: Layers          },
+    { to: '/pokedex',   labelKey: 'nav_pokedex',   icon: BookOpen        },
     { to: '/settings',  labelKey: 'nav_settings',  icon: Settings        },
   ]
 

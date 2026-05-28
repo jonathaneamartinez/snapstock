@@ -11,6 +11,7 @@ const TITLE_KEYS = {
   '/compras':   'title_compras',
   '/ingresos':  'title_ingresos',
   '/settings':  'title_settings',
+  '/pokedex':   'title_pokedex',
 }
 
 export default function TopBar({ onMenuToggle }) {

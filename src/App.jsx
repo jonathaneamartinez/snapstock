@@ -19,6 +19,7 @@ const Ingresos = lazy(() => import('./pages/Ingresos'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Scanner  = lazy(() => import('./pages/Scanner'))
 const Claims   = lazy(() => import('./pages/Claims'))
+const Pokedex  = lazy(() => import('./pages/Pokedex'))
 
 /* ─── Spinner de carga de página ─────────────────────────────────────── */
 function PageLoader() {
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/ingresos"  element={<Ingresos />} />
               <Route path="/settings"  element={<Settings />} />
               <Route path="/claims"    element={<Claims />}   />
+              <Route path="/pokedex"   element={<Pokedex />}  />
             </Route>
 
             {/* Fallback */}

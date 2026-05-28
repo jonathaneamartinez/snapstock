@@ -8,6 +8,7 @@ const es = {
   // ── Nav ───────────────────────────────────────────────────────────
   nav_section_label: 'Navegación',
   nav_dashboard: 'Dashboard',
+  nav_pokedex:   'Pokédex',
   nav_ingresos:  'Nuevos ingresos',
   nav_stock:     'Stock de cartas',
   nav_ventas:    'Ventas del mes',
@@ -25,6 +26,8 @@ const es = {
   title_compras:   'Compras',
   title_ingresos:  'Nuevos ingresos',
   title_settings:  'Settings',
+  title_pokedex:   'Pokédex',
+  pokedex_sub:     'Explorá cartas en todos los idiomas y expansiones',
 
   // ── TopBar ────────────────────────────────────────────────────────
   scanner_mobile_only: 'Solo disponible desde el celular',
