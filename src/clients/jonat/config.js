@@ -4,6 +4,7 @@
  */
 export const clientConfig = {
   name:         'Jonat TCG',
+  displayName:  'Jonat TCG',
   ownerNames:   ['Jonat'],
   accentColor:  '#4680FF',
   logo:         null,

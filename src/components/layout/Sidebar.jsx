@@ -3,7 +3,9 @@ import {
   LayoutDashboard, Package, TrendingUp, Users,
   ShoppingCart, PlusCircle, Settings, Scan, X, Layers,
 } from 'lucide-react'
-import { useI18n } from '../../lib/i18n'
+import { useI18n }     from '../../lib/i18n'
+import { STORE_CONFIG } from '../../constants'
+import StoreProfile     from './StoreProfile'
 
 export default function Sidebar({ open, onClose }) {
   const navigate = useNavigate()
@@ -33,22 +35,37 @@ export default function Sidebar({ open, onClose }) {
       ${open ? 'translate-x-0' : '-translate-x-full'}
       lg:translate-x-0 lg:w-52
     `}>
-      {/* Header con botón cerrar en mobile */}
-      <div className="px-5 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-        <div>
-          <span className="font-extrabold text-blue-600 text-lg tracking-tight">{t('app_name')}</span>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Singles UT</p>
-        </div>
+
+      {/* ── Brand + botón cerrar mobile ───────────────────────────── */}
+      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+        <span className="font-extrabold text-blue-600 text-lg tracking-tight">
+          {t('app_name')}
+        </span>
         <button
           onClick={onClose}
-          className="lg:hidden text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1"
+          className="lg:hidden text-gray-400 dark:text-gray-500
+                     hover:text-gray-700 dark:hover:text-gray-300 p-1"
         >
           <X size={20} />
         </button>
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 py-4 space-y-1 px-3 overflow-y-auto">
+      {/* ── Perfil de la tienda ───────────────────────────────────── */}
+      <StoreProfile
+        logo={STORE_CONFIG.logo}
+        displayName={STORE_CONFIG.displayName}
+        name={STORE_CONFIG.name}
+        ownerNames={STORE_CONFIG.ownerNames}
+      />
+
+      {/* ── Separador + etiqueta de sección ──────────────────────── */}
+      <p className="px-5 pt-3 pb-1 text-[10px] font-semibold text-gray-400
+                    dark:text-gray-600 uppercase tracking-widest">
+        {t('nav_section_label')}
+      </p>
+
+      {/* ── Nav items ────────────────────────────────────────────── */}
+      <nav className="flex-1 py-1 space-y-0.5 px-3 overflow-y-auto">
         {NAV.map(({ to, labelKey, icon: Icon }) => (
           <NavLink
             key={to} to={to}
@@ -66,7 +83,7 @@ export default function Sidebar({ open, onClose }) {
         ))}
       </nav>
 
-      {/* Scanner al fondo */}
+      {/* ── Scanner al fondo ─────────────────────────────────────── */}
       <div className="p-4 border-t border-gray-100 dark:border-gray-800">
         <button
           onClick={handleScanner}

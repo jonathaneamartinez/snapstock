@@ -46,6 +46,9 @@ const _feat = (key, clientDefault) => {
   return key in _clientFeatures ? !!_clientFeatures[key] : clientDefault
 }
 
+// Config del cliente activo (nombre, logo, integrantes, etc.)
+export const STORE_CONFIG = _CLIENT_CONFIGS[CLIENT_ID] ?? _singlesUtCfg
+
 export const FEATURES = {
   marketIntel: _feat('marketIntel', false),
   // Agregar nuevas features acá + en cada clientConfig que corresponda:

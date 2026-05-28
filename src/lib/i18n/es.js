@@ -3,9 +3,10 @@
  */
 const es = {
   // ── App ───────────────────────────────────────────────────────────
-  app_name: '⚡ Snap Stock',
+  app_name: 'Snap Stock',
 
   // ── Nav ───────────────────────────────────────────────────────────
+  nav_section_label: 'Navegación',
   nav_dashboard: 'Dashboard',
   nav_ingresos:  'Nuevos ingresos',
   nav_stock:     'Stock de cartas',

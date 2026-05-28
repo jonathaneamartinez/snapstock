@@ -4,6 +4,7 @@
  */
 export const clientConfig = {
   name:         'Ayrton TCG',
+  displayName:  'Ayrton & Agus',
   ownerNames:   ['Ayrton', 'Agustín'],
   accentColor:  '#4680FF',
   logo:         null,
