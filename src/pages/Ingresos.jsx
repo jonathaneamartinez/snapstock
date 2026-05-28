@@ -5,6 +5,7 @@ import {
   fetchCardImages,
   fetchCardsBySet,
   fetchCardBySetAndNumber,
+  searchCardsByName,
 } from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
 import { useDolar } from '../hooks/useDolar'
@@ -74,142 +75,29 @@ export default function Ingresos() {
     return scannerApi.cardImageUrl(nombre, num, lang, { setId })
   }
 
-  // ── Autocomplete: busca mientras escribe ───────────────────────────────
-  const handleNombreChange = (val) => {
-    setField('nombre', val)
-    clearTimeout(sugTimer.current)
-    if (!val.trim() || val.length < 2) { setSuggestions([]); setShowSug(false); return }
-
+  // ── Precarga las cartas de un set en background ────────────────────────
+  // Se llama inmediatamente al seleccionar el set (no espera al focus del input).
+  const preloadSetCards = useCallback(async (setId, idioma) => {
+    if (!setId) return
+    const lang = normLang(idioma)
     setSugLoading(true)
-    sugTimer.current = setTimeout(async () => {
-      try {
-        const lang = normLang(form.idioma)
-
-        // Si hay set seleccionado y el idioma es EN → búsqueda pokemontcg.io (con precio)
-        if (form.set_id && lang === 'en') {
-          const cards = await fetchCardsBySet(form.set_id, val.trim())
-          const mapped = cards.slice(0, 60).map(c => ({
-            nombre:     c.name,
-            set:        c.set_name,
-            set_id:     c.set_id,
-            numero:     c.card_number,
-            imagen:     c.image_url,
-            precio_usd: c.price_usd,
-            source:     'market',
-          }))
-          setSuggestions(mapped)
-          setShowSug(mapped.length > 0)
-          return
-        }
-
-        // Si hay set seleccionado y el idioma es JP/CN
-        if (form.set_id && (lang === 'jp' || lang === 'cn')) {
-          // Si ya tenemos las cartas del set cargadas, filtrar client-side (rápido, sin API call)
-          if (allSetCardsRef.current.length > 0) {
-            const q_lower = val.trim().toLowerCase()
-            const filtered = q_lower
-              ? allSetCardsRef.current.filter(c =>
-                  (c.nombre?.toLowerCase().includes(q_lower)) ||
-                  (c.numero?.toLowerCase().includes(q_lower))
-                )
-              : allSetCardsRef.current
-            setSuggestions(filtered.slice(0, 60))
-            setShowSug(filtered.length > 0)
-            setSugLoading(false)
-            return
-          }
-          // Si aún no están cargadas, buscar en el backend
-          const res = await scannerApi.buscar(val.trim(), lang, form.set_id)
-          const mapped = (res?.results ?? []).map(c => ({
-            nombre:     c.nombre,
-            set:        c.set_name,
-            set_id:     c.set_code,
-            numero:     c.numero,
-            imagen:     c.imagen,
-            precio_usd: null,
-            source:     'phash',
-          }))
-          setSuggestions(mapped)
-          setShowSug(mapped.length > 0)
-          return
-        }
-
-        // Sin set: búsqueda global (scanner + Supabase)
-        const [apiRes, dbRes] = await Promise.allSettled([
-          scannerApi.buscar(val, form.idioma),
-          supabase.from('cards')
-            .select('name, set_name, card_number, image_url, language')
-            .ilike('name', `%${val}%`)
-            .limit(6),
-        ])
-
-        const fromApi = apiRes.status === 'fulfilled'
-          ? (apiRes.value?.opciones ?? apiRes.value?.results ?? []).map(c => ({
-              nombre:     c.nombre || c.name,
-              set:        c.set || c.set_name,
-              set_id:     null,
-              numero:     c.numero || c.number,
-              imagen:     c.imagen || c.image_url,
-              precio_usd: c.precio_usd || c.price_usd,
-              source:     'market',
-            }))
-          : []
-
-        const fromDb = dbRes.status === 'fulfilled'
-          ? (dbRes.value?.data ?? []).map(c => ({
-              nombre:     c.name,
-              set:        c.set_name,
-              set_id:     null,
-              numero:     c.card_number,
-              imagen:     c.image_url,
-              precio_usd: null,
-              source:     'stock',
-            }))
-          : []
-
-        const seen = new Set()
-        const merged = [...fromApi, ...fromDb].filter(c => {
-          const k = `${c.nombre}|${c.set}|${c.numero}`
-          if (seen.has(k)) return false
-          seen.add(k)
-          return true
-        }).slice(0, 8)
-
-        setSuggestions(merged)
-        setShowSug(merged.length > 0)
-      } catch (_) {}
-      finally { setSugLoading(false) }
-    }, 300)
-  }
-
-  // ── Focus en nombre con set seleccionado → cargar todas las cartas del set ──
-  const handleNombreFocus = async () => {
-    if (!form.set_id) return
-    if (suggestions.length > 0) { setShowSug(true); return }
-    const lang = normLang(form.idioma)
-
-    setSugLoading(true)
-
-    if (lang === 'en') {
-      // EN: usar pokemontcg.io (trae precios)
-      const cards = await fetchCardsBySet(form.set_id)
-      const mapped = cards.slice(0, 80).map(c => ({
-        nombre:     c.name,
-        set:        c.set_name,
-        set_id:     c.set_id,
-        numero:     c.card_number,
-        imagen:     c.image_url,
-        precio_usd: c.price_usd,
-        source:     'market',
-      }))
-      allSetCardsRef.current = mapped
-      setSuggestions(mapped)
-      setShowSug(mapped.length > 0)
-    } else {
-      // JP/CN: precargar todas las cartas del set desde el índice local (q vacío + set_id)
-      try {
-        const res = await scannerApi.buscar('', lang, form.set_id, 200)
-        const mapped = (res?.results ?? []).map(c => ({
+    try {
+      if (lang === 'en') {
+        // pokemontcg.io → trae precios. fetchCardsBySet tiene caché interno por setId.
+        const cards = await fetchCardsBySet(setId)
+        allSetCardsRef.current = cards.map(c => ({
+          nombre:     c.name,
+          set:        c.set_name,
+          set_id:     c.set_id,
+          numero:     c.card_number,
+          imagen:     c.image_url,
+          precio_usd: c.price_usd,
+          source:     'market',
+        }))
+      } else {
+        // JP/CN → índice local del scanner (q vacío = todas las cartas del set)
+        const res = await scannerApi.buscar('', lang, setId, 200)
+        allSetCardsRef.current = (res?.results ?? []).map(c => ({
           nombre:     c.nombre,
           set:        c.set_name,
           set_id:     c.set_code,
@@ -218,13 +106,87 @@ export default function Ingresos() {
           precio_usd: null,
           source:     'phash',
         }))
-        allSetCardsRef.current = mapped
-        setSuggestions(mapped.slice(0, 60))
-        setShowSug(mapped.length > 0)
-      } catch (_) {}
+      }
+    } catch (_) {}
+    finally { setSugLoading(false) }
+  }, [])
+
+  // ── Filtrado local instantáneo sobre las cartas ya precargadas ──────────
+  const filterFromCache = useCallback((val) => {
+    const q = val.trim().toLowerCase()
+    const filtered = q
+      ? allSetCardsRef.current.filter(c =>
+          c.nombre?.toLowerCase().includes(q) ||
+          c.numero?.toLowerCase().startsWith(q)
+        )
+      : allSetCardsRef.current
+    setSuggestions(filtered.slice(0, 60))
+    setShowSug(filtered.length > 0)
+    setSugLoading(false)
+  }, [])
+
+  // ── Autocomplete: busca mientras escribe ───────────────────────────────
+  const handleNombreChange = (val) => {
+    setField('nombre', val)
+    clearTimeout(sugTimer.current)
+
+    // ── Caso A: set precargado → filtro 100% local, 0 ms de espera ────────
+    if (allSetCardsRef.current.length > 0) {
+      if (!val.trim()) { setSuggestions(allSetCardsRef.current.slice(0, 60)); setShowSug(true); return }
+      filterFromCache(val)
+      return
     }
 
-    setSugLoading(false)
+    if (!val.trim() || val.length < 2) { setSuggestions([]); setShowSug(false); return }
+    setSugLoading(true)
+
+    // ── Caso B: sin set, EN → pokemontcg.io (precios incluidos, caché sesión) ──
+    // ── Caso C: sin set, JP/CN → scanner backend ──────────────────────────────
+    sugTimer.current = setTimeout(async () => {
+      try {
+        const lang = normLang(form.idioma)
+
+        if (lang === 'en') {
+          const cards = await searchCardsByName(val.trim(), 20)
+          const mapped = cards.map(c => ({
+            nombre:     c.name,
+            set:        c.set_name,
+            set_id:     null,
+            numero:     c.card_number,
+            imagen:     c.image_url,
+            precio_usd: c.price_usd,
+            source:     'market',
+          }))
+          setSuggestions(mapped)
+          setShowSug(mapped.length > 0)
+        } else {
+          const res = await scannerApi.buscar(val.trim(), lang, '', 20)
+          const mapped = (res?.results ?? res?.opciones ?? []).map(c => ({
+            nombre:     c.nombre || c.name,
+            set:        c.set_name || c.set,
+            set_id:     c.set_code || null,
+            numero:     c.numero || c.number,
+            imagen:     c.imagen || c.image_url,
+            precio_usd: null,
+            source:     'phash',
+          }))
+          setSuggestions(mapped)
+          setShowSug(mapped.length > 0)
+        }
+      } catch (_) {}
+      finally { setSugLoading(false) }
+    }, 150)  // 150 ms (antes 300 ms)
+  }
+
+  // ── Focus en nombre → mostrar cartas del set si ya están precargadas ───
+  const handleNombreFocus = () => {
+    if (!form.set_id) return
+    if (allSetCardsRef.current.length > 0) {
+      // Ya precargado → mostrar inmediatamente sin ningún fetch
+      filterFromCache(form.nombre)
+      return
+    }
+    // Todavía en vuelo (preloadSetCards ya corriendo en background) → esperar
   }
 
   // ── Seleccionar sugerencia ─────────────────────────────────────────────
@@ -247,16 +209,22 @@ export default function Ingresos() {
     setShowSug(false)
     setSuggestions([])
     setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd })
-    if (!sug.imagen) fetchPreviewImage(sug.nombre, sug.numero, sug.set)
+    // Si falta imagen O precio → ir a pokemontcg.io (también actualiza el precio)
+    if (!sug.imagen || !sug.precio_usd) fetchPreviewImage(sug.nombre, sug.numero, sug.set)
   }, [blue, margen])
 
-  // ── Preview: busca imagen si no viene en la sugerencia ─────────────────
+  // ── Preview: busca imagen Y precio si faltan ──────────────────────────
+  // fetchCardImages retorna { small, large, price_usd } — los tres se aprovechan.
   const fetchPreviewImage = async (nombre, numero, setName) => {
     if (!nombre) return
     setPreviewLoad(true)
     const imgs = await fetchCardImages(nombre, numero, setName)
-    if (imgs?.large || imgs?.small) {
-      setPreview(prev => ({ ...prev, imagen: imgs.large || imgs.small }))
+    if (imgs) {
+      setPreview(prev => ({
+        ...prev,
+        imagen:     imgs.large || imgs.small || prev?.imagen,
+        precio_usd: imgs.price_usd ?? prev?.precio_usd,
+      }))
     }
     setPreviewLoad(false)
   }
@@ -550,7 +518,10 @@ export default function Ingresos() {
                       setSuggestions([])
                       setShowSug(false)
                       setPreview(null)
-                      allSetCardsRef.current = []   // limpiar cache al cambiar set
+                      allSetCardsRef.current = []
+                      // ▶ Precarga las cartas del set EN BACKGROUND inmediatamente.
+                      // Cuando el usuario haga foco en el nombre, ya estarán listas.
+                      if (set_id) preloadSetCards(set_id, form.idioma)
                     }}
                     className="w-full"
                   />
@@ -586,9 +557,12 @@ export default function Ingresos() {
                   <label className={labelCls}>{t('ingresos_language')}</label>
                   <select value={form.idioma}
                     onChange={e => {
-                      setField('idioma', e.target.value)
-                      allSetCardsRef.current = []   // limpiar cache al cambiar idioma
+                      const newIdioma = e.target.value
+                      setField('idioma', newIdioma)
+                      allSetCardsRef.current = []
                       setSuggestions([])
+                      // Recargar cartas del set con el nuevo idioma
+                      if (form.set_id) preloadSetCards(form.set_id, newIdioma)
                     }}
                     className={`${inputCls} bg-white`}>
                     {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}

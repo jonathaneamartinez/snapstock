@@ -241,40 +241,56 @@ function extractPrice(card) {
   return null
 }
 
+// Caché para autocompletado por nombre (evita re-llamar la API con la misma query)
+const _nameSearchCache    = new Map()
+const _nameSearchInflight = new Map()
+
 /**
  * Busca múltiples cartas por nombre parcial en la PokémonTCG API.
  * Ideal para autocomplete: devuelve hasta `limit` resultados con set, imagen y precio.
+ * Resultados cacheados en memoria (por sesión) para que retipear la misma query sea instantáneo.
  */
 export async function searchCardsByName(nombre, limit = 20) {
   if (!nombre || nombre.length < 2) return []
   const { cleanName } = extractEmbeddedNumber(nombre)
+  const cacheKey = `${cleanName.toLowerCase().trim()}|${limit}`
+  if (_nameSearchCache.has(cacheKey))    return _nameSearchCache.get(cacheKey)
+  if (_nameSearchInflight.has(cacheKey)) return _nameSearchInflight.get(cacheKey)
+
   const q = `name:*${noApostrophe(normalize(cleanName)).replace(/\s+/g, '*')}*`
+  const promise = (async () => {
   try {
     const params = new URLSearchParams({ q, pageSize: limit, orderBy: 'name' })
     const res  = await fetch(`${BASE}/cards?${params}`)
     if (!res.ok) return []
     const json = await res.json()
-    return (json.data ?? []).map(c => {
+    const results = (json.data ?? []).map(c => {
       const prices = c.tcgplayer?.prices ?? {}
-      const has1stEd = !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal'] || prices['1stEditionNormal'])
+      const has1stEd = !!(prices['1stEditionHolofoil'] || prices['1stEditionNormal'])
       const subtypes = c.subtypes ?? []
       return {
         id:               null,
         name:             c.name,
         set_name:         c.set?.name   || null,
-        set_series:       c.set?.series || null,   // 'Base', 'Neo', 'EX', etc.
+        set_series:       c.set?.series || null,
         card_number:      c.number      || null,
         image_url:        c.images?.small || c.images?.large || null,
         price_usd:        extractPrice(c),
-        subtypes,                                   // puede incluir '1st Edition'
-        has_first_ed_price: has1stEd,               // tiene precio de 1ª ed en TCGplayer
+        subtypes,
+        has_first_ed_price: has1stEd,
         source:           'market',
       }
     })
+    _nameSearchCache.set(cacheKey, results)
+    return results
   } catch (err) {
     console.warn('[pokemonTcg] searchCardsByName error:', err?.message)
     return []
   }
+  })()
+  _nameSearchInflight.set(cacheKey, promise)
+  promise.finally(() => _nameSearchInflight.delete(cacheKey))
+  return promise
 }
 
 function toResult(card) {
