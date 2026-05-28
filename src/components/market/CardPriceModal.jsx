@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  AreaChart, Area, LineChart, Line,
+  AreaChart, Area,
   XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
@@ -28,42 +28,6 @@ const fmtDate = (str) => {
   return `${d}/${m}`
 }
 
-// ── Demo data ─────────────────────────────────────────────────────────────────
-// Genera 30 días de datos simulados para visualizar el diseño "con datos"
-function genDemoHistory(basePrice = 11.08) {
-  const rows = []
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const iso = d.toISOString().slice(0, 10)
-    const noise = (Math.random() - 0.5) * 2.5
-    rows.push({ date: iso, tcgplayer: Math.max(2, +(basePrice + noise + i * 0.04).toFixed(2)) })
-  }
-  return rows
-}
-function genDemoKpiHistory() {
-  const rows = []
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const iso = d.toISOString().slice(0, 10)
-    rows.push({ date: iso, kpi: Math.round(60 + Math.random() * 25 + i * 0.3) })
-  }
-  return rows
-}
-const DEMO_KPI = {
-  kpi_state:              'buyable',
-  kpi_score:              74,
-  price_change_7d_pct:    5.2,
-  active_listings:        12,
-  avg_listing_price_usd:  12.40,
-  kpi_demand_component:   80,
-  kpi_liquidity_component: 68,
-  kpi_trend_component:    72,
-  kpi_supply_component:   58,
-  snapshot_date:          new Date().toISOString().slice(0, 10),
-}
-
 /**
  * CardPriceModal — Right-side sheet con detalle completo de la carta.
  *
@@ -74,20 +38,15 @@ const DEMO_KPI = {
  */
 export default function CardPriceModal({ card, onClose }) {
   const { t } = useI18n()
-  const [days,     setDays]     = useState(30)
-  const [demoMode, setDemoMode] = useState(false) // Solo activable desde Stock.jsx demo banner
+  const [days, setDays] = useState(30)
 
   const showMarket   = isFeatureEnabled('marketIntel')
   const marketCardId = card?.card_id ?? card?.inventory_id
 
-  const { data: kpiReal,  isLoading: kpiLoading } = useMarketKpi(marketCardId)
-  const { data: sigReal = [] }                    = useMarketSignals(marketCardId, 30)
+  const { data: kpi,     isLoading: kpiLoading } = useMarketKpi(marketCardId)
+  const { data: signals = [] }                   = useMarketSignals(marketCardId, 30)
 
   if (!card) return null
-
-  // Cuando demoMode activo, usar datos simulados en lugar de los reales
-  const kpi     = demoMode ? DEMO_KPI      : kpiReal
-  const signals = demoMode ? genDemoKpiHistory() : sigReal
 
   const state     = kpi?.kpi_state ?? 'sin_datos'
   const stateConf = KPI_STATE_CONFIG[state] ?? KPI_STATE_CONFIG.normal
@@ -102,9 +61,6 @@ export default function CardPriceModal({ card, onClose }) {
     date: s.snapshot_date ?? s.date,
     kpi:  s.kpi_score != null ? Math.round(s.kpi_score) : (s.kpi ?? null),
   }))
-
-  // Demo chart data
-  const demoChartData = demoMode ? genDemoHistory(priceCurrent ?? 11) : null
 
   const metrics = [
     { icon: '📦', label: t('market_metric_listings'),  value: kpi?.active_listings ?? '—'                               },
@@ -199,7 +155,7 @@ export default function CardPriceModal({ card, onClose }) {
                   {/* KPI badge — solo plan Pro */}
                   {showMarket && (
                     <div className="mt-1">
-                      {kpiLoading && !demoMode
+                      {kpiLoading
                         ? <MarketKpiBadge loading size="md" />
                         : <MarketKpiBadge
                             kpiScore={score}
@@ -264,21 +220,6 @@ export default function CardPriceModal({ card, onClose }) {
               {/* ── Secciones Market Intel — solo plan Pro ──────── */}
               {showMarket && (<>
 
-              {/* Banner demo mode */}
-              {demoMode && (
-                <div className="bg-amber-50 border-b border-amber-100 px-4 py-2 flex items-center justify-between">
-                  <span className="text-xs text-amber-700 font-medium">
-                    {t('market_demo_showing')}
-                  </span>
-                  <button
-                    onClick={() => setDemoMode(false)}
-                    className="text-xs text-amber-600 hover:text-amber-800 font-semibold transition"
-                  >
-                    {t('market_demo_exit')}
-                  </button>
-                </div>
-              )}
-
               {/* ── Sección 1: Evolución del precio ─────────────── */}
               <section className="px-5 py-5 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-4">
@@ -301,18 +242,14 @@ export default function CardPriceModal({ card, onClose }) {
                   </div>
                 </div>
 
-                {demoMode ? (
-                  <DemoLineChart data={demoChartData} days={days} />
-                ) : (
-                  <PriceHistoryChart cardId={card.card_id ?? card.inventory_id} days={days} />
-                )}
+                <PriceHistoryChart cardId={card.card_id ?? card.inventory_id} days={days} />
               </section>
 
               {/* ── Sección 2: Señales de mercado ───────────────── */}
               <section className="px-5 py-5 border-b border-gray-100">
                 <h3 className="text-sm font-bold text-gray-800 mb-3">{t('market_signals_title')}</h3>
 
-                {kpiLoading && !demoMode ? (
+                {kpiLoading ? (
                   <div className="flex justify-center py-6">
                     <Spinner size={20} className="text-blue-400" />
                   </div>
@@ -414,7 +351,7 @@ export default function CardPriceModal({ card, onClose }) {
               )}
 
               {/* ── Footer ───────────────────────────────────────── */}
-              {kpi?.snapshot_date && !demoMode && (
+              {kpi?.snapshot_date && (
                 <div className="px-5 py-3">
                   <p className="text-[10px] text-gray-300 text-right">
                     {t('market_data_as_of')} {kpi.snapshot_date} {t('market_source_ebay')}
@@ -435,79 +372,3 @@ export default function CardPriceModal({ card, onClose }) {
   )
 }
 
-// ── Sub-componentes internos ──────────────────────────────────────────────────
-
-/** Gráfico de línea con datos demo */
-function DemoLineChart({ data, days }) {
-  if (!data) return null
-  const slice = data.slice(-days)
-  const first = slice[0]?.tcgplayer
-  const last  = slice[slice.length - 1]?.tcgplayer
-  const delta = first && last ? ((last - first) / first * 100).toFixed(1) : null
-  const pos   = delta != null && parseFloat(delta) >= 0
-
-  return (
-    <div>
-      {delta !== null && (
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs text-gray-400">{days}d</span>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full
-            ${pos ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'}`}>
-            {pos ? '▲' : '▼'} {Math.abs(delta)}%
-          </span>
-          <span className="text-xs text-gray-400">
-            ${Number(first).toFixed(2)} → ${Number(last).toFixed(2)} USD
-          </span>
-        </div>
-      )}
-      <ResponsiveContainer width="100%" height={180}>
-        <LineChart data={slice} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis
-            dataKey="date"
-            tickFormatter={fmtDate}
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            tickFormatter={v => `$${v}`}
-            domain={['auto', 'auto']}
-          />
-          <Tooltip
-            formatter={(v) => [`$${Number(v).toFixed(2)}`, 'TCGPlayer']}
-            labelFormatter={fmtDate}
-            contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e5e7eb' }}
-          />
-          <Line
-            type="monotone"
-            dataKey="tcgplayer"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={false}
-            connectNulls
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-/** Botón "Ver demo" — se muestra solo en la sección de evolución cuando no hay datos */
-function DemoTrigger({ onActivate }) {
-  const [visible, setVisible] = useState(false)
-
-  // Se hace visible solo si PriceHistoryChart no está cargando
-  // (se renderiza siempre, la visibilidad la maneja el padre si quiere)
-  return (
-    <div className="mt-3 text-center">
-      <button
-        onClick={onActivate}
-        className="text-[11px] text-blue-400 hover:text-blue-600 font-medium
-                   transition underline underline-offset-2"
-      >
-        👁 Ver ejemplo con datos
-      </button>
-    </div>
-  )
-}
