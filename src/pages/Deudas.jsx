@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useI18n }                from '../lib/i18n'
 import { useDeudas }              from '../hooks/useDeudas'
 import Spinner                    from '../components/ui/Spinner'
 import EmptyState                 from '../components/ui/EmptyState'
@@ -12,6 +13,7 @@ const fmtARS   = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFrac
 const fmtFecha = (s) => s ? new Date(s).toLocaleDateString('es-AR') : '—'
 
 export default function Deudas() {
+  const { t } = useI18n()
   const qc = useQueryClient()
   const { data, isLoading, error } = useDeudas()
 
@@ -45,32 +47,32 @@ export default function Deudas() {
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 mb-1">Reservas activas</p>
-          <p className="text-2xl font-extrabold text-amber-500">{reservasActivas} cartas</p>
-          <p className="text-xs text-gray-400 mt-0.5">en poder de clientes</p>
+          <p className="text-xs text-gray-400 mb-1">{t('deudas_kpi_reservas')}</p>
+          <p className="text-2xl font-extrabold text-amber-500">{reservasActivas} {t('stock_card_plural')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{t('deudas_kpi_held')}</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 mb-1">Deuda total</p>
+          <p className="text-xs text-gray-400 mb-1">{t('deudas_kpi_total_label')}</p>
           <p className="text-2xl font-extrabold text-gray-800">{fmtARS(deudaTotal)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">ARS pendiente</p>
+          <p className="text-xs text-gray-400 mt-0.5">{t('deudas_kpi_pending_ars')}</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-          <p className="text-xs text-gray-400 mb-1">Vencidas +7 días</p>
-          <p className="text-2xl font-extrabold text-red-500">{vencidos} clientes</p>
-          <p className="text-xs text-gray-400 mt-0.5">requieren seguimiento</p>
+          <p className="text-xs text-gray-400 mb-1">{t('deudas_kpi_overdue')}</p>
+          <p className="text-2xl font-extrabold text-red-500">{vencidos} {t('deudas_kpi_clients')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{t('deudas_kpi_followup')}</p>
         </div>
       </div>
 
       {/* Tabla compradores */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">Compradores con reservas activas</h3>
+          <h3 className="font-semibold text-gray-800">{t('deudas_buyers_title')}</h3>
         </div>
 
         {isLoading && <div className="flex justify-center py-12"><Spinner size={32} className="text-blue-400" /></div>}
         {error     && <p className="text-red-500 text-sm p-6">{error.message}</p>}
         {!isLoading && data?.length === 0 && (
-          <EmptyState emoji="🎉" title="Sin deudas activas" sub="Todo cobrado" />
+          <EmptyState emoji="🎉" title={t('deudas_no_debts')} sub={t('deudas_no_debts_sub')} />
         )}
 
         {!isLoading && data?.length > 0 && (
@@ -78,18 +80,18 @@ export default function Deudas() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                 <tr>
-                  {['Comprador','Contacto','Cartas','Monto ARS','F. Reserva','Canal','Estado','Acción'].map(h => (
+                  {[t('deudas_col_buyer'),t('deudas_col_contact'),t('deudas_col_cards'),t('deudas_col_amount_ars'),t('deudas_col_reserved_date'),t('deudas_col_canal'),t('deudas_col_estado'),t('deudas_col_action')].map(h => (
                     <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {data.map(d => {
-                  const estado = d.total > 0 ? 'pendiente' : 'cobrado'
+                  const estado = d.total > 0 ? t('deudas_status_pending') : t('deudas_status_collected')
                   const fechaReserva = fmtFecha(d.items[0]?.reserved_at || d.items[0]?.created_at)
                   // Canal de la primera carta (mostrar si todas coinciden, sino "varios")
                   const canales = [...new Set(d.items.map(i => i.canal_reserva).filter(Boolean))]
-                  const canal   = canales.length === 1 ? canales[0] : (canales.length > 1 ? 'varios' : null)
+                  const canal   = canales.length === 1 ? canales[0] : (canales.length > 1 ? t('deudas_canal_multiple') : null)
 
                   return (
                     <tr key={d.buyer} className="hover:bg-gray-50 align-middle">
@@ -135,7 +137,7 @@ export default function Deudas() {
                               buyerName={d.buyer}
                               onDone={() => {
                                 refresh()
-                                showToast('Reserva actualizada')
+                                showToast(t('deudas_updated'))
                               }}
                             />
                           )}
@@ -144,7 +146,7 @@ export default function Deudas() {
                             onClick={() => setVerCartasBuyer(d.buyer)}
                             className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-lg hover:bg-blue-100 transition whitespace-nowrap"
                           >
-                            🃏 Ver cartas
+                            {t('deudas_view_cards')}
                           </button>
                         </div>
 
@@ -161,7 +163,7 @@ export default function Deudas() {
                                   buyerName={d.buyer}
                                   onDone={() => {
                                     refresh()
-                                    showToast('Reserva actualizada')
+                                    showToast(t('deudas_updated'))
                                   }}
                                 />
                               </div>
@@ -185,7 +187,7 @@ export default function Deudas() {
           onClose={() => setVerCartasBuyer(null)}
           onDone={() => {
             refresh()
-            showToast('Cartas marcadas como vendidas')
+            showToast(t('deudas_cards_sold'))
           }}
         />
       )}

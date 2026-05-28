@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStock }    from '../hooks/useStock'
 import { useMetricas } from '../hooks/useMetricas'
@@ -75,6 +75,16 @@ export default function Stock() {
   const [priceCard,    setPriceCard]    = useState(null)   // carta para modal de historial de precio
   // ── Carrito de claim persistente (sobrevive cambios de página) ──────────
   const [claimCart,   setClaimCart]   = useState(new Map()) // inventory_id → row data
+
+  // ── Búsqueda con debounce (350ms) — evita query en cada tecla ────────────
+  const [searchInput, setSearchInput] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSelectedIds(new Set())
+      setFilters(f => ({ ...f, busqueda: searchInput || undefined, page: 0 }))
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   const { t } = useI18n()
   const { data, isLoading, error } = useStock(filters)
@@ -470,7 +480,8 @@ export default function Stock() {
             ))}
           </div>
           <input type="text" placeholder={t('stock_search_placeholder')}
-            onChange={e => set('busqueda', e.target.value)}
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
             className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-40
                        focus:outline-none focus:ring-2 focus:ring-blue-200" />
           {/* Wrapper helper para selects con flecha custom centrada */}
@@ -844,7 +855,10 @@ export default function Stock() {
                         bg-white border border-gray-200 rounded-2xl shadow-lg
                         text-xs text-gray-500">
           <span className="hidden sm:block whitespace-nowrap font-medium text-gray-400 mr-1">
-            {(m?.totalCartas ?? total).toLocaleString('es-AR')} cartas
+            {(filters.busqueda || filters.idioma || filters.condicion
+              ? total
+              : (m?.totalCartas ?? total)
+            ).toLocaleString('es-AR')} cartas
           </span>
           <div className="w-px h-4 bg-gray-200 hidden sm:block" />
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useI18n }          from '../lib/i18n'
 import { useQueryClient }   from '@tanstack/react-query'
 import { useDolar }         from '../hooks/useDolar'
 import { useSettings, PRICE_SOURCES } from '../hooks/useSettings'
@@ -25,6 +26,7 @@ const USUARIOS = USUARIOS_MAP[CLIENT_ID] ?? []
 const LS_KEY = 'ss_last_price_update'
 
 export default function Settings() {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const { blue, oficial, isLoading } = useDolar()
   const { margen, saveMargen, savingMargen, precioFuente, savePrecioFuente, savingFuente, storeName, ownerName, whatsappNumber } = useSettings()
@@ -48,7 +50,7 @@ export default function Settings() {
 
   const showToast = (msg) => {
     setToast({ visible: true, mensaje: msg })
-    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
   const handleSaveMargen = async () => {
@@ -56,11 +58,11 @@ export default function Settings() {
     if (isNaN(val) || val < 0 || val > 200) return
     await saveMargen(val)
     setMargenDraft(null)
-    showToast('Margen guardado')
+    showToast(t('settings_toast_margin_saved'))
   }
 
   const handleRevalidar = async () => {
-    if (!blue) { showToast('Esperá a que cargue el dólar blue'); return }
+    if (!blue) { showToast(t('settings_toast_wait_blue')); return }
     setRevalState('running')
     setRevalLog([])
     setRevalProgress({ current: 0, total: 0, updated: 0, noPrice: 0 })
@@ -73,7 +75,6 @@ export default function Settings() {
       onProgress: ({ current, total, updated, noPrice, entry }) => {
         setRevalProgress({ current, total, updated, noPrice })
         if (entry && (entry.ok || !entry.ok)) {
-          // Mostrar solo entradas con cambio real o sin precio
           const prev = entry.before
           const changed = entry.ok && (prev == null || Math.abs(prev - entry.after) > 0.01)
           if (changed || (!entry.ok)) {
@@ -85,11 +86,10 @@ export default function Settings() {
     })
 
     setRevalState('done')
-    // Guardar timestamp y refrescar queries
     localStorage.setItem(LS_KEY, String(Date.now()))
     queryClient.invalidateQueries({ queryKey: ['stock'] })
     queryClient.invalidateQueries({ queryKey: ['metricas'] })
-    showToast(`✅ ${updated} cartas actualizadas · ${noPrice} sin precio`)
+    showToast(`✅ ${updated} ${t('settings_cards_updated')} · ${noPrice} ${t('settings_no_price_inline')}`)
   }
 
   return (
@@ -98,13 +98,13 @@ export default function Settings() {
 
       {/* Perfil de la tienda */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="font-semibold text-gray-800 mb-4">Perfil de la tienda</h3>
+        <h3 className="font-semibold text-gray-800 mb-4">{t('settings_store_profile')}</h3>
         <div className="space-y-3">
           {[
-            { label: 'Nombre',    value: storeName                    },
-            { label: 'Dueño',     value: ownerName                    },
-            { label: 'WhatsApp',  value: `+${whatsappNumber}`         },
-            { label: 'Plan',      value: 'Membresía activa'           },
+            { label: t('settings_field_name'),  value: storeName                       },
+            { label: t('settings_field_owner'), value: ownerName                       },
+            { label: 'WhatsApp',                value: `+${whatsappNumber}`            },
+            { label: t('settings_field_plan'),  value: t('settings_membership_active') },
           ].map(r => (
             <div key={r.label}>
               <label className="text-xs text-gray-400 font-medium">{r.label}</label>
@@ -122,7 +122,7 @@ export default function Settings() {
       {/* Usuarios autorizados */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-800">Usuarios autorizados</h3>
+          <h3 className="font-semibold text-gray-800">{t('settings_authorized_users')}</h3>
         </div>
         <div className="space-y-2">
           {USUARIOS.map(u => (
@@ -133,7 +133,7 @@ export default function Settings() {
                 <p className="text-xs text-gray-400">{u.tel}</p>
               </div>
               <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
-                activo
+                {t('settings_user_active')}
               </span>
             </div>
           ))}
@@ -142,14 +142,14 @@ export default function Settings() {
 
       {/* Tipo de cambio */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="font-semibold text-gray-800 mb-4">Tipo de cambio actual</h3>
+        <h3 className="font-semibold text-gray-800 mb-4">{t('settings_exchange_rate')}</h3>
         {isLoading
-          ? <p className="text-gray-400 text-sm">Cargando…</p>
+          ? <p className="text-gray-400 text-sm">{t('loading')}</p>
           : (
             <div className="space-y-2">
               {[
-                { label: 'Dólar Blue',    value: blue,    color: '#3B6BF5' },
-                { label: 'Dólar Oficial', value: oficial, color: '#10B981' },
+                { label: t('settings_dollar_blue'),     value: blue,    color: '#3B6BF5' },
+                { label: t('settings_dollar_official'), value: oficial, color: '#10B981' },
               ].map(r => (
                 <div key={r.label}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
@@ -159,22 +159,22 @@ export default function Settings() {
                       style={{ color: r.color }}>
                       ${Number(r.value || 0).toLocaleString('es-AR')}
                     </span>
-                    <p className="text-xs text-gray-400">hoy</p>
+                    <p className="text-xs text-gray-400">{t('settings_today')}</p>
                   </div>
                 </div>
               ))}
             </div>
           )
         }
-        <p className="text-xs text-gray-400 mt-3">Actualizado automáticamente · dolarapi.com</p>
+        <p className="text-xs text-gray-400 mt-3">{t('settings_exchange_updated')}</p>
       </div>
 
       {/* Margen de ganancia (Feature 3) */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="font-semibold text-gray-800 mb-1">Margen de ganancia sugerido</h3>
+        <h3 className="font-semibold text-gray-800 mb-1">{t('settings_margin_title')}</h3>
         <p className="text-xs text-gray-400 mb-4">
-          Se aplica al precio sugerido en ARS al registrar una carta nueva.
-          <br />Fórmula: USD × dólar blue × (1 + margen%) → redondeado a $500 ARS.
+          {t('settings_margin_desc')}
+          <br />{t('settings_margin_formula')}
         </p>
         <div className="flex items-center gap-3">
           <div className="relative flex items-center">
@@ -194,21 +194,20 @@ export default function Settings() {
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold
                        rounded-xl transition disabled:opacity-40"
           >
-            {savingMargen ? 'Guardando…' : 'Guardar'}
+            {savingMargen ? t('settings_saving') : t('save')}
           </button>
         </div>
         <p className="text-xs text-gray-400 mt-3">
-          Ejemplo con margen {margenDraft ?? margen}%:&nbsp;
+          {t('settings_margin_example')} {margenDraft ?? margen}%:&nbsp;
           USD $45 × ${blue ? Math.round(blue) : '?'} blue = ${blue ? Math.round(45 * blue * (1 + (parseInt(margenDraft ?? margen) || 0) / 100) / 500) * 500 : '?'} ARS
         </p>
       </div>
 
       {/* Proveedor de precio base */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="font-semibold text-gray-800 mb-1">Proveedor de precio base</h3>
+        <h3 className="font-semibold text-gray-800 mb-1">{t('settings_price_provider')}</h3>
         <p className="text-xs text-gray-400 mb-4">
-          Se usa en el dashboard y en el agente de WhatsApp para mostrar el precio de mercado.
-          Podés overridear carta por carta desde el stock.
+          {t('settings_price_provider_desc')}
         </p>
         <div className="flex gap-3 flex-wrap">
           {PRICE_SOURCES.map(src => (
@@ -224,12 +223,12 @@ export default function Settings() {
               <span className="text-base">{src.flag}</span>
               <span>{src.label}</span>
               <span className="text-xs font-normal text-gray-400">{src.currency}</span>
-              {precioFuente === src.id && <span className="text-blue-500 text-xs">✓ activo</span>}
+              {precioFuente === src.id && <span className="text-blue-500 text-xs">{t('settings_source_active')}</span>}
             </button>
           ))}
         </div>
         <p className="text-xs text-gray-400 mt-3">
-          TCGPlayer = mercado USA · CardMarket = mercado europeo (EUR → USD estimado)
+          {t('settings_price_note')}
         </p>
       </div>
 
@@ -237,15 +236,13 @@ export default function Settings() {
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm lg:col-span-2">
         <div className="flex items-start justify-between gap-4 mb-1">
           <div>
-            <h3 className="font-semibold text-gray-800">Revalidar precios de mercado</h3>
+            <h3 className="font-semibold text-gray-800">{t('settings_revalidate_title')}</h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              Consulta la API de PokémonTCG para cada carta del inventario y actualiza
-              el precio USD + ARS con los valores actuales del mercado.
-              Se ejecuta automáticamente 1 vez por día al abrir la app.
+              {t('settings_revalidate_desc')}
             </p>
             {lastUpdate && (
               <p className="text-[11px] text-emerald-600 font-medium mt-1">
-                ✓ Última actualización: {lastUpdate}
+                {t('settings_last_update')}{lastUpdate}
               </p>
             )}
           </div>
@@ -257,7 +254,7 @@ export default function Settings() {
                   ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   : 'bg-blue-600 text-white hover:bg-blue-500'}`}
             >
-              {revalState === 'done' ? 'Reiniciar' : '🔄 Revalidar precios'}
+              {revalState === 'done' ? t('settings_reset') : t('settings_revalidate_btn')}
             </button>
           )}
         </div>
@@ -268,13 +265,13 @@ export default function Settings() {
             <div className="flex items-center justify-between text-xs text-gray-500">
               <span>
                 {revalState === 'running'
-                  ? `Procesando ${revalProgress.current} / ${revalProgress.total}…`
-                  : `Finalizado — ${revalProgress.total} cartas procesadas`}
+                  ? `${t('settings_processing')} ${revalProgress.current} / ${revalProgress.total}…`
+                  : `${t('settings_finished')} — ${revalProgress.total} ${t('settings_cards_processed')}`}
               </span>
               <div className="flex gap-3">
-                <span className="text-emerald-600 font-semibold">✓ {revalProgress.updated} actualizadas</span>
+                <span className="text-emerald-600 font-semibold">✓ {revalProgress.updated} {t('settings_updated_label')}</span>
                 {revalProgress.noPrice > 0 && (
-                  <span className="text-gray-400">{revalProgress.noPrice} sin precio</span>
+                  <span className="text-gray-400">{revalProgress.noPrice} {t('settings_no_price_inline')}</span>
                 )}
               </div>
             </div>
@@ -295,7 +292,7 @@ export default function Settings() {
             {revalLog.length > 0 && (
               <div className="border border-gray-100 rounded-xl overflow-hidden">
                 <div className="bg-gray-50 px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                  Últimos cambios detectados
+                  {t('settings_revalidate_log_title')}
                 </div>
                 {revalLog.map((entry, i) => (
                   <div key={i} className="flex items-center gap-2 px-3 py-1.5 border-t border-gray-50 text-xs">
@@ -308,7 +305,7 @@ export default function Settings() {
                         <span className="text-emerald-600 font-semibold">${Number(entry.after).toFixed(2)}</span>
                       </span>
                     ) : (
-                      <span className="shrink-0 text-gray-400">sin precio</span>
+                      <span className="shrink-0 text-gray-400">{t('settings_no_price_inline')}</span>
                     )}
                   </div>
                 ))}
@@ -320,18 +317,18 @@ export default function Settings() {
 
       {/* Membresía */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="font-semibold text-gray-800 mb-4">Membresía</h3>
+        <h3 className="font-semibold text-gray-800 mb-4">{t('settings_membership_title')}</h3>
         <div className="bg-blue-600 rounded-xl p-4 text-white mb-4">
-          <p className="text-xs font-semibold opacity-70 uppercase tracking-wider mb-1">Plan activo</p>
-          <p className="text-xl font-extrabold">Membresía mensual</p>
-          <p className="text-sm opacity-80 mt-0.5">$50 USD/mes · Renovación automática</p>
+          <p className="text-xs font-semibold opacity-70 uppercase tracking-wider mb-1">{t('settings_active_plan')}</p>
+          <p className="text-xl font-extrabold">{t('settings_plan_name')}</p>
+          <p className="text-sm opacity-80 mt-0.5">{t('settings_plan_price')}</p>
         </div>
         <div className="space-y-2">
           {[
-            'Scanner ilimitado en tiempo real',
-            'Precios ARS incluidos',
-            'Agente WhatsApp activo',
-            'Dashboard completo',
+            t('settings_feature_scanner'),
+            t('settings_feature_prices'),
+            t('settings_feature_wa'),
+            t('settings_feature_dashboard'),
           ].map(f => (
             <div key={f} className="flex items-center gap-2 text-sm text-gray-600">
               <span className="text-emerald-500 font-bold">✓</span>

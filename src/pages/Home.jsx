@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useI18n }           from '../lib/i18n'
 import { useMetricas }       from '../hooks/useMetricas'
 import { useVentas }         from '../hooks/useVentas'
 import { useDolar }          from '../hooks/useDolar'
@@ -64,7 +65,6 @@ const esClain = (ch) =>
   ch === 'Claims' || ch === 'claim' || ch === 'WhatsApp' ||
   (ch && ch.toLowerCase().includes('claim'))
 
-const SEMANA_LABEL = { 1: 'Sem 1', 2: 'Sem 2', 3: 'Sem 3', 4: 'Sem 4', 5: 'Sem 5' }
 const semanaIdx = (dateStr) => Math.min(5, Math.ceil(new Date(dateStr).getDate() / 7))
 
 // ── SparkBars ─────────────────────────────────────────────────────────────────
@@ -219,6 +219,7 @@ function ArrowDownCircleIcon({ color }) {
 
 // ── CanalBadge ────────────────────────────────────────────────────────────────
 function CanalBadge({ channel }) {
+  const { t } = useI18n()
   if (esClain(channel)) {
     return (
       <span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}>
@@ -228,7 +229,7 @@ function CanalBadge({ channel }) {
   }
   return (
     <span style={{ background: C.blueBg, color: C.blue, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}>
-      🏪 Presencial
+      {t('dash_channel_presencial')}
     </span>
   )
 }
@@ -239,7 +240,15 @@ export default function Home() {
   const yr  = now.getFullYear()
   const mo  = now.getMonth() + 1
 
+  const { t, lang } = useI18n()
   const { isMobile, isTablet } = useBreakpoint()
+
+  // Week label changes with language (Sem 1 / Wk 1)
+  const semanaLabel = useMemo(() => {
+    const w = t('dash_week')
+    return { 1: `${w} 1`, 2: `${w} 2`, 3: `${w} 3`, 4: `${w} 4`, 5: `${w} 5` }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang])
 
   const { data: m,       isLoading: mLoad } = useMetricas()
   const { data: ventas = [] }               = useVentas(yr, mo)
@@ -255,7 +264,7 @@ export default function Home() {
     for (const v of ventas) {
       const s  = semanaIdx(v.fecha_venta || v.sold_at || v.created_at)
       const ch = v.channel || ''
-      if (!map[s]) map[s] = { s: SEMANA_LABEL[s], Charly: 0, Claims: 0, 'Fuera de eventos': 0 }
+      if (!map[s]) map[s] = { s: semanaLabel[s], Charly: 0, Claims: 0, 'Fuera de eventos': 0 }
       const monto = v.total_ars_blue || v.total_ars || 0
       if (esClain(ch))          { map[s].Claims += monto; tc += monto }
       else if (ch === 'Charly') { map[s].Charly += monto; tp += monto }
@@ -272,7 +281,7 @@ export default function Home() {
       totalPresencial: tp,
       totalClaims:     tc,
     }
-  }, [ventas])
+  }, [ventas, semanaLabel])
 
   const totalVentas = totalPresencial + totalClaims
   const pctClaims   = totalVentas > 0 ? Math.round((totalClaims / totalVentas) * 100) : 0
@@ -294,7 +303,7 @@ export default function Home() {
           flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
           padding: '12px 15px', display: 'flex', alignItems: 'center', gap: 10,
         }}>
-          <span style={{ fontWeight: 500, fontSize: 14, color: C.text }}>Cartas en stock:</span>
+          <span style={{ fontWeight: 500, fontSize: 14, color: C.text }}>{t('dash_cards_in_stock')}</span>
           <span style={{ fontWeight: 600, fontSize: 14, color: C.text }}>
             {mLoad ? '…' : (m?.totalCartas ?? 0).toLocaleString('es-AR')}
           </span>
@@ -305,13 +314,13 @@ export default function Home() {
           flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
           padding: '12px 15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <span style={{ fontWeight: 500, fontSize: 14, color: C.text }}>Nuevos ingresos</span>
+          <span style={{ fontWeight: 500, fontSize: 14, color: C.text }}>{t('dash_new_arrivals')}</span>
           <Link to="/ingresos" style={{
             background: C.blue, color: '#fff', borderRadius: 60,
             padding: '4px 18px', fontSize: 12, fontWeight: 500, textDecoration: 'none',
             whiteSpace: 'nowrap',
           }}>
-            Agregar
+            {t('add')}
           </Link>
         </div>
       </div>
@@ -326,7 +335,7 @@ export default function Home() {
           to="/stock"
           iconBg={C.greenBg}
           iconEl={<WalletIcon color={C.green} />}
-          label="Cartas Dólares"
+          label={t('dash_kpi_cards_usd')}
           value={fmtUSD(kpiUSD)}
           trendColor={C.green80}
           sparkData={weekArr}
@@ -338,7 +347,7 @@ export default function Home() {
           to="/stock"
           iconBg={C.orangeBg}
           iconEl={<WalletIcon color={C.orange} />}
-          label="Cartas en Pesos"
+          label={t('dash_kpi_cards_ars')}
           value={fmtK(kpiARSOfic)}
           trendColor={C.orange}
           sparkData={weekArr}
@@ -350,7 +359,7 @@ export default function Home() {
           to="/stock"
           iconBg={C.blueBg}
           iconEl={<WalletIcon color={C.blue} />}
-          label="Cartas en Blue"
+          label={t('dash_kpi_cards_blue')}
           value={fmtK(kpiARSBlue)}
           trendColor={C.blue}
           sparkData={weekArr}
@@ -362,7 +371,7 @@ export default function Home() {
           to="/deudas"
           iconBg={C.redBg}
           iconEl={<ArrowDownCircleIcon color={C.red} />}
-          label="Deudas activas"
+          label={t('dash_active_debts')}
           value={fmtARS(kpiDeudas)}
           trendColor={C.red80}
           sparkData={zeroArr}
@@ -380,15 +389,15 @@ export default function Home() {
         {/* Header */}
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 8 : 0, justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>Ventas del mes</span>
-            <Link to="/ventas" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>Ver todas →</Link>
+            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>{t('ventas_title')}</span>
+            <Link to="/ventas" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>{t('dash_view_all_arrow')}</Link>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: isMobile ? 8 : 20 }}>
             {/* Leyenda */}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
               <LegendDot color={C.blue}   label="Charly" />
               <LegendDot color={C.orange} label="Claims" />
-              <LegendDot color={C.green}  label="Fuera de eventos" />
+              <LegendDot color={C.green}  label={t('dash_channel_out_of_events')} />
             </div>
             {/* Total + badge */}
             {totalVentas > 0 && (
@@ -412,7 +421,7 @@ export default function Home() {
             justifyContent: 'center', height: isMobile ? 160 : 280, color: C.sub, gap: 8,
           }}>
             <span style={{ fontSize: 36 }}>📊</span>
-            <span style={{ fontSize: 13 }}>Sin ventas registradas este mes</span>
+            <span style={{ fontSize: 13 }}>{t('dash_no_sales_month')}</span>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={isMobile ? 180 : 280}>
@@ -424,7 +433,7 @@ export default function Home() {
               <Tooltip content={<ChartTooltip />} />
               <Line type="monotone" dataKey="Charly"           stroke={C.blue}   strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
               <Line type="monotone" dataKey="Claims"           stroke={C.orange} strokeWidth={2.5} dot={false} strokeDasharray="6 3" activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="Fuera de eventos" stroke={C.green}  strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              <Line type="monotone" dataKey="Fuera de eventos" name={t('dash_channel_out_of_events')} stroke={C.green}  strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -437,14 +446,14 @@ export default function Home() {
             padding: '14px 16px', borderBottom: `1px solid ${C.border}`,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>Últimas ventas</span>
-            <Link to="/ventas" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>Ver todas →</Link>
+            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>{t('dash_latest_sales')}</span>
+            <Link to="/ventas" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>{t('dash_view_all_arrow')}</Link>
           </div>
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
               <thead>
                 <tr style={{ background: C.inner }}>
-                  {['Fecha','Carta','Canal','Comprador','Monto'].map(h => (
+                  {[t('dash_col_date'), t('dash_col_card'), t('dash_col_channel'), t('dash_col_buyer'), t('dash_col_amount')].map(h => (
                     <th key={h} style={{
                       padding: '10px 14px', textAlign: 'left',
                       fontWeight: 600, fontSize: 11, color: C.sub,
@@ -489,16 +498,16 @@ export default function Home() {
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>Resumen de último CLAIM</span>
-              <Link to="/claims" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>Ver →</Link>
+              <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>{t('dash_last_claim_title')}</span>
+              <Link to="/claims" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>{t('dash_view_claim_arrow')}</Link>
             </div>
             {lastClaim && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 <span style={{ fontSize: 12, color: C.sub }}>
-                  Fecha: <strong style={{ fontWeight: 600 }}>{new Date(lastClaim.fecha).toLocaleDateString('es-AR')}</strong>
+                  {t('dash_claim_date')} <strong style={{ fontWeight: 600 }}>{new Date(lastClaim.fecha).toLocaleDateString('es-AR')}</strong>
                 </span>
                 <span style={{ fontSize: 12, color: C.sub }}>
-                  Cartas: <strong style={{ fontWeight: 600 }}>{lastClaim.totalCartas}</strong>
+                  {t('dash_claim_cards')} <strong style={{ fontWeight: 600 }}>{lastClaim.totalCartas}</strong>
                 </span>
               </div>
             )}
@@ -507,9 +516,9 @@ export default function Home() {
           {lastClaim ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
               {[
-                { label: 'Cartas vendidas', val: lastClaim.totalCartas },
-                { label: 'ARS Blue',        val: fmtARS(lastClaim.totalARS) },
-                { label: 'Compradores',     val: lastClaim.compradores },
+                { label: t('dash_claim_cards_sold'), val: lastClaim.totalCartas },
+                { label: t('dash_claim_ars_blue'),   val: fmtARS(lastClaim.totalARS) },
+                { label: t('dash_claim_buyers'),     val: lastClaim.compradores },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 10 }}>
                   <div style={{ padding: '6px 10px', background: C.blue10, flex: 1 }}>
@@ -536,7 +545,7 @@ export default function Home() {
             </div>
           ) : (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.sub, fontSize: 13 }}>
-              Sin claims registrados
+              {t('dash_no_claims_msg')}
             </div>
           )}
         </div>
@@ -548,7 +557,7 @@ export default function Home() {
           padding: isMobile ? 14 : 20, display: 'flex', flexDirection: 'column', gap: 16,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>Reservas</span>
+            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>{t('dash_reservations')}</span>
           </div>
 
           {deudas.length > 0 ? (
@@ -556,7 +565,7 @@ export default function Home() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20, flex: 1 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>Total pendiente</span>
+                    <span style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>{t('dash_total_pending')}</span>
                     <span style={{ fontSize: 14, color: C.sub, fontWeight: 500 }}>
                       {deudas.reduce((s, d) => s + d.items.length, 0)}
                     </span>
@@ -597,13 +606,13 @@ export default function Home() {
                 background: C.blue, color: '#fff', borderRadius: 60,
                 fontSize: 14, fontWeight: 500, textDecoration: 'none',
               }}>
-                Ver todas las reservas
+                {t('dash_view_reservations')}
               </Link>
             </>
           ) : (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.sub, gap: 8, fontSize: 13 }}>
               <span style={{ fontSize: 32 }}>📋</span>
-              Sin reservas activas
+              {t('dash_no_reservations')}
             </div>
           )}
         </div>
@@ -614,8 +623,8 @@ export default function Home() {
           padding: isMobile ? 14 : 20, display: 'flex', flexDirection: 'column', gap: 16,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>Top 5 más vendidas</span>
-            <Link to="/ventas" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>Ver ventas →</Link>
+            <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>{t('dash_top5_sold')}</span>
+            <Link to="/ventas" style={{ fontSize: 12, color: C.blue, fontWeight: 500, textDecoration: 'none' }}>{t('dash_view_sales_arrow')}</Link>
           </div>
 
           {top5.length > 0 ? (
@@ -633,7 +642,7 @@ export default function Home() {
             </div>
           ) : (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.sub, fontSize: 13 }}>
-              Sin datos este mes
+              {t('dash_no_data_month')}
             </div>
           )}
         </div>
@@ -652,7 +661,7 @@ export default function Home() {
         background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
         padding: isMobile ? 14 : 20, display: 'flex', flexDirection: 'column', gap: 16,
       }}>
-        <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>Ingresos y Egresos</span>
+        <span style={{ fontWeight: 600, fontSize: 15, color: C.text }}>{t('dash_income_expenses')}</span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexDirection: isMobile ? 'column' : 'row' }}>
           {/* Ingresos */}
@@ -665,7 +674,7 @@ export default function Home() {
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 15, color: C.sub }}>Ventas del mes</span>
+              <span style={{ fontSize: 15, color: C.sub }}>{t('ventas_title')}</span>
               <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ventas.length}</span>
             </div>
             <MiniLineChart data={[1,2,3,4,5].map(s => semanaMap[s] || 0)} color={C.blue} />
@@ -689,7 +698,7 @@ export default function Home() {
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 15, color: C.sub }}>Egresos del mes</span>
+              <span style={{ fontSize: 15, color: C.sub }}>{t('dash_expenses_month')}</span>
               <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{compras?.rows?.length ?? 0}</span>
             </div>
             <MiniLineChart data={[1,2,3,4,5].map(s => compras?.weeks?.[s] || 0)} color={C.green} flip />

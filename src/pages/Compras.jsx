@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useI18n }               from '../lib/i18n'
 import { usePurchases }          from '../hooks/usePurchases'
 import Spinner                   from '../components/ui/Spinner'
 import EmptyState                from '../components/ui/EmptyState'
@@ -19,6 +20,7 @@ const ESTADO_CLS = {
 }
 
 export default function Compras() {
+  const { t } = useI18n()
   const qc = useQueryClient()
   const { data, isLoading, error } = usePurchases()
 
@@ -46,10 +48,10 @@ export default function Compras() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Compras registradas', value: comprasMes,          sub: 'operaciones', color: 'text-blue-600'    },
-          { label: 'Cartas compradas',    value: cartasTotal,          sub: 'unidades',    color: 'text-gray-800'    },
-          { label: 'Invertido USD',       value: fmtUSD(invertidoUSD), sub: 'acumulado',   color: 'text-amber-500'   },
-          { label: 'Invertido ARS',       value: fmtARS(invertidoARS), sub: 'acumulado',   color: 'text-emerald-600' },
+          { label: t('compras_kpi_registered'),   value: comprasMes,          sub: t('compras_sub_operations'), color: 'text-blue-600'    },
+          { label: t('compras_kpi_cards_bought'),  value: cartasTotal,          sub: t('compras_sub_units'),      color: 'text-gray-800'    },
+          { label: t('compras_kpi_invested_usd'),  value: fmtUSD(invertidoUSD), sub: t('compras_sub_accumulated'),color: 'text-amber-500'   },
+          { label: t('compras_kpi_invested_ars'),  value: fmtARS(invertidoARS), sub: t('compras_sub_accumulated'),color: 'text-emerald-600' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{k.label}</p>
@@ -62,12 +64,12 @@ export default function Compras() {
       {/* Historial */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">Historial de compras</h3>
+          <h3 className="font-semibold text-gray-800">{t('compras_history')}</h3>
           <button
             onClick={() => setShowForm(true)}
             className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-500 transition"
           >
-            + Registrar compra
+            {t('compras_add_btn')}
           </button>
         </div>
 
@@ -80,7 +82,7 @@ export default function Compras() {
           <p className="text-red-500 text-sm p-6">{error.message}</p>
         )}
         {!isLoading && compras.length === 0 && (
-          <EmptyState emoji="📦" title="Sin compras registradas" sub="Registrá tu primera compra" />
+          <EmptyState emoji="📦" title={t('compras_no_purchases')} sub={t('compras_empty_sub')} />
         )}
 
         {!isLoading && compras.length > 0 && (
@@ -88,7 +90,7 @@ export default function Compras() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                 <tr>
-                  {['Fecha','Vendedor','Cartas','USD','ARS','Estado',''].map((h, i) => (
+                  {[t('compras_col_date'),t('compras_col_seller'),t('compras_col_cards'),t('compras_col_usd'),t('compras_col_ars_col'),t('compras_col_status'),''].map((h, i) => (
                     <th key={i} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -116,7 +118,7 @@ export default function Compras() {
                         onClick={() => setDetalleId(c.id)}
                         className="text-xs text-blue-600 hover:underline whitespace-nowrap"
                       >
-                        Ver detalle
+                        {t('compras_view_detail')}
                       </button>
                     </td>
                   </tr>
@@ -131,11 +133,11 @@ export default function Compras() {
       {compras.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-3">
           <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex justify-between items-center">
-            <span className="text-sm text-gray-500">Total invertido USD</span>
+            <span className="text-sm text-gray-500">{t('compras_total_usd')}</span>
             <span className="font-bold text-lg text-red-500">{fmtUSD(invertidoUSD)}</span>
           </div>
           <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm flex justify-between items-center">
-            <span className="text-sm text-gray-500">Total invertido ARS</span>
+            <span className="text-sm text-gray-500">{t('compras_total_ars_label')}</span>
             <span className="font-bold text-lg text-red-500">{fmtARS(invertidoARS)}</span>
           </div>
         </div>
@@ -155,7 +157,7 @@ export default function Compras() {
           onClose={() => setShowForm(false)}
           onDone={() => {
             refresh()
-            showToast('Compra registrada correctamente')
+            showToast(t('compras_registered_ok'))
           }}
         />
       )}

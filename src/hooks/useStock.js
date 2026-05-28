@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { STORE_ID } from '../constants'
-import { normLang, sameLang } from '../lib/normLang'
 
 const PAGE_SIZE = 50
 
@@ -28,11 +27,39 @@ export function useStock(filters = {}) {
   return useQuery({
     queryKey: ['stock', filters],
     queryFn: async () => {
-      // ── Construcción base del query ──────────────────────────────────────
-      const buildQuery = (q) => {
-        // Prioriza `status`; si está vacío usa `estado` como fallback (legacy)
+      // Cuando hay filtros sobre cards usamos !inner para que PostgREST
+      // los aplique correctamente (excluye filas sin join match)
+      const needsCardFilter = !!(busqueda || idioma)
+      const cardJoin = needsCardFilter ? 'cards!inner' : 'cards'
+
+      // ── Aplica todos los filtros a un query builder ────────────────────────
+      const applyFilters = (q) => {
+        // Columnas de inventory
         if (estado)    q = q.or(`status.eq.${estado},and(status.is.null,estado.eq.${estado})`)
         if (condicion) q = q.or(`condition.eq.${condicion},condicion.eq.${condicion}`)
+
+        // Filtro de idioma — server-side sobre cards
+        if (idioma) {
+          const l = idioma.toLowerCase()
+          const variants =
+            (l === 'jp' || l === 'ja') ? 'language.eq.jp,language.eq.ja' :
+            (l === 'cn' || l === 'zh') ? 'language.eq.cn,language.eq.zh' :
+            `language.eq.${l}`
+          q = q.or(variants, { foreignTable: 'cards' })
+        }
+
+        // Búsqueda de texto — server-side sobre cards (todas las páginas)
+        if (busqueda) {
+          const term = busqueda.trim()
+            .replace(/\\/g, '\\\\')
+            .replace(/%/g, '\\%')
+            .replace(/_/g, '\\_')
+          q = q.or(
+            `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`,
+            { foreignTable: 'cards' }
+          )
+        }
+
         return q
       }
 
@@ -59,7 +86,7 @@ export function useStock(filters = {}) {
         scanned_at,
         scan_date,
         updated_at,
-        cards (
+        ${cardJoin} (
           id,
           name,
           full_name,
@@ -75,9 +102,12 @@ export function useStock(filters = {}) {
       // ── Count total (para mostrar X/N) ────────────────────────────────────
       let countQ = supabase
         .from('inventory')
-        .select('id', { count: 'exact', head: true })
+        .select(
+          needsCardFilter ? 'id, cards!inner(id)' : 'id',
+          { count: 'exact', head: true }
+        )
         .eq('store_id', STORE_ID)
-      countQ = buildQuery(countQ)
+      countQ = applyFilters(countQ)
       const { count: totalCount } = await countQ
 
       // ── Datos paginados ───────────────────────────────────────────────────
@@ -88,7 +118,7 @@ export function useStock(filters = {}) {
         .from('inventory')
         .select(selectFields)
         .eq('store_id', STORE_ID)
-      q = buildQuery(q)
+      q = applyFilters(q)
 
       // ── Ordenamiento ─────────────────────────────────────────────────────
       const sortDef       = sortCol ? SORT_MAP[sortCol] : null
@@ -104,7 +134,7 @@ export function useStock(filters = {}) {
         q = q.order('id', { ascending: false })
       }
 
-      // Paginación: para foreign sort traemos TODO y paginamos client-side
+      // Paginación server-side (para foreign sort: traemos TODO y paginamos client-side)
       if (!isForeignSort) {
         q = q.range(from, to)
       }
@@ -139,18 +169,6 @@ export function useStock(filters = {}) {
         reserved_at:       r.reserved_at || r.fecha_reserva || '',
         fecha_escaneada:   r.scanned_at || r.scan_date || r.updated_at || '',
       }))
-
-      // Filtros client-side (búsqueda de texto e idioma)
-      // sameLang normaliza 'jp'/'ja', 'cn'/'zh', etc. antes de comparar
-      if (idioma)   rows = rows.filter(r => sameLang(r.idioma, idioma))
-      if (busqueda) {
-        const q = busqueda.toLowerCase().trim()
-        rows = rows.filter(r =>
-          r.nombre.toLowerCase().includes(q)     ||
-          r.set_name.toLowerCase().includes(q)   ||
-          r.numero.toLowerCase().includes(q)
-        )
-      }
 
       // Sort + paginación client-side cuando la columna pertenece a `cards`
       if (isForeignSort && sortDef) {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { useI18n } from '../lib/i18n'
 import { useClaims } from '../hooks/useClaims'
 import { supabase }  from '../lib/supabase'
 import { STORE_ID }  from '../constants'
@@ -57,6 +58,7 @@ function ImagenFullscreen({ src, onClose }) {
 
 /* ─── Floating Bulk Action Bar (portal → fixed bottom center) ────────── */
 function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
+  const { t } = useI18n()
   const [action,  setAction]  = useState(null) // 'vender' | 'reservar' | null
   const [buyer,   setBuyer]   = useState('')
   const [canal,   setCanal]   = useState('claims')
@@ -103,7 +105,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
           {selected.size}
         </span>
         <span className="text-xs text-white/70 font-medium whitespace-nowrap">
-          {selected.size === 1 ? 'carta seleccionada' : 'cartas seleccionadas'}
+          {selected.size === 1 ? t('claims_card_selected') : t('claims_cards_selected')}
         </span>
       </div>
 
@@ -131,7 +133,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
           <input
             autoFocus
             type="text"
-            placeholder={action === 'vender' ? 'Comprador (opcional)' : 'Nombre…'}
+            placeholder={action === 'vender' ? t('claims_buyer_ph') : t('claims_name_ph')}
             value={buyer}
             onChange={e => setBuyer(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleExecute()}
@@ -149,14 +151,14 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
                           ? 'bg-emerald-500 hover:bg-emerald-400'
                           : 'bg-amber-500 hover:bg-amber-400'}`}
           >
-            {loading ? '…' : 'Confirmar'}
+            {loading ? '…' : t('confirm')}
           </button>
           <button
             onClick={reset}
             className="px-3 py-1.5 bg-white/10 hover:bg-white/20
                        text-white/70 text-xs font-semibold rounded-lg transition whitespace-nowrap"
           >
-            ← Volver
+            {t('claims_back')}
           </button>
         </>
       ) : (
@@ -168,14 +170,14 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
             className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
                        text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
           >
-            ✓ Vendida
+            {t('claims_action_sell')}
           </button>
           <button
             onClick={() => setAction('reservar')}
             className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400
                        text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
           >
-            📌 Reservada
+            {t('claims_action_reserve')}
           </button>
           <button
             onClick={handleReturn}
@@ -184,7 +186,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
                        text-white text-xs font-semibold rounded-lg transition
                        disabled:opacity-50 whitespace-nowrap"
           >
-            {loading ? '…' : '↩ Stock'}
+            {loading ? '…' : t('claims_action_stock')}
           </button>
 
           {/* Cerrar */}
