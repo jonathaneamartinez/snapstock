@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { Search, BookOpen } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Search, BookOpen, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useI18n }          from '../lib/i18n'
 import {
   searchCardsByName,
@@ -12,6 +12,13 @@ import Spinner        from '../components/ui/Spinner'
 /* ─── Constantes ─────────────────────────────────────────────────────── */
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 const PAGE_SIZE = 20
+
+/* Wrapper para no quedar colgado si el scanner demora mucho */
+const withTimeout = (promise, ms = 8000) =>
+  Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve({ results: [] }), ms)),
+  ])
 
 const LANG_CFG = {
   en: { label: 'EN', flag: '🇬🇧', active: 'bg-blue-100 text-blue-600 border-blue-200',   inactive: 'bg-gray-50 text-gray-400 border-gray-200' },
@@ -28,7 +35,6 @@ const norm = (c, lang) => ({
   set_id:  c.set_id  ?? null,
   number:  c.card_number ?? c.numero  ?? '',
   image:   c.image_url   ?? c.imagen   ?? null,
-  price:   c.price_usd   ?? null,
 })
 
 /* ─── Deduplicar por _key ────────────────────────────────────────────── */
@@ -49,16 +55,108 @@ function LangBadge({ lang }) {
   )
 }
 
+/* ─── Modal de carta ampliada ────────────────────────────────────────── */
+function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
+  const [src, setSrc] = useState(card.image || CARD_BACK)
+
+  // Cerrar con Escape, navegar con flechas
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape')      onClose()
+      if (e.key === 'ArrowLeft'  && hasPrev) onPrev()
+      if (e.key === 'ArrowRight' && hasNext) onNext()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose, onPrev, onNext, hasPrev, hasNext])
+
+  // Resetear imagen al cambiar de carta
+  useEffect(() => { setSrc(card.image || CARD_BACK) }, [card])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4
+                 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      {/* Contenedor central — click no cierra */}
+      <div
+        className="relative flex flex-col items-center gap-4 max-w-sm w-full"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Botón cerrar */}
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full
+                     bg-white/90 text-gray-600 hover:text-gray-900
+                     flex items-center justify-center shadow-lg
+                     transition hover:scale-110"
+        >
+          <X size={16} />
+        </button>
+
+        {/* Flechas de navegación */}
+        {hasPrev && (
+          <button
+            onClick={onPrev}
+            className="absolute left-[-48px] top-1/2 -translate-y-1/2
+                       w-9 h-9 rounded-full bg-white/90 text-gray-600
+                       hover:text-gray-900 flex items-center justify-center
+                       shadow-lg transition hover:scale-110"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
+        {hasNext && (
+          <button
+            onClick={onNext}
+            className="absolute right-[-48px] top-1/2 -translate-y-1/2
+                       w-9 h-9 rounded-full bg-white/90 text-gray-600
+                       hover:text-gray-900 flex items-center justify-center
+                       shadow-lg transition hover:scale-110"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
+
+        {/* Imagen grande */}
+        <img
+          src={src}
+          alt={card.name}
+          className="w-full rounded-2xl shadow-2xl"
+          style={{ maxHeight: '75vh', objectFit: 'contain' }}
+          onError={() => setSrc(CARD_BACK)}
+        />
+
+        {/* Info debajo */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-5 py-3
+                        flex items-center gap-3 shadow-lg w-full">
+          <LangBadge lang={card._lang} />
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-800 text-sm truncate">{card.name}</p>
+            <p className="text-xs text-gray-400 truncate">{card.set}</p>
+          </div>
+          {card.number && (
+            <span className="text-xs text-gray-300 shrink-0">#{card.number}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ─── Card individual ────────────────────────────────────────────────── */
-function PokedexCard({ card }) {
+function PokedexCard({ card, onClick }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
 
   return (
-    <div className="flex flex-col rounded-2xl overflow-hidden
-                    border border-gray-100 bg-white
-                    shadow-sm hover:shadow-lg hover:-translate-y-0.5
-                    transition-all duration-200 cursor-pointer group">
-
+    <div
+      onClick={onClick}
+      className="flex flex-col rounded-2xl overflow-hidden
+                 border border-gray-100 bg-white
+                 shadow-sm hover:shadow-lg hover:-translate-y-0.5
+                 transition-all duration-200 cursor-pointer group"
+    >
       {/* Imagen */}
       <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden">
         <img
@@ -83,11 +181,6 @@ function PokedexCard({ card }) {
             <span className="text-[9px] text-gray-300 shrink-0">#{card.number}</span>
           )}
         </div>
-        {card.price != null && (
-          <p className="text-[10px] font-bold text-emerald-600 mt-0.5">
-            U$D {parseFloat(card.price).toFixed(2)}
-          </p>
-        )}
       </div>
     </div>
   )
@@ -105,74 +198,135 @@ export default function Pokedex() {
   const [cards,       setCards]      = useState([])
   const [loading,     setLoading]    = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingAlt,  setLoadingAlt] = useState(false) // JP/CN todavía cargando
   const [hasMoreEN,   setHasMoreEN]  = useState(false)
+  const [modalIdx,    setModalIdx]   = useState(null)  // índice de carta abierta en modal
 
-  const enPageRef   = useRef(1)
-  const enQueryRef  = useRef('')
-  const setCacheRef = useRef({ en: [], jp: [], cn: [] })
-  const sentinelRef = useRef(null)
-  const timerRef    = useRef(null)
-  const loadMoreRef = useRef(null) // ref estable para el IntersectionObserver
+  // Warm-up: despertar Railway apenas el usuario entra a la página
+  useEffect(() => { scannerApi.health().catch(() => {}) }, [])
 
-  /* ── Buscar por nombre (3 idiomas en paralelo) ───────────────────── */
+  const enPageRef    = useRef(1)
+  const enQueryRef   = useRef('')
+  const setCacheRef  = useRef({ en: [], jp: [], cn: [] })
+  const sentinelRef  = useRef(null)
+  const timerRef     = useRef(null)
+  const loadMoreRef  = useRef(null) // ref estable para el IntersectionObserver
+  const searchIdRef  = useRef(0)    // evita que resultados viejos sobreescriban los nuevos
+
+  /* ── Buscar por nombre — progresivo: EN primero, JP/CN se agregan solos ── */
   const runNameSearch = async (q, page, langs) => {
     if (!q || q.length < 2) return
-    if (page === 1) { setLoading(true); setCards([]) }
+
+    // Incrementar ID para cancelar callbacks de búsquedas anteriores
+    searchIdRef.current += 1
+    const myId = searchIdRef.current
+
+    if (page === 1) { setLoading(true); setLoadingAlt(false); setCards([]) }
     else             setLoadingMore(true)
 
     const doEN = langs.has('en')
-    const doJP = langs.has('jp')
-    const doCN = langs.has('cn')
+    const doJP = langs.has('jp') && page === 1
+    const doCN = langs.has('cn') && page === 1
 
-    const [enRes, jpRes, cnRes] = await Promise.allSettled([
-      doEN                  ? searchCardsByName(q, PAGE_SIZE, page)     : Promise.resolve({ results: [], totalCount: 0 }),
-      doJP && page === 1    ? scannerApi.buscar(q, 'jp', '', 120)       : Promise.resolve({ results: [] }),
-      doCN && page === 1    ? scannerApi.buscar(q, 'cn', '', 120)       : Promise.resolve({ results: [] }),
-    ])
+    // Lanzar las 3 promesas en paralelo, pero manejar EN de forma independiente
+    const enPromise = doEN
+      ? searchCardsByName(q, PAGE_SIZE, page)
+      : Promise.resolve({ results: [], totalCount: 0 })
 
-    const en = doEN              ? (enRes.value?.results ?? []).map(c => norm(c, 'en')) : []
-    const jp = doJP && page === 1 ? (jpRes.value?.results ?? []).map(c => norm(c, 'jp')) : []
-    const cn = doCN && page === 1 ? (cnRes.value?.results ?? []).map(c => norm(c, 'cn')) : []
+    const jpPromise = doJP
+      ? withTimeout(scannerApi.buscar(q, 'jp', '', 120))
+      : Promise.resolve({ results: [] })
 
-    const enTotal = enRes.value?.totalCount ?? 0
-    enPageRef.current  = page
-    enQueryRef.current = q
-    setHasMoreEN(page * PAGE_SIZE < enTotal)
+    const cnPromise = doCN
+      ? withTimeout(scannerApi.buscar(q, 'cn', '', 120))
+      : Promise.resolve({ results: [] })
 
-    if (page === 1) {
-      setCards(dedupe([...en, ...jp, ...cn]))
-    } else {
-      // load more: solo append EN (JP/CN ya vienen completos desde la página 1)
-      setCards(prev => {
-        const seen = new Set(prev.map(c => c._key))
-        return [...prev, ...en.filter(c => !seen.has(c._key))]
-      })
+    // ── Mostrar EN en cuanto llegue (rápido) ──
+    let enCards = []
+    try {
+      const enRes  = await enPromise
+      if (searchIdRef.current !== myId) return // búsqueda cancelada
+      enCards      = (enRes.results ?? []).map(c => norm(c, 'en'))
+      const enTotal = enRes.totalCount ?? 0
+      enPageRef.current  = page
+      enQueryRef.current = q
+      setHasMoreEN(page * PAGE_SIZE < enTotal)
+    } catch (_) {
+      if (searchIdRef.current !== myId) return
+      setHasMoreEN(false)
     }
 
-    setLoading(false)
-    setLoadingMore(false)
+    if (page === 1) {
+      setCards(dedupe(enCards))
+      setLoading(false)
+      // Indicar que JP/CN siguen cargando en background
+      if (doJP || doCN) setLoadingAlt(true)
+    } else {
+      setCards(prev => {
+        const seen = new Set(prev.map(c => c._key))
+        return [...prev, ...enCards.filter(c => !seen.has(c._key))]
+      })
+      setLoadingMore(false)
+    }
+
+    // ── Agregar JP/CN cuando lleguen, sin bloquear la UI ──
+    if (doJP || doCN) {
+      Promise.allSettled([jpPromise, cnPromise]).then(([jpRes, cnRes]) => {
+        if (searchIdRef.current !== myId) return // búsqueda cancelada
+        const jp = doJP ? (jpRes.value?.results ?? []).map(c => norm(c, 'jp')) : []
+        const cn = doCN ? (cnRes.value?.results ?? []).map(c => norm(c, 'cn')) : []
+        if (jp.length > 0 || cn.length > 0) {
+          setCards(prev => {
+            const seen = new Set(prev.map(c => c._key))
+            return dedupe([...prev, ...jp.filter(c => !seen.has(c._key)), ...cn.filter(c => !seen.has(c._key))])
+          })
+        }
+        setLoadingAlt(false)
+      })
+    }
   }
 
-  /* ── Cargar todas las cartas de un set (3 idiomas en paralelo) ─────── */
+  /* ── Cargar todas las cartas de un set — progresivo: EN primero ─────── */
   const loadSet = async (setId, langs) => {
+    searchIdRef.current += 1
+    const myId = searchIdRef.current
+
     setLoading(true)
+    setLoadingAlt(false)
     setCards([])
     setCacheRef.current = { en: [], jp: [], cn: [] }
     setHasMoreEN(false)
 
-    const [enRes, jpRes, cnRes] = await Promise.allSettled([
-      fetchCardsBySet(setId),
-      scannerApi.buscar('', 'jp', setId, 300),
-      scannerApi.buscar('', 'cn', setId, 300),
-    ])
+    // Lanzar los 3 en paralelo
+    const enPromise = fetchCardsBySet(setId)
+    const jpPromise = withTimeout(scannerApi.buscar('', 'jp', setId, 300))
+    const cnPromise = withTimeout(scannerApi.buscar('', 'cn', setId, 300))
 
-    const en = (enRes.value ?? []).map(c => norm(c, 'en'))
-    const jp = (jpRes.value?.results ?? []).map(c => norm(c, 'jp'))
-    const cn = (cnRes.value?.results ?? []).map(c => norm(c, 'cn'))
+    // Mostrar EN en cuanto llegue
+    let en = []
+    try {
+      const enCards = await enPromise
+      if (searchIdRef.current !== myId) return
+      en = enCards.map(c => norm(c, 'en'))
+    } catch (_) {
+      if (searchIdRef.current !== myId) return
+    }
 
-    setCacheRef.current = { en, jp, cn }
-    applySetFilter('', langs, { en, jp, cn })
+    const currentQuery = query
+    setCacheRef.current = { en, jp: [], cn: [] }
+    applySetFilter(currentQuery, langs, { en, jp: [], cn: [] })
     setLoading(false)
+    if (langs.has('jp') || langs.has('cn')) setLoadingAlt(true)
+
+    // Agregar JP/CN en background
+    Promise.allSettled([jpPromise, cnPromise]).then(([jpRes, cnRes]) => {
+      if (searchIdRef.current !== myId) return
+      const jp = langs.has('jp') ? (jpRes.value?.results ?? []).map(c => norm(c, 'jp')) : []
+      const cn = langs.has('cn') ? (cnRes.value?.results ?? []).map(c => norm(c, 'cn')) : []
+      setCacheRef.current = { en, jp, cn }
+      applySetFilter(currentQuery, langs, { en, jp, cn })
+      setLoadingAlt(false)
+    })
   }
 
   /* ── Filtrar el cache del set de forma local (0ms) ──────────────── */
@@ -331,7 +485,7 @@ export default function Pokedex() {
       {/* ── Grid de cartas ──────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 min-h-[200px]">
 
-        {/* Loading inicial */}
+        {/* Loading inicial (esperando EN) */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Spinner size={28} className="text-violet-400" />
@@ -351,7 +505,7 @@ export default function Pokedex() {
         )}
 
         {/* Empty: buscó pero no encontró */}
-        {!loading && isEmpty && hasSearch && (
+        {!loading && isEmpty && hasSearch && !loadingAlt && (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <span className="text-5xl">🔍</span>
             <p className="font-semibold text-gray-600">Sin resultados</p>
@@ -359,12 +513,20 @@ export default function Pokedex() {
           </div>
         )}
 
-        {/* Grid de cartas */}
+        {/* Grid de cartas (se muestra apenas llega EN) */}
         {!loading && cards.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {cards.map(card => (
-              <PokedexCard key={card._key} card={card} />
+            {cards.map((card, i) => (
+              <PokedexCard key={card._key} card={card} onClick={() => setModalIdx(i)} />
             ))}
+          </div>
+        )}
+
+        {/* Indicador JP/CN cargando en background */}
+        {loadingAlt && !loading && (
+          <div className="flex items-center justify-center gap-2 pt-4 pb-1">
+            <Spinner size={13} className="text-gray-300" />
+            <span className="text-xs text-gray-300">Cargando JP · CN…</span>
           </div>
         )}
 
@@ -382,6 +544,18 @@ export default function Pokedex() {
           </div>
         )}
       </div>
+
+      {/* ── Modal de carta ampliada ──────────────────────────────────── */}
+      {modalIdx !== null && cards[modalIdx] && (
+        <CardModal
+          card={cards[modalIdx]}
+          onClose={() => setModalIdx(null)}
+          onPrev={() => setModalIdx(i => Math.max(0, i - 1))}
+          onNext={() => setModalIdx(i => Math.min(cards.length - 1, i + 1))}
+          hasPrev={modalIdx > 0}
+          hasNext={modalIdx < cards.length - 1}
+        />
+      )}
     </div>
   )
 }

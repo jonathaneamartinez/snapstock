@@ -1,5 +1,13 @@
 const BASE = import.meta.env.VITE_SCANNER_URL
 
+/* ─── Cache en memoria para búsquedas del scanner ──────────────────────
+   Evita golpear Railway dos veces con la misma query.
+   Clave: q|idioma|setId|limit  →  resultado JSON
+   Inflight: evita lanzar la misma request dos veces en paralelo.
+──────────────────────────────────────────────────────────────────────── */
+const _buscarCache    = new Map()
+const _buscarInflight = new Map()
+
 export const scannerApi = {
   health: () =>
     fetch(`${BASE}/health`).then(r => r.json()),
@@ -19,10 +27,21 @@ export const scannerApi = {
     }).then(r => r.json()),
 
   buscar: (q, idioma = 'en', setId = '', limit = 5) => {
+    const key = `${q}|${idioma}|${setId}|${limit}`
+    if (_buscarCache.has(key))    return Promise.resolve(_buscarCache.get(key))
+    if (_buscarInflight.has(key)) return _buscarInflight.get(key)
+
     const params = new URLSearchParams({ q, idioma })
-    if (setId)    params.set('set_id', setId)
+    if (setId)       params.set('set_id', setId)
     if (limit !== 5) params.set('limit', String(limit))
-    return fetch(`${BASE}/scanner/search?${params}`).then(r => r.json())
+
+    const promise = fetch(`${BASE}/scanner/search?${params}`)
+      .then(r => r.json())
+      .then(data => { _buscarCache.set(key, data); return data })
+      .finally(() => _buscarInflight.delete(key))
+
+    _buscarInflight.set(key, promise)
+    return promise
   },
 
   /**
