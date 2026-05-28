@@ -73,7 +73,7 @@ const DEMO_KPI = {
  */
 export default function CardPriceModal({ card, onClose }) {
   const [days,     setDays]     = useState(30)
-  const [demoMode, setDemoMode] = useState(false)
+  const [demoMode, setDemoMode] = useState(false) // Solo activable desde Stock.jsx demo banner
 
   const showMarket   = isFeatureEnabled('marketIntel')
   const marketCardId = card?.card_id ?? card?.inventory_id
@@ -300,16 +300,10 @@ export default function CardPriceModal({ card, onClose }) {
                   </div>
                 </div>
 
-                {/* Demo: gráfico inline con datos simulados */}
                 {demoMode ? (
                   <DemoLineChart data={demoChartData} days={days} />
                 ) : (
                   <PriceHistoryChart cardId={card.card_id ?? card.inventory_id} days={days} />
-                )}
-
-                {/* Botón ver demo — solo cuando no hay datos reales y no estamos en demo */}
-                {!demoMode && (
-                  <DemoTrigger onActivate={() => setDemoMode(true)} />
                 )}
               </section>
 
@@ -351,19 +345,10 @@ export default function CardPriceModal({ card, onClose }) {
                 ) : (
                   <div className="bg-gray-50 rounded-2xl px-4 py-5 text-center">
                     <p className="text-2xl mb-1.5">📡</p>
-                    <p className="text-xs text-gray-600 font-semibold">Sin datos de mercado</p>
+                    <p className="text-xs text-gray-600 font-semibold">Sin datos de mercado aún</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      El cron nocturno aún no procesó esta carta.
+                      Se actualiza automáticamente cada noche con datos de eBay y PokeTrace.
                     </p>
-                    {!demoMode && (
-                      <button
-                        onClick={() => setDemoMode(true)}
-                        className="mt-3 text-[11px] text-blue-500 hover:text-blue-700
-                                   font-semibold transition underline underline-offset-2"
-                      >
-                        👁 Ver cómo se verá con datos
-                      </button>
-                    )}
                   </div>
                 )}
               </section>
