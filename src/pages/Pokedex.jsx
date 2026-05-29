@@ -1,17 +1,15 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Search, BookOpen, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useI18n }          from '../lib/i18n'
-import {
-  searchCardsByName,
-  fetchCardsBySet,
-} from '../lib/pokemonTcg'
-import { scannerApi } from '../lib/scanner'
+import { fetchCardsBySet }  from '../lib/pokemonTcg'
+import { scannerApi }       from '../lib/scanner'
+import { supabase }         from '../lib/supabase'
 import SetSelect      from '../components/ui/SetSelect'
 import Spinner        from '../components/ui/Spinner'
 
 /* ─── Constantes ─────────────────────────────────────────────────────── */
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
-const PAGE_SIZE = 20
+const PAGE_SIZE = 60
 
 /* Wrapper para no quedar colgado si el scanner demora mucho */
 const withTimeout = (promise, ms = 8000) =>
@@ -42,6 +40,17 @@ const dedupe = (arr) => {
   const seen = new Set()
   return arr.filter(c => { if (seen.has(c._key)) return false; seen.add(c._key); return true })
 }
+
+/* ─── Normalizar fila de Supabase `cards` ────────────────────────────── */
+const normSupabase = (c) => ({
+  _lang:  c.language ?? 'en',
+  _key:   `${c.language}|${(c.name ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? ''}`,
+  name:   c.name    ?? '—',
+  set:    c.set_name ?? '—',
+  set_id: null,
+  number: c.card_number ?? '',
+  image:  c.image_url   ?? null,
+})
 
 /* ─── Badge de idioma ────────────────────────────────────────────────── */
 function LangBadge({ lang }) {
@@ -198,22 +207,22 @@ export default function Pokedex() {
   const [cards,       setCards]      = useState([])
   const [loading,     setLoading]    = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [loadingAlt,  setLoadingAlt] = useState(false) // JP/CN todavía cargando
-  const [hasMoreEN,   setHasMoreEN]  = useState(false)
+  const [loadingAlt,  setLoadingAlt] = useState(false) // JP/CN cargando (solo en modo set)
+  const [hasMore,     setHasMore]    = useState(false)
   const [modalIdx,    setModalIdx]   = useState(null)  // índice de carta abierta en modal
 
   // Warm-up: despertar Railway apenas el usuario entra a la página
   useEffect(() => { scannerApi.health().catch(() => {}) }, [])
 
-  const enPageRef    = useRef(1)
-  const enQueryRef   = useRef('')
+  const pageRef      = useRef(1)
+  const queryRef     = useRef('')
   const setCacheRef  = useRef({ en: [], jp: [], cn: [] })
   const sentinelRef  = useRef(null)
   const timerRef     = useRef(null)
   const loadMoreRef  = useRef(null) // ref estable para el IntersectionObserver
   const searchIdRef  = useRef(0)    // evita que resultados viejos sobreescriban los nuevos
 
-  /* ── Buscar por nombre — progresivo: EN primero, JP/CN se agregan solos ── */
+  /* ── Buscar por nombre — usa Supabase directamente (todas las langs juntas) ── */
   const runNameSearch = async (q, page, langs) => {
     if (!q || q.length < 2) return
 
@@ -224,65 +233,46 @@ export default function Pokedex() {
     if (page === 1) { setLoading(true); setLoadingAlt(false); setCards([]) }
     else             setLoadingMore(true)
 
-    const doEN = langs.has('en')
-    const doJP = langs.has('jp') && page === 1
-    const doCN = langs.has('cn') && page === 1
-
-    // Lanzar las 3 promesas en paralelo, pero manejar EN de forma independiente
-    const enPromise = doEN
-      ? searchCardsByName(q, PAGE_SIZE, page)
-      : Promise.resolve({ results: [], totalCount: 0 })
-
-    const jpPromise = doJP
-      ? withTimeout(scannerApi.buscar(q, 'jp', '', 120))
-      : Promise.resolve({ results: [] })
-
-    const cnPromise = doCN
-      ? withTimeout(scannerApi.buscar(q, 'cn', '', 120))
-      : Promise.resolve({ results: [] })
-
-    // ── Mostrar EN en cuanto llegue (rápido) ──
-    let enCards = []
     try {
-      const enRes  = await enPromise
+      const from = (page - 1) * PAGE_SIZE
+      const to   = from + PAGE_SIZE - 1
+
+      const { data, count, error } = await supabase
+        .from('cards')
+        .select('id, name, set_name, card_number, language, image_url', { count: 'exact' })
+        .ilike('name', `%${q}%`)
+        .in('language', [...langs])
+        .range(from, to)
+        .order('name')
+        .order('card_number')
+
       if (searchIdRef.current !== myId) return // búsqueda cancelada
-      enCards      = (enRes.results ?? []).map(c => norm(c, 'en'))
-      const enTotal = enRes.totalCount ?? 0
-      enPageRef.current  = page
-      enQueryRef.current = q
-      setHasMoreEN(page * PAGE_SIZE < enTotal)
-    } catch (_) {
+      if (error) throw error
+
+      const total   = count ?? 0
+      const results = (data ?? []).map(normSupabase)
+
+      pageRef.current  = page
+      queryRef.current = q
+      setHasMore(to < total - 1)
+
+      if (page === 1) {
+        setCards(dedupe(results))
+      } else {
+        setCards(prev => {
+          const seen = new Set(prev.map(c => c._key))
+          return [...prev, ...results.filter(c => !seen.has(c._key))]
+        })
+      }
+    } catch (err) {
       if (searchIdRef.current !== myId) return
-      setHasMoreEN(false)
-    }
-
-    if (page === 1) {
-      setCards(dedupe(enCards))
-      setLoading(false)
-      // Indicar que JP/CN siguen cargando en background
-      if (doJP || doCN) setLoadingAlt(true)
-    } else {
-      setCards(prev => {
-        const seen = new Set(prev.map(c => c._key))
-        return [...prev, ...enCards.filter(c => !seen.has(c._key))]
-      })
-      setLoadingMore(false)
-    }
-
-    // ── Agregar JP/CN cuando lleguen, sin bloquear la UI ──
-    if (doJP || doCN) {
-      Promise.allSettled([jpPromise, cnPromise]).then(([jpRes, cnRes]) => {
-        if (searchIdRef.current !== myId) return // búsqueda cancelada
-        const jp = doJP ? (jpRes.value?.results ?? []).map(c => norm(c, 'jp')) : []
-        const cn = doCN ? (cnRes.value?.results ?? []).map(c => norm(c, 'cn')) : []
-        if (jp.length > 0 || cn.length > 0) {
-          setCards(prev => {
-            const seen = new Set(prev.map(c => c._key))
-            return dedupe([...prev, ...jp.filter(c => !seen.has(c._key)), ...cn.filter(c => !seen.has(c._key))])
-          })
-        }
-        setLoadingAlt(false)
-      })
+      console.error('Pokédex search error:', err)
+      setHasMore(false)
+    } finally {
+      if (searchIdRef.current === myId) {
+        setLoading(false)
+        setLoadingMore(false)
+      }
     }
   }
 
@@ -295,7 +285,7 @@ export default function Pokedex() {
     setLoadingAlt(false)
     setCards([])
     setCacheRef.current = { en: [], jp: [], cn: [] }
-    setHasMoreEN(false)
+    setHasMore(false)
 
     // Lanzar los 3 en paralelo
     const enPromise = fetchCardsBySet(setId)
@@ -352,7 +342,7 @@ export default function Pokedex() {
 
     if (!val.trim() || val.trim().length < 2) {
       setCards([])
-      setHasMoreEN(false)
+      setHasMore(false)
       return
     }
 
@@ -371,7 +361,7 @@ export default function Pokedex() {
       // Set limpiado
       setCacheRef.current = { en: [], jp: [], cn: [] }
       setCards([])
-      setHasMoreEN(false)
+      setHasMore(false)
       if (query.trim().length >= 2)
         timerRef.current = setTimeout(() => runNameSearch(query.trim(), 1, activeLangs), 0)
     }
@@ -395,22 +385,22 @@ export default function Pokedex() {
     })
   }
 
-  /* ── Load more (paginación EN) ────────────────────────────────────── */
+  /* ── Load more (paginación Supabase) ─────────────────────────────── */
   const loadMore = () => {
-    if (loadingMore || !hasMoreEN) return
-    runNameSearch(enQueryRef.current, enPageRef.current + 1, activeLangs)
+    if (loadingMore || !hasMore) return
+    runNameSearch(queryRef.current, pageRef.current + 1, activeLangs)
   }
   loadMoreRef.current = loadMore // siempre fresco, sin stale closure
 
   useEffect(() => {
-    if (!sentinelRef.current || !hasMoreEN) return
+    if (!sentinelRef.current || !hasMore) return
     const obs = new IntersectionObserver(
       ([e]) => { if (e.isIntersecting) loadMoreRef.current() },
       { threshold: 0.1 }
     )
     obs.observe(sentinelRef.current)
     return () => obs.disconnect()
-  }, [hasMoreEN, loadingMore])
+  }, [hasMore, loadingMore])
 
   /* ─────────────────────────────────────────────────────────────────── */
   const hasSearch = query.trim().length >= 2 || !!setInfo.set_id
@@ -531,13 +521,13 @@ export default function Pokedex() {
         )}
 
         {/* Sentinel de infinite scroll + load more indicator */}
-        {hasMoreEN && (
+        {hasMore && (
           <div ref={sentinelRef}
                className="flex items-center justify-center py-6 mt-4 border-t border-gray-100">
             {loadingMore
               ? <div className="flex items-center gap-2 text-sm text-gray-400">
                   <Spinner size={16} className="text-violet-400" />
-                  Cargando más cartas EN…
+                  Cargando más cartas…
                 </div>
               : <span className="text-xs text-gray-300">↓ Scroll para cargar más</span>
             }
