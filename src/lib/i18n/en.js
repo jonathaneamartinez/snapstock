@@ -95,7 +95,7 @@ const en = {
   stock_kpi_available:  'Available',
   stock_kpi_reserved:   'Reserved',
   stock_kpi_value:      'Total value',
-  stock_kpi_in_stock:   'in stock',
+  stock_kpi_in_stock:   'in catalog',
   stock_kpi_for_sale:   'for sale',
   stock_kpi_to_deliver: 'to deliver',
   stock_kpi_usd:        'USD market',

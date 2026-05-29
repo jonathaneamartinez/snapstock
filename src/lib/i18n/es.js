@@ -95,7 +95,7 @@ const es = {
   stock_kpi_available:  'Disponibles',
   stock_kpi_reserved:   'Reservadas',
   stock_kpi_value:      'Valor total',
-  stock_kpi_in_stock:   'en stock',
+  stock_kpi_in_stock:   'en catálogo',
   stock_kpi_for_sale:   'para venta',
   stock_kpi_to_deliver: 'por entregar',
   stock_kpi_usd:        'USD mercado',

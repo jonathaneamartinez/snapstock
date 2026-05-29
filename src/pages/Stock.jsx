@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useStock }    from '../hooks/useStock'
 import { useMetricas } from '../hooks/useMetricas'
@@ -55,6 +55,104 @@ const COLS_DEF = [
   { i: 'stock_col_reserved', key: 'reserved_at',       type: 'date' },
   { i: 'stock_col_scanned',  key: 'fecha_escaneada',   type: 'date' },
 ]
+
+// ── Paginador flotante con salto de página ────────────────────────────────────
+function Paginator({ currentPage, totalPages, totalCount, onGoTo }) {
+  const [jumpInput, setJumpInput] = useState('')
+  const inputRef = useRef(null)
+
+  const commit = () => {
+    const n = parseInt(jumpInput, 10)
+    if (!isNaN(n) && n >= 1 && n <= totalPages) {
+      onGoTo(n - 1)
+    }
+    setJumpInput('')
+    inputRef.current?.blur()
+  }
+
+  // Páginas visibles: hasta 5 centradas en la actual
+  const pages = useMemo(() => {
+    const half  = 2
+    let start   = Math.max(0, currentPage - half)
+    let end     = Math.min(totalPages - 1, currentPage + half)
+    // ajustar ventana si está al principio/final
+    if (currentPage <= half)                       end   = Math.min(4, totalPages - 1)
+    if (currentPage >= totalPages - 1 - half)      start = Math.max(0, totalPages - 5)
+    const arr = []
+    for (let i = start; i <= end; i++) arr.push(i)
+    return arr
+  }, [currentPage, totalPages])
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40
+                    flex items-center gap-1.5 px-3 py-2
+                    bg-white border border-gray-200 rounded-2xl shadow-lg
+                    text-xs text-gray-500 select-none">
+
+      {/* Total cartas */}
+      <span className="hidden sm:block whitespace-nowrap font-medium text-gray-400 mr-0.5">
+        {totalCount.toLocaleString('es-AR')} cartas
+      </span>
+      <div className="w-px h-4 bg-gray-200 hidden sm:block mr-0.5" />
+
+      {/* Primera / anterior */}
+      <button onClick={() => onGoTo(0)} disabled={currentPage === 0}
+        className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition font-bold">
+        «
+      </button>
+      <button onClick={() => onGoTo(currentPage - 1)} disabled={currentPage === 0}
+        className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
+        ‹
+      </button>
+
+      {/* Páginas visibles (máx 5) */}
+      {pages.map(i => (
+        <button key={i} onClick={() => onGoTo(i)}
+          className={`w-7 h-7 rounded-lg text-xs font-semibold transition
+            ${i === currentPage
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'hover:bg-gray-100 text-gray-600'}`}>
+          {i + 1}
+        </button>
+      ))}
+
+      {/* Siguiente / última */}
+      <button onClick={() => onGoTo(currentPage + 1)} disabled={currentPage >= totalPages - 1}
+        className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
+        ›
+      </button>
+      <button onClick={() => onGoTo(totalPages - 1)} disabled={currentPage >= totalPages - 1}
+        className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition font-bold">
+        »
+      </button>
+
+      {/* Separador */}
+      <div className="w-px h-4 bg-gray-200 mx-0.5" />
+
+      {/* Ir a página — input numérico */}
+      <span className="text-gray-400 whitespace-nowrap hidden sm:block">ir a</span>
+      <input
+        ref={inputRef}
+        type="number"
+        min={1}
+        max={totalPages}
+        value={jumpInput}
+        onChange={e => setJumpInput(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') commit()
+          if (e.key === 'Escape') { setJumpInput(''); inputRef.current?.blur() }
+        }}
+        onBlur={commit}
+        placeholder={String(currentPage + 1)}
+        className="w-12 h-7 rounded-lg border border-gray-200 bg-gray-50
+                   text-center text-xs font-semibold text-gray-700
+                   focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300
+                   [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <span className="whitespace-nowrap text-gray-400">/ {totalPages}</span>
+    </div>
+  )
+}
 
 export default function Stock() {
   const queryClient = useQueryClient()
@@ -789,54 +887,12 @@ export default function Stock() {
 
       {/* ── Paginador flotante ──────────────────────────────────────────────── */}
       {totalPages > 1 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40
-                        flex items-center gap-2 px-4 py-2
-                        bg-white border border-gray-200 rounded-2xl shadow-lg
-                        text-xs text-gray-500">
-          <span className="hidden sm:block whitespace-nowrap font-medium text-gray-400 mr-1">
-            {(filters.busqueda || filters.idioma || filters.condicion
-              ? total
-              : (m?.totalCartas ?? total)
-            ).toLocaleString('es-AR')} cartas
-          </span>
-          <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-
-          <button onClick={() => goToPage(0)} disabled={currentPage === 0}
-            className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition font-bold">
-            «
-          </button>
-          <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 0}
-            className="px-2 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
-            ‹
-          </button>
-
-          {Array.from({ length: totalPages }, (_, i) => i)
-            .filter(i => Math.abs(i - currentPage) <= 2)
-            .map(i => (
-              <button key={i} onClick={() => goToPage(i)}
-                className={`w-7 h-7 rounded-lg text-xs font-semibold transition
-                  ${i === currentPage
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'hover:bg-gray-100 text-gray-600'}`}>
-                {i + 1}
-              </button>
-            ))
-          }
-
-          <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages - 1}
-            className="px-2 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
-            ›
-          </button>
-          <button onClick={() => goToPage(totalPages - 1)} disabled={currentPage >= totalPages - 1}
-            className="px-1.5 py-1 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition font-bold">
-            »
-          </button>
-
-          <div className="w-px h-4 bg-gray-200" />
-          <span className="whitespace-nowrap text-gray-400">
-            {currentPage + 1} / {totalPages}
-          </span>
-        </div>
+        <Paginator
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={total}
+          onGoTo={goToPage}
+        />
       )}
 
       {/* ── Barra de acciones bulk ──────────────────────────────────────────── */}

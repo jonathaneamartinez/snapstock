@@ -6,37 +6,51 @@ export function useMetricas() {
   return useQuery({
     queryKey: ['metricas'],
     queryFn: async () => {
-      // Traemos todos los registros con paginación manual para no depender
-      // del límite default de Supabase (1000 filas).
+      // ── 1. Count total de entradas en catálogo (query rápida, sin traer datos) ─
+      const { count: totalCartas = 0 } = await supabase
+        .from('inventory')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+
+      // ── 2. Datos para valores — solo disponibles (cantidad << total) ──────────
+      //    Paginamos de a 5000 para no depender del límite default de Supabase.
       const PAGE = 5000
-      let allRows = []
-      let from    = 0
-      let done    = false
+      let disponiblesRows = []
+      let reservadasRows  = []
+      let from = 0
+      let done = false
 
       while (!done) {
         const { data, error } = await supabase
           .from('inventory')
           .select('quantity, price_usd, price_ars_blue, price_ars_oficial, status, estado')
           .eq('store_id', STORE_ID)
+          .or('status.eq.disponible,status.eq.reservada,estado.eq.disponible,estado.eq.reservada')
           .range(from, from + PAGE - 1)
 
         if (error) throw error
         const chunk = data ?? []
-        allRows.push(...chunk)
-        done = chunk.length < PAGE   // si vino menos de lo pedido, ya terminamos
+        for (const r of chunk) {
+          if (r.status === 'disponible' || r.estado === 'disponible') disponiblesRows.push(r)
+          else if (r.status === 'reservada' || r.estado === 'reservada')  reservadasRows.push(r)
+        }
+        done = chunk.length < PAGE
         from += PAGE
       }
 
-      const disponibles = allRows.filter(r => r.status === 'disponible' || r.estado === 'disponible')
-      const reservadas  = allRows.filter(r => r.status === 'reservada'  || r.estado === 'reservada')
+      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd        || 0) * (r.quantity || 0), 0)
+      const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue   || 0) * (r.quantity || 0), 0)
+      const valorARSOficial = disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 0), 0)
+      const deudasActivas   = reservadasRows.reduce((s, r)  => s + (r.price_ars_blue   || 0) * (r.quantity || 0), 0)
 
-      const totalCartas     = disponibles.reduce((s, r) => s + (r.quantity || 0), 0)
-      const valorUSD        = disponibles.reduce((s, r) => s + (r.price_usd       || 0) * (r.quantity || 0), 0)
-      const valorARSBlue    = disponibles.reduce((s, r) => s + (r.price_ars_blue  || 0) * (r.quantity || 0), 0)
-      const valorARSOficial = disponibles.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 0), 0)
-      const deudasActivas   = reservadas.reduce((s, r)  => s + (r.price_ars_blue  || 0) * (r.quantity || 0), 0)
-
-      return { totalCartas, valorUSD, valorARSBlue, valorARSOficial, deudasActivas, cantReservadas: reservadas.length }
+      return {
+        totalCartas,          // count total del catálogo (coincide con paginador)
+        valorUSD,
+        valorARSBlue,
+        valorARSOficial,
+        deudasActivas,
+        cantReservadas: reservadasRows.length,
+      }
     },
     staleTime: 60_000,
   })
