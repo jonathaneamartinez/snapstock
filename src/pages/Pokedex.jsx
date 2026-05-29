@@ -67,16 +67,19 @@ function LangBadge({ lang }) {
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
 function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
-  const retryRef      = useRef(0)
-  const MAX_RETRIES   = 3
+  const triedR2Ref    = useRef(false)
 
-  const handleError = () => {
-    if (card.image && retryRef.current < MAX_RETRIES) {
-      retryRef.current++
-      setTimeout(() => setSrc(`${card.image}?r=${retryRef.current}`), retryRef.current * 1500)
-    } else {
+  const handleError = async () => {
+    if (triedR2Ref.current || !card.image || src === CARD_BACK) {
       setSrc(CARD_BACK)
+      return
     }
+    triedR2Ref.current = true
+    try {
+      const { url } = await scannerApi.cardImageUrl(card.name, card.number, card._lang)
+      if (url && url !== src) { setSrc(url); return }
+    } catch (_) {}
+    setSrc(CARD_BACK)
   }
 
   // Cerrar con Escape, navegar con flechas
@@ -90,8 +93,8 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
-  // Resetear imagen y contador al cambiar de carta
-  useEffect(() => { retryRef.current = 0; setSrc(card.image || CARD_BACK) }, [card])
+  // Resetear imagen y flag al cambiar de carta
+  useEffect(() => { triedR2Ref.current = false; setSrc(card.image || CARD_BACK) }, [card])
 
   return (
     <div
@@ -167,18 +170,21 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
 
 /* ─── Card individual ────────────────────────────────────────────────── */
 function PokedexCard({ card, onClick }) {
-  const [src, setSrc]   = useState(card.image || CARD_BACK)
-  const retryRef        = useRef(0)
-  const MAX_RETRIES     = 3
+  const [src, setSrc] = useState(card.image || CARD_BACK)
+  const triedR2Ref    = useRef(false)
 
-  const handleError = () => {
-    if (card.image && retryRef.current < MAX_RETRIES) {
-      retryRef.current++
-      const delay = retryRef.current * 1500 // 1.5 s, 3 s, 4.5 s
-      setTimeout(() => setSrc(`${card.image}?r=${retryRef.current}`), delay)
-    } else {
+  // Al fallar: buscar imagen en R2 vía nuestro scanner; si tampoco, mostrar dorso
+  const handleError = async () => {
+    if (triedR2Ref.current || !card.image || src === CARD_BACK) {
       setSrc(CARD_BACK)
+      return
     }
+    triedR2Ref.current = true
+    try {
+      const { url } = await scannerApi.cardImageUrl(card.name, card.number, card._lang)
+      if (url && url !== src) { setSrc(url); return }
+    } catch (_) {}
+    setSrc(CARD_BACK)
   }
 
   return (
