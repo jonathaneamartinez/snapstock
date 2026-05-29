@@ -67,6 +67,17 @@ function LangBadge({ lang }) {
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
 function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
+  const retryRef      = useRef(0)
+  const MAX_RETRIES   = 3
+
+  const handleError = () => {
+    if (card.image && retryRef.current < MAX_RETRIES) {
+      retryRef.current++
+      setTimeout(() => setSrc(`${card.image}?r=${retryRef.current}`), retryRef.current * 1500)
+    } else {
+      setSrc(CARD_BACK)
+    }
+  }
 
   // Cerrar con Escape, navegar con flechas
   useEffect(() => {
@@ -79,8 +90,8 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
-  // Resetear imagen al cambiar de carta
-  useEffect(() => { setSrc(card.image || CARD_BACK) }, [card])
+  // Resetear imagen y contador al cambiar de carta
+  useEffect(() => { retryRef.current = 0; setSrc(card.image || CARD_BACK) }, [card])
 
   return (
     <div
@@ -134,7 +145,7 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
           alt={card.name}
           className="w-full rounded-2xl shadow-2xl"
           style={{ maxHeight: '75vh', objectFit: 'contain' }}
-          onError={() => setSrc(CARD_BACK)}
+          onError={handleError}
         />
 
         {/* Info debajo */}
@@ -156,7 +167,19 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
 
 /* ─── Card individual ────────────────────────────────────────────────── */
 function PokedexCard({ card, onClick }) {
-  const [src, setSrc] = useState(card.image || CARD_BACK)
+  const [src, setSrc]   = useState(card.image || CARD_BACK)
+  const retryRef        = useRef(0)
+  const MAX_RETRIES     = 3
+
+  const handleError = () => {
+    if (card.image && retryRef.current < MAX_RETRIES) {
+      retryRef.current++
+      const delay = retryRef.current * 1500 // 1.5 s, 3 s, 4.5 s
+      setTimeout(() => setSrc(`${card.image}?r=${retryRef.current}`), delay)
+    } else {
+      setSrc(CARD_BACK)
+    }
+  }
 
   return (
     <div
@@ -174,7 +197,7 @@ function PokedexCard({ card, onClick }) {
           loading="lazy"
           className="w-full h-full object-contain
                      group-hover:scale-[1.04] transition-transform duration-300"
-          onError={() => setSrc(CARD_BACK)}
+          onError={handleError}
         />
       </div>
 
