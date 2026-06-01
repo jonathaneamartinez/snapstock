@@ -218,22 +218,26 @@ export default function Settings() {
           {PRICE_SOURCES.map(src => (
             <button
               key={src.id}
-              onClick={() => savePrecioFuente(src.id)}
-              disabled={savingFuente}
+              onClick={() => src.active && savePrecioFuente(src.id)}
+              disabled={savingFuente || !src.active}
+              title={src.note}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition
-                ${precioFuente === src.id
-                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'}`}
+                ${!src.active
+                  ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                  : precioFuente === src.id
+                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'}`}
             >
               <span className="text-base">{src.flag}</span>
               <span>{src.label}</span>
               <span className="text-xs font-normal text-gray-400">{src.currency}</span>
-              {precioFuente === src.id && <span className="text-blue-500 text-xs">{t('settings_source_active')}</span>}
+              {precioFuente === src.id && src.active && <span className="text-blue-500 text-xs">✓ activo</span>}
+              {!src.active && <span className="text-[10px] font-normal text-gray-300">próx.</span>}
             </button>
           ))}
         </div>
         <p className="text-xs text-gray-400 mt-3">
-          {t('settings_price_note')}
+          TCGPlayer = mercado USA · CardMarket = mercado europeo (EUR → USD estimado)
         </p>
       </div>
 
