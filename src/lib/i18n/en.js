@@ -125,6 +125,7 @@ const en = {
   stock_col_buyer:     'Buyer',
   stock_col_contact:   'Contact',
   stock_col_notes:     'Notes',
+  stock_col_tags:      'Tags',
   stock_col_reserved:  'Reserved date',
   stock_col_scanned:   'Scanned date',
 

@@ -86,6 +86,7 @@ export function useStock(filters = {}) {
         scanned_at,
         scan_date,
         updated_at,
+        tags,
         ${cardJoin} (
           id,
           name,
@@ -168,6 +169,7 @@ export function useStock(filters = {}) {
         notes:             r.notas || r.sale_notes || '',
         reserved_at:       r.reserved_at || r.fecha_reserva || '',
         fecha_escaneada:   r.scanned_at || r.scan_date || r.updated_at || '',
+        tags:              r.tags ?? [],
       }))
 
       // Sort + paginación client-side cuando la columna pertenece a `cards`

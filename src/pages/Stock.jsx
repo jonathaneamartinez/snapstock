@@ -24,6 +24,7 @@ import { getCardImageUrl, warmBlobUrls } from '../lib/imageCache'
 import CardPriceModal   from '../components/market/CardPriceModal'
 import MarketKpiBadge  from '../components/market/MarketKpiBadge'
 import { useMarketKpiBatch } from '../hooks/useMarketKpi'
+import InlineTags from '../components/ui/InlineTags'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -52,6 +53,7 @@ const COLS_DEF = [
   { i: 'stock_col_buyer',    key: 'buyer_name',        type: 'str'  },
   { i: 'stock_col_contact',  key: 'buyer_contact',     type: 'str'  },
   { i: 'stock_col_notes',    key: 'notes',             type: 'str'  },
+  { i: 'stock_col_tags',     key: null,                type: null   },
   { i: 'stock_col_reserved', key: 'reserved_at',       type: 'date' },
   { i: 'stock_col_scanned',  key: 'fecha_escaneada',   type: 'date' },
 ]
@@ -344,6 +346,33 @@ export default function Stock() {
       queryClient.invalidateQueries({ queryKey: ['stock'] })
       showToast(t('stock_price_updated'))
     }
+  }
+
+  // ── Tags en inventory ────────────────────────────────────────────────────
+  const [localTags, setLocalTags] = useState({})  // inventoryId → string[]
+
+  const getTagsFor = (row) => localTags[row.inventory_id] ?? row.tags ?? []
+
+  const persistTags = async (inventoryId, newTags) => {
+    await supabase.from('inventory').update({ tags: newTags }).eq('id', inventoryId)
+  }
+
+  const addTagToRow = (inventoryId, tag) => {
+    setLocalTags(prev => {
+      const current = prev[inventoryId] ?? []
+      if (current.some(t => t.toLowerCase() === tag.toLowerCase())) return prev
+      const next = [...current, tag]
+      persistTags(inventoryId, next)
+      return { ...prev, [inventoryId]: next }
+    })
+  }
+
+  const removeTagFromRow = (inventoryId, tag) => {
+    setLocalTags(prev => {
+      const next = (prev[inventoryId] ?? []).filter(t => t !== tag)
+      persistTags(inventoryId, next)
+      return { ...prev, [inventoryId]: next }
+    })
   }
 
   // ── Acción: marcar como vendidas + registrar en sales ───────────────────
@@ -843,6 +872,13 @@ export default function Stock() {
                       <td className="px-3 py-2 text-gray-500">{r.buyer_contact || '—'}</td>
                       <td className="px-3 py-2 text-gray-400 max-w-[100px]">
                         <span className="truncate block">{r.notes || '—'}</span>
+                      </td>
+                      <td className="px-3 py-2 max-w-[160px]">
+                        <InlineTags
+                          tags={getTagsFor(r)}
+                          onAdd={tag => addTagToRow(r.inventory_id, tag)}
+                          onRemove={tag => removeTagFromRow(r.inventory_id, tag)}
+                        />
                       </td>
                       <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{fmtFecha(r.reserved_at)}</td>
                       <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{fmtFecha(r.fecha_escaneada)}</td>

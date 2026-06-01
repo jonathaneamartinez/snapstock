@@ -210,7 +210,7 @@ function BulkActionBar({ selected, onSell, onReserve, onReturn, onClear }) {
 }
 
 /* ─── Tabla de cartas del claim (con workflow post-claim) ────────────── */
-function CardTable({ cards, claimId }) {
+function CardTable({ cards, claimId, onRemove, editMode }) {
   const qc = useQueryClient()
   const { t } = useI18n()
   const [selected,    setSelected]    = useState(new Set())
@@ -365,6 +365,7 @@ function CardTable({ cards, claimId }) {
         <table className="w-full text-xs">
           <thead className="bg-gray-100 text-gray-500 uppercase">
             <tr>
+              {editMode && <th className="pl-3 pr-1 py-2 w-6" />}
               {hasInventoryIds && (
                 <th className="pl-3 pr-1 py-2">
                   <input
@@ -394,6 +395,18 @@ function CardTable({ cards, claimId }) {
                     ${c.inventory_id ? 'cursor-pointer' : ''}`}
                   onClick={() => c.inventory_id && toggleOne(c.inventory_id)}
                 >
+                  {/* ✕ eliminar carta del claim (solo en editMode) */}
+                  {editMode && (
+                    <td className="pl-2 pr-0 py-1.5" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => onRemove?.(c.inventory_id ?? i)}
+                        className="w-5 h-5 flex items-center justify-center rounded-full
+                                   bg-red-100 text-red-400 hover:bg-red-200 hover:text-red-600
+                                   text-xs transition shrink-0"
+                        title="Quitar carta del claim"
+                      >×</button>
+                    </td>
+                  )}
                   {hasInventoryIds && (
                     <td className="pl-3 pr-1 py-1.5">
                       {c.inventory_id ? (
@@ -482,7 +495,7 @@ function CardTable({ cards, claimId }) {
           <tfoot className="bg-gray-50 border-t-2 border-gray-200">
             <tr>
               <td
-                colSpan={hasInventoryIds ? 5 : 4}
+                colSpan={(hasInventoryIds ? 5 : 4) + (editMode ? 1 : 0)}
                 className="px-3 py-2 text-xs font-bold text-gray-600"
               >
                 Total ({cards.length} {t('claims_col_cards')})
@@ -542,12 +555,70 @@ function CardTable({ cards, claimId }) {
 /* ─── Fila de claim expandible ───────────────────────────────────────── */
 function ClaimRow({ claim }) {
   const { t } = useI18n()
+  const qc = useQueryClient()
   const [expanded,    setExpanded]    = useState(false)
   const [fullImg,     setFullImg]     = useState(null)
   const [regenCards,  setRegenCards]  = useState(null)
+  const [editMode,    setEditMode]    = useState(false)
+  const [addSearch,   setAddSearch]   = useState('')
+  const [addResults,  setAddResults]  = useState([])
+  const [addLoading,  setAddLoading]  = useState(false)
 
   const hasImages = claim.image_urls?.length > 0
   const hasCards  = claim.cards_data?.length > 0
+
+  /* ── Quitar carta del claim ─────────────────────────────────────────── */
+  const removeCardFromClaim = async (inventoryIdOrIdx) => {
+    const newCards = typeof inventoryIdOrIdx === 'number' && inventoryIdOrIdx < 1000
+      ? claim.cards_data.filter((_, i) => i !== inventoryIdOrIdx)
+      : claim.cards_data.filter(c => c.inventory_id !== inventoryIdOrIdx)
+    await supabase.from('claims')
+      .update({ cards_data: newCards, card_count: newCards.length })
+      .eq('id', claim.id)
+    qc.invalidateQueries({ queryKey: ['claims'] })
+  }
+
+  /* ── Buscar cartas del inventory para agregar ───────────────────────── */
+  const searchCards = async (term) => {
+    setAddSearch(term)
+    if (term.length < 2) { setAddResults([]); return }
+    setAddLoading(true)
+    const { data } = await supabase
+      .from('inventory')
+      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards(id, name, set_name, card_number, image_url, language, is_holo)')
+      .eq('store_id', STORE_ID)
+      .neq('status', 'vendida')
+      .ilike('cards.name', `%${term}%`)
+      .limit(8)
+    setAddLoading(false)
+    setAddResults((data ?? []).filter(r => r.cards?.name))
+  }
+
+  /* ── Agregar carta al claim ─────────────────────────────────────────── */
+  const addCardToClaim = async (invRow) => {
+    const c = invRow.cards
+    const newCard = {
+      id:           c.id,
+      inventory_id: invRow.id,
+      name:         c.name,
+      set:          c.set_name,
+      num:          c.card_number,
+      cond:         invRow.condition || invRow.condicion || 'NM',
+      holo:         c.is_holo || false,
+      img:          c.image_url || '',
+      usd:          invRow.price_usd ?? null,
+      ars:          invRow.price_ars_blue ?? null,
+      sale:         invRow.sale_price_ars ?? invRow.price_ars_blue ?? null,
+      tags:         [],
+    }
+    const newCards = [...(claim.cards_data ?? []), newCard]
+    await supabase.from('claims')
+      .update({ cards_data: newCards, card_count: newCards.length })
+      .eq('id', claim.id)
+    qc.invalidateQueries({ queryKey: ['claims'] })
+    setAddSearch('')
+    setAddResults([])
+  }
 
   const openRegen = () => {
     if (!hasCards) return
@@ -695,15 +766,76 @@ function ClaimRow({ claim }) {
 
                   {hasCards && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-2">
-                        📋 {t('claims_cards_of_claim')} ({claim.cards_data.length})
-                        {claim.cards_data.some(c => c.inventory_id) && (
-                          <span className="ml-2 text-[10px] text-violet-500 font-normal">
-                            · {t('claims_select_tip')}
-                          </span>
-                        )}
-                      </p>
-                      <CardTable cards={claim.cards_data} claimId={claim.id} />
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="text-xs font-semibold text-gray-500 flex-1">
+                          📋 {t('claims_cards_of_claim')} ({claim.cards_data.length})
+                          {!editMode && claim.cards_data.some(c => c.inventory_id) && (
+                            <span className="ml-2 text-[10px] text-violet-500 font-normal">
+                              · {t('claims_select_tip')}
+                            </span>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => { setEditMode(e => !e); setAddSearch(''); setAddResults([]) }}
+                          className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl
+                                     text-xs font-semibold transition
+                                     ${editMode
+                                       ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                       : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}
+                        >
+                          {editMode ? '✓ Listo' : '✏️ Editar claim'}
+                        </button>
+                      </div>
+
+                      <CardTable
+                        cards={claim.cards_data}
+                        claimId={claim.id}
+                        editMode={editMode}
+                        onRemove={removeCardFromClaim}
+                      />
+
+                      {/* Buscador para agregar cartas */}
+                      {editMode && (
+                        <div className="mt-3 border border-dashed border-violet-200 rounded-xl p-3 bg-violet-50/50">
+                          <p className="text-[10px] font-semibold text-violet-500 mb-2">➕ Agregar carta al claim</p>
+                          <input
+                            type="text"
+                            value={addSearch}
+                            onChange={e => searchCards(e.target.value)}
+                            placeholder="Buscar por nombre de carta..."
+                            className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs
+                                       bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                          />
+                          {addLoading && <p className="text-[10px] text-gray-400 mt-1 text-center">Buscando…</p>}
+                          {addResults.length > 0 && (
+                            <div className="mt-2 space-y-1 max-h-52 overflow-y-auto">
+                              {addResults.map(row => (
+                                <button
+                                  key={row.id}
+                                  onClick={() => addCardToClaim(row)}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg
+                                             bg-white hover:bg-violet-50 border border-gray-100
+                                             hover:border-violet-200 text-left transition"
+                                >
+                                  {row.cards?.image_url && (
+                                    <img src={row.cards.image_url} alt=""
+                                      className="w-6 h-8 object-cover rounded shrink-0" />
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-medium text-gray-800 truncate">{row.cards?.name}</p>
+                                    <p className="text-[10px] text-gray-400 truncate">{row.cards?.set_name} · {row.cards?.card_number}</p>
+                                  </div>
+                                  {row.price_usd != null && (
+                                    <span className="ml-auto text-[10px] text-emerald-600 font-semibold shrink-0">
+                                      ${row.price_usd.toFixed(2)}
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

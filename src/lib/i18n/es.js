@@ -125,6 +125,7 @@ const es = {
   stock_col_buyer:     'Comprador',
   stock_col_contact:   'Contacto',
   stock_col_notes:     'Notas',
+  stock_col_tags:      'Etiquetas',
   stock_col_reserved:  'F. Reserva',
   stock_col_scanned:   'F. Escaneada',
 
