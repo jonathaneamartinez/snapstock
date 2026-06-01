@@ -27,6 +27,42 @@ import { useMarketKpiBatch } from '../hooks/useMarketKpi'
 import InlineTags from '../components/ui/InlineTags'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
+
+// ── Stepper de cantidad inline ────────────────────────────────────────────────
+function StockStepper({ value, onSave }) {
+  const [saving, setSaving] = useState(false)
+
+  const change = async (delta) => {
+    const next = Math.max(0, (value ?? 0) + delta)
+    if (next === (value ?? 0)) return
+    setSaving(true)
+    await onSave(next)
+    setSaving(false)
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-0.5">
+      <button
+        onClick={e => { e.stopPropagation(); change(-1) }}
+        disabled={saving || (value ?? 0) <= 0}
+        className="w-5 h-5 rounded-md bg-gray-100 hover:bg-red-100 hover:text-red-600
+                   text-gray-400 text-xs font-bold flex items-center justify-center
+                   transition disabled:opacity-30 disabled:cursor-not-allowed"
+      >−</button>
+      <span className={`w-6 text-center text-sm font-bold select-none
+        ${saving ? 'text-gray-300' : 'text-gray-700'}`}>
+        {saving ? '…' : (value ?? 0)}
+      </span>
+      <button
+        onClick={e => { e.stopPropagation(); change(+1) }}
+        disabled={saving}
+        className="w-5 h-5 rounded-md bg-gray-100 hover:bg-emerald-100 hover:text-emerald-600
+                   text-gray-400 text-xs font-bold flex items-center justify-center
+                   transition disabled:opacity-30 disabled:cursor-not-allowed"
+      >+</button>
+    </div>
+  )
+}
 const fmtARS = (n) => n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
 const fmtFecha = (s) => {
   if (!s) return '—'
@@ -333,6 +369,18 @@ export default function Stock() {
     if (!error) {
       queryClient.invalidateQueries({ queryKey: ['stock'] })
       showToast(t('stock_buyer_updated'))
+    }
+  }
+
+  // ── Guardar cantidad inline (stepper +/-) ───────────────────────────────
+  const saveStock = async (inventoryId, nuevaCantidad) => {
+    const { error } = await supabase
+      .from('inventory')
+      .update({ quantity: nuevaCantidad })
+      .eq('id', inventoryId)
+    if (!error) {
+      queryClient.invalidateQueries({ queryKey: ['stock'] })
+      queryClient.invalidateQueries({ queryKey: ['metricas'] })
     }
   }
 
@@ -768,7 +816,12 @@ export default function Stock() {
                       <td className="px-3 py-2 text-center">{IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}</td>
                       <td className="px-3 py-2 text-center">{r.holo ? '✨' : '—'}</td>
                       <td className="px-3 py-2"><Badge label={r.condicion} /></td>
-                      <td className="px-3 py-2 font-semibold text-gray-700 text-center">{r.stock}</td>
+                      <td className="px-3 py-2">
+                        <StockStepper
+                          value={r.stock ?? 0}
+                          onSave={v => saveStock(r.inventory_id, v)}
+                        />
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           {FEATURES.marketIntel ? (
