@@ -6,30 +6,33 @@ export function useMetricas() {
   return useQuery({
     queryKey: ['metricas'],
     queryFn: async () => {
-      // ── 1. Counts totales via queries HEAD (instantáneas, sin traer filas) ───
+      // ── 1. Sumas y counts via agregados server-side (sin traer filas) ──────────
       const [
-        { count: totalCartas    = 0 },
-        { count: totalDisponibles = 0 },
-        { count: totalReservadas  = 0 },
+        sumTotalRes,
+        sumDispRes,
+        { count: totalReservadas = 0 },
       ] = await Promise.all([
-        // Total entradas en catálogo
+        // SUM de quantity — total de unidades físicas en catálogo
         supabase.from('inventory')
-          .select('id', { count: 'exact', head: true })
+          .select('quantity.sum()')
           .eq('store_id', STORE_ID),
 
-        // Disponibles con stock físico (quantity > 0)
+        // SUM de quantity de disponibles con stock > 0
         supabase.from('inventory')
-          .select('id', { count: 'exact', head: true })
+          .select('quantity.sum()')
           .eq('store_id', STORE_ID)
           .or('status.eq.disponible,estado.eq.disponible')
           .gt('quantity', 0),
 
-        // Reservadas
+        // COUNT de reservadas
         supabase.from('inventory')
           .select('id', { count: 'exact', head: true })
           .eq('store_id', STORE_ID)
           .or('status.eq.reservada,estado.eq.reservada'),
       ])
+
+      const totalCartas     = sumTotalRes.data?.[0]?.sum ?? 0
+      const totalDisponibles = sumDispRes.data?.[0]?.sum ?? 0
 
       // ── 2. Valor total — paginamos de a 5000 solo para el cálculo de USD ────
       const PAGE = 5000

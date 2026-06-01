@@ -91,12 +91,12 @@ const es = {
   ingresos_added_many:        'cartas agregadas',
 
   // ── Stock ─────────────────────────────────────────────────────────
-  stock_kpi_total:      'Total cartas',
+  stock_kpi_total:      'Total unidades',
   stock_kpi_available:  'Disponibles',
   stock_kpi_reserved:   'Reservadas',
   stock_kpi_value:      'Valor total',
-  stock_kpi_in_stock:   'en catálogo',
-  stock_kpi_for_sale:   'para venta',
+  stock_kpi_in_stock:   'unidades en stock',
+  stock_kpi_for_sale:   'unidades disponibles',
   stock_kpi_to_deliver: 'por entregar',
   stock_kpi_usd:        'USD mercado',
 
