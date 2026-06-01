@@ -28,7 +28,7 @@ export default function Ingresos() {
 
   const [form, setForm] = useState({
     nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
-    condicion: 'NM', idioma: 'en', precioVenta: '',
+    condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal',
   })
   const [loading,   setLoading]   = useState(false)
   const [toast,     setToast]     = useState({ visible: false, msg: '', tipo: 'success' })
@@ -414,7 +414,10 @@ export default function Ingresos() {
         cardId = newCard.id
       }
 
-      // 2. Upsert en inventory: si ya existe la carta con misma condición, suma el quantity
+      const isHolo    = form.finish === 'holofoil' || form.finish === 'reverse'
+      const isReverse = form.finish === 'reverse'
+
+      // 2. Upsert en inventory: si ya existe la carta con misma condición y finish, suma el quantity
       const { data: existingInv } = await supabase
         .from('inventory')
         .select('id, quantity')
@@ -452,12 +455,14 @@ export default function Ingresos() {
             price_ars_blue:    arsBlue   ?? null,
             sale_price_ars:    form.precioVenta ? parseFloat(form.precioVenta) : null,
             scan_date:         new Date().toISOString(),
+            is_holo:           isHolo,
+            holo:              isHolo ? (isReverse ? 'reverse' : 'holofoil') : null,
           })
         if (invErr) throw invErr
       }
 
       showToast(`✅ ${cantidad > 1 ? `${cantidad} ${t('ingresos_added_many')}` : t('ingresos_added_one')} al stock`)
-      setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '' })
+      setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal' })
       setPreview(null)
     } catch (err) {
       console.error('Error al guardar carta:', err)
@@ -608,6 +613,15 @@ export default function Ingresos() {
                   <select value={form.condicion} onChange={e => setField('condicion', e.target.value)}
                     className={`${inputCls} bg-white`}>
                     {CONDICIONES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Tipo</label>
+                  <select value={form.finish} onChange={e => setField('finish', e.target.value)}
+                    className={`${inputCls} bg-white`}>
+                    <option value="normal">Normal</option>
+                    <option value="holofoil">✨ Holofoil</option>
+                    <option value="reverse">🔄 Reverse Holofoil</option>
                   </select>
                 </div>
                 <div>

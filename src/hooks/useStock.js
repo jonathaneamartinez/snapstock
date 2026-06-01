@@ -29,10 +29,11 @@ export function useStock(filters = {}) {
   return useQuery({
     queryKey: ['stock', filters],
     queryFn: async () => {
-      // Cuando hay filtros sobre cards usamos !inner para que PostgREST
-      // los aplique correctamente (excluye filas sin join match)
-      const needsCardFilter = !!(busqueda || idioma)
-      const cardJoin = needsCardFilter ? 'cards!inner' : 'cards'
+      // Usamos cards!inner cuando hay filtros sobre cards O cuando el sort
+      // es por una columna de cards (foreignTable sort requiere !inner)
+      const sortDef0        = sortCol ? SORT_MAP[sortCol] : null
+      const needsCardFilter = !!(busqueda || idioma || sortDef0?.foreignTable)
+      const cardJoin        = needsCardFilter ? 'cards!inner' : 'cards'
 
       // ── Aplica todos los filtros a un query builder ────────────────────────
       const applyFilters = (q) => {
@@ -115,6 +116,9 @@ export function useStock(filters = {}) {
       countQ = applyFilters(countQ)
       const { count: totalCount } = await countQ
 
+      // Re-resolver sortDef después de determinar cardJoin
+      const sortDef = sortCol ? SORT_MAP[sortCol] : null
+
       // ── Datos paginados ───────────────────────────────────────────────────
       const from = page * PAGE_SIZE
       const to   = from + PAGE_SIZE - 1
@@ -126,8 +130,7 @@ export function useStock(filters = {}) {
       q = applyFilters(q)
 
       // ── Ordenamiento — siempre server-side ───────────────────────────────
-      const sortDef = sortCol ? SORT_MAP[sortCol] : null
-      const asc     = sortDir !== 'desc'
+      const asc = sortDir !== 'desc'
 
       if (sortDef) {
         if (sortDef.foreignTable) {

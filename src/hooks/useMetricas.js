@@ -31,8 +31,9 @@ export function useMetricas() {
           .or('status.eq.reservada,estado.eq.reservada'),
       ])
 
-      const totalCartas     = sumTotalRes.data?.[0]?.sum ?? 0
-      const totalDisponibles = sumDispRes.data?.[0]?.sum ?? 0
+      // PostgREST devuelve el aggregate bajo el nombre de la columna
+      const totalCartas      = sumTotalRes.data?.[0]?.quantity ?? 0
+      const totalDisponibles = sumDispRes.data?.[0]?.quantity  ?? 0
 
       // ── 2. Valor total — paginamos de a 5000 solo para el cálculo de USD ────
       const PAGE = 5000
