@@ -192,6 +192,24 @@ export default function Ingresos() {
         if (lang === 'en') {
           sugPageRef.current  = 1
           sugQueryRef.current = val.trim()
+
+          // Buscar en Supabase cartas custom (renombradas/agregadas manualmente)
+          const { data: supaCards } = await supabase
+            .from('cards')
+            .select('name, set_name, card_number, image_url, language')
+            .ilike('name', `${val.trim()}%`)
+            .eq('language', 'en')
+            .limit(5)
+          const supaMatched = (supaCards ?? []).map(c => ({
+            nombre:     c.name,
+            set:        c.set_name,
+            set_id:     null,
+            numero:     c.card_number,
+            imagen:     c.image_url,
+            precio_usd: null,
+            source:     'stock',   // indica que viene de nuestro catálogo
+          }))
+
           const { results, totalCount } = await searchCardsByName(val.trim(), 20, 1)
           const mapped = results.map(c => ({
             nombre:     c.name,
@@ -202,10 +220,16 @@ export default function Ingresos() {
             precio_usd: c.price_usd,
             source:     'market',
           }))
+
+          // Mezclar: cartas de Supabase primero (si no están ya en los resultados de market)
+          const marketNames = new Set(mapped.map(c => `${c.nombre}|${c.set}|${c.numero}`))
+          const supaExtra = supaMatched.filter(c => !marketNames.has(`${c.nombre}|${c.set}|${c.numero}`))
+          const combined = [...supaExtra, ...mapped]
+
           sugTotalRef.current = totalCount
-          setSuggestions(mapped)
+          setSuggestions(combined)
           setHasMore(mapped.length < totalCount)
-          setShowSug(mapped.length > 0)
+          setShowSug(combined.length > 0)
         } else {
           const res = await scannerApi.buscar(val.trim(), lang, '', 20)
           const mapped = (res?.results ?? res?.opciones ?? []).map(c => ({
