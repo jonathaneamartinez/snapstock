@@ -413,6 +413,17 @@ export default function Stock() {
     }
   }
 
+  // ── Guardar tipo (Normal/Holofoil/Reverse) ───────────────────────────────
+  const saveTipo = async (inventoryId, finish) => {
+    const isHolo    = finish === 'holofoil' || finish === 'reverse'
+    const holoValue = finish === 'normal' ? null : finish
+    await supabase.from('inventory').update({
+      holo:    holoValue,
+      is_holo: isHolo,
+    }).eq('id', inventoryId)
+    queryClient.invalidateQueries({ queryKey: ['stock'] })
+  }
+
   // ── Tags en inventory ────────────────────────────────────────────────────
   const [localTags, setLocalTags] = useState({})  // inventoryId → string[]
 
@@ -831,7 +842,19 @@ export default function Stock() {
                       </td>
                       <td className="px-3 py-2 text-gray-500">{r.numero || '—'}</td>
                       <td className="px-3 py-2 text-center">{IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}</td>
-                      <td className="px-3 py-2 text-center">{r.holo ? '✨' : '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        <select
+                          value={r.holo || 'normal'}
+                          onChange={e => saveTipo(r.inventory_id, e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          className="text-xs bg-transparent border border-gray-200 rounded-lg px-1.5 py-0.5
+                                     focus:outline-none focus:ring-1 focus:ring-blue-300 cursor-pointer"
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="holofoil">✨ Holo</option>
+                          <option value="reverse">🔄 Reverse</option>
+                        </select>
+                      </td>
                       <td className="px-3 py-2"><Badge label={r.condicion} /></td>
                       <td className="px-3 py-2">
                         <StockStepper

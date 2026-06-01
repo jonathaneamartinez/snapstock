@@ -114,7 +114,7 @@ const es = {
   stock_col_set:       'Set',
   stock_col_number:    'Nº',
   stock_col_language:  'Idioma',
-  stock_col_holo:      'Holo',
+  stock_col_holo:      'Tipo',
   stock_col_condition: 'Cond.',
   stock_col_stock:     'Stock',
   stock_col_usd:       'USD',

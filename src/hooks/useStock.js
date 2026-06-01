@@ -92,6 +92,7 @@ export function useStock(filters = {}) {
         scan_date,
         updated_at,
         tags,
+        holo,
         ${cardJoin} (
           id,
           name,
@@ -157,7 +158,7 @@ export function useStock(filters = {}) {
         set_name:          r.cards?.set_name || '',
         numero:            r.cards?.card_number || '',
         idioma:            r.cards?.language || 'en',
-        holo:              r.cards?.is_holo || false,
+        holo:              r.holo || null,   // 'holofoil' | 'reverse' | null (de inventory)
         image_url:         r.cards?.image_url || '',
         // Inventario
         condicion:          r.condition || r.condicion || '',
