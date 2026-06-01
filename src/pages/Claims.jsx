@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -559,10 +559,16 @@ function ClaimRow({ claim }) {
   const [expanded,    setExpanded]    = useState(false)
   const [fullImg,     setFullImg]     = useState(null)
   const [regenCards,  setRegenCards]  = useState(null)
-  const [editMode,    setEditMode]    = useState(false)
-  const [addSearch,   setAddSearch]   = useState('')
-  const [addResults,  setAddResults]  = useState([])
-  const [addLoading,  setAddLoading]  = useState(false)
+  const [editMode,     setEditMode]    = useState(false)
+  const [addSearch,    setAddSearch]   = useState('')
+  const [addResults,   setAddResults]  = useState([])
+  const [addLoading,   setAddLoading]  = useState(false)
+  const [addHasMore,   setAddHasMore]  = useState(false)
+  const [addLoadMore,  setAddLoadMore] = useState(false)
+  const addPageRef   = useRef(0)
+  const addQueryRef  = useRef('')
+  const sentinelRef  = useRef(null)
+  const addTimerRef  = useRef(null)
 
   const hasImages = claim.image_urls?.length > 0
   const hasCards  = claim.cards_data?.length > 0
@@ -578,23 +584,59 @@ function ClaimRow({ claim }) {
     qc.invalidateQueries({ queryKey: ['claims'] })
   }
 
-  /* ── Buscar cartas del inventory para agregar ───────────────────────── */
-  const searchCards = async (term) => {
-    setAddSearch(term)
-    if (term.length < 2) { setAddResults([]); return }
-    setAddLoading(true)
+  /* ── Buscar cartas del inventory (página 0) ────────────────────────── */
+  const PAGE = 20
+  const fetchInvPage = async (term, offset) => {
     const trimmed = term.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('inventory')
-      .select('id, price_usd, price_ars_blue, sale_price_ars, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
+      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
       .eq('store_id', STORE_ID)
       .neq('status', 'vendida')
       .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { foreignTable: 'cards' })
       .order('id', { ascending: false })
-      .limit(10)
-    setAddLoading(false)
-    setAddResults((data ?? []).filter(r => r.cards?.name))
+      .range(offset, offset + PAGE - 1)
+    return (data ?? []).filter(r => r.cards?.name)
   }
+
+  const searchCards = (term) => {
+    setAddSearch(term)
+    clearTimeout(addTimerRef.current)
+    if (term.length < 2) { setAddResults([]); setAddHasMore(false); return }
+    setAddLoading(true)
+    addTimerRef.current = setTimeout(async () => {
+      addQueryRef.current = term
+      addPageRef.current  = 0
+      const rows = await fetchInvPage(term, 0)
+      setAddResults(rows)
+      setAddHasMore(rows.length === PAGE)
+      setAddLoading(false)
+    }, 200)
+  }
+
+  /* ── Cargar más resultados (infinite scroll) ────────────────────────── */
+  const loadMoreAdd = useCallback(async () => {
+    if (addLoadMore || !addHasMore || !addQueryRef.current) return
+    setAddLoadMore(true)
+    const nextOffset = (addPageRef.current + 1) * PAGE
+    const rows = await fetchInvPage(addQueryRef.current, nextOffset)
+    if (rows.length === 0) { setAddHasMore(false); setAddLoadMore(false); return }
+    addPageRef.current += 1
+    setAddResults(prev => [...prev, ...rows])
+    setAddHasMore(rows.length === PAGE)
+    setAddLoadMore(false)
+  }, [addLoadMore, addHasMore])
+
+  /* IntersectionObserver sobre el sentinel */
+  useEffect(() => {
+    if (!sentinelRef.current || !addHasMore) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreAdd() },
+      { threshold: 0.1 }
+    )
+    obs.observe(sentinelRef.current)
+    return () => obs.disconnect()
+  }, [addHasMore, addLoadMore, loadMoreAdd])
 
   /* ── Agregar carta al claim ─────────────────────────────────────────── */
   const addCardToClaim = async (invRow) => {
@@ -808,32 +850,47 @@ function ClaimRow({ claim }) {
                             className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs
                                        bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
                           />
-                          {addLoading && <p className="text-[10px] text-gray-400 mt-1 text-center">Buscando…</p>}
+                          {addLoading && (
+                            <div className="flex justify-center mt-2">
+                              <div className="w-4 h-4 border-2 border-violet-300 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                          )}
                           {addResults.length > 0 && (
-                            <div className="mt-2 space-y-1 max-h-52 overflow-y-auto">
+                            <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-gray-100 bg-white">
                               {addResults.map(row => (
                                 <button
                                   key={row.id}
                                   onClick={() => addCardToClaim(row)}
-                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg
-                                             bg-white hover:bg-violet-50 border border-gray-100
-                                             hover:border-violet-200 text-left transition"
+                                  className="w-full flex items-center gap-3 px-3 py-2
+                                             hover:bg-violet-50 text-left border-b border-gray-100
+                                             last:border-0 transition"
                                 >
-                                  {row.cards?.image_url && (
-                                    <img src={row.cards.image_url} alt=""
-                                      className="w-6 h-8 object-cover rounded shrink-0" />
-                                  )}
-                                  <div className="min-w-0">
+                                  {row.cards?.image_url
+                                    ? <img src={row.cards.image_url} alt="" className="w-7 h-10 object-cover rounded shrink-0" />
+                                    : <div className="w-7 h-10 bg-gray-100 rounded shrink-0" />
+                                  }
+                                  <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-gray-800 truncate">{row.cards?.name}</p>
-                                    <p className="text-[10px] text-gray-400 truncate">{row.cards?.set_name} · {row.cards?.card_number}</p>
+                                    <p className="text-[10px] text-gray-400 truncate">
+                                      {row.cards?.set_name}{row.cards?.card_number ? ` · #${row.cards.card_number}` : ''}
+                                    </p>
                                   </div>
                                   {row.price_usd != null && (
-                                    <span className="ml-auto text-[10px] text-emerald-600 font-semibold shrink-0">
-                                      ${row.price_usd.toFixed(2)}
+                                    <span className="text-xs font-bold text-emerald-600 shrink-0">
+                                      ${Number(row.price_usd).toFixed(2)}
                                     </span>
                                   )}
                                 </button>
                               ))}
+                              {/* Sentinel infinite scroll */}
+                              {addHasMore && (
+                                <div ref={sentinelRef} className="flex items-center justify-center py-3 border-t border-gray-100">
+                                  {addLoadMore
+                                    ? <div className="w-4 h-4 border-2 border-violet-300 border-t-transparent rounded-full animate-spin" />
+                                    : <span className="text-[11px] text-gray-400">↓ más resultados</span>
+                                  }
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
