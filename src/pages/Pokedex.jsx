@@ -11,6 +11,19 @@ import Spinner        from '../components/ui/Spinner'
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 const PAGE_SIZE = 60
 
+/* ─── Cache de imágenes por nombre+número+idioma ─────────────────────────
+   Evita llamadas duplicadas al backend cuando el mismo card aparece varias
+   veces (paginación, re-filtros, etc.)
+──────────────────────────────────────────────────────────────────────── */
+const _imgCache = new Map()
+const fetchImgUrl = (name, number, lang) => {
+  const key = `${lang}|${name}|${number}`
+  if (_imgCache.has(key)) return Promise.resolve(_imgCache.get(key))
+  return scannerApi.cardImageUrl(name, number, lang)
+    .then(r => { _imgCache.set(key, r.url ?? null); return r.url ?? null })
+    .catch(() => { _imgCache.set(key, null); return null })
+}
+
 /* Wrapper para no quedar colgado si el scanner demora mucho */
 const withTimeout = (promise, ms = 8000) =>
   Promise.race([
@@ -67,20 +80,8 @@ function LangBadge({ lang }) {
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
 function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
-  const triedR2Ref    = useRef(false)
 
-  const handleError = async () => {
-    if (triedR2Ref.current || !card.image || src === CARD_BACK) {
-      setSrc(CARD_BACK)
-      return
-    }
-    triedR2Ref.current = true
-    try {
-      const { url } = await scannerApi.cardImageUrl(card.name, card.number, card._lang)
-      if (url && url !== src) { setSrc(url); return }
-    } catch (_) {}
-    setSrc(CARD_BACK)
-  }
+  const handleError = () => setSrc(CARD_BACK)
 
   // Cerrar con Escape, navegar con flechas
   useEffect(() => {
@@ -93,8 +94,17 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
-  // Resetear imagen y flag al cambiar de carta
-  useEffect(() => { triedR2Ref.current = false; setSrc(card.image || CARD_BACK) }, [card])
+  // Al cambiar de carta: mostrar image_url de Supabase de inmediato y corregir
+  // con la imagen real de R2 (búsqueda por nombre+número → siempre correcta)
+  useEffect(() => {
+    setSrc(card.image || CARD_BACK)
+    if (!card.name) return
+    let cancelled = false
+    fetchImgUrl(card.name, card.number, card._lang).then(url => {
+      if (!cancelled && url) setSrc(url)
+    })
+    return () => { cancelled = true }
+  }, [card])
 
   return (
     <div
@@ -170,22 +180,23 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
 
 /* ─── Card individual ────────────────────────────────────────────────── */
 function PokedexCard({ card, onClick }) {
+  // Arrancar con la image_url de Supabase (render instantáneo), pero siempre
+  // buscar la imagen CORRECTA por nombre+número en R2. Así si la BD tiene
+  // una URL incorrecta (otro card), se sobreescribe con la imagen real.
   const [src, setSrc] = useState(card.image || CARD_BACK)
-  const triedR2Ref    = useRef(false)
 
-  // Al fallar: buscar imagen en R2 vía nuestro scanner; si tampoco, mostrar dorso
-  const handleError = async () => {
-    if (triedR2Ref.current || !card.image || src === CARD_BACK) {
-      setSrc(CARD_BACK)
-      return
-    }
-    triedR2Ref.current = true
-    try {
-      const { url } = await scannerApi.cardImageUrl(card.name, card.number, card._lang)
-      if (url && url !== src) { setSrc(url); return }
-    } catch (_) {}
-    setSrc(CARD_BACK)
-  }
+  useEffect(() => {
+    if (!card.name) return
+    let cancelled = false
+    fetchImgUrl(card.name, card.number, card._lang).then(url => {
+      if (cancelled) return
+      if (url) setSrc(url)
+      else if (!card.image) setSrc(CARD_BACK)
+    })
+    return () => { cancelled = true }
+  }, [card.name, card.number, card._lang])
+
+  const handleError = () => setSrc(CARD_BACK)
 
   return (
     <div
