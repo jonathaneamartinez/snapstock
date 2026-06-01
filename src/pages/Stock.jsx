@@ -455,11 +455,9 @@ export default function Stock() {
 
   // ── Guardar tipo (Normal/Holofoil/Reverse) ───────────────────────────────
   const saveTipo = async (inventoryId, finish) => {
-    const isHolo    = finish === 'holofoil' || finish === 'reverse'
-    const holoValue = finish === 'normal' ? null : finish
+    const isHolo = finish === 'holofoil' || finish === 'reverse'
     await supabase.from('inventory').update({
-      holo:    holoValue,
-      is_holo: isHolo,
+      holo: isHolo,   // boolean
     }).eq('id', inventoryId)
     queryClient.invalidateQueries({ queryKey: ['stock'] })
   }

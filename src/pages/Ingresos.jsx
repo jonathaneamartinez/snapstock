@@ -505,7 +505,7 @@ export default function Ingresos() {
             price_ars_blue:    arsBlue   ?? null,
             sale_price_ars:    form.precioVenta ? parseFloat(form.precioVenta) : null,
             scan_date:         new Date().toISOString(),
-            holo:              isHolo ? (isReverse ? 'reverse' : 'holofoil') : null,
+            holo:              isHolo,   // boolean: true si holofoil o reverse
           })
         if (invErr) throw invErr
       }
