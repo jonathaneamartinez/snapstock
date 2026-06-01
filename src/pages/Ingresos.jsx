@@ -173,10 +173,36 @@ export default function Ingresos() {
     setField('nombre', val)
     clearTimeout(sugTimer.current)
 
-    // ── Caso A: set precargado → filtro 100% local, 0 ms de espera ────────
+    // ── Caso A: set precargado → filtro local + búsqueda Supabase para custom ─
     if (allSetCardsRef.current.length > 0) {
       if (!val.trim()) { setSuggestions(allSetCardsRef.current.slice(0, 60)); setShowSug(true); return }
+
+      // Filtrar del caché local
       filterFromCache(val)
+
+      // También buscar en Supabase cartas con nombre custom que el caché no tiene
+      if (val.trim().length >= 2) {
+        supabase
+          .from('cards')
+          .select('name, set_name, card_number, image_url, language')
+          .ilike('name', `${val.trim()}%`)
+          .limit(5)
+          .then(({ data }) => {
+            if (!data?.length) return
+            const cached = new Set(allSetCardsRef.current.map(c => `${c.nombre}|${c.numero}`))
+            const extras = data
+              .filter(c => !cached.has(`${c.name}|${c.card_number}`))
+              .map(c => ({ nombre: c.name, set: c.set_name, set_id: null, numero: c.card_number, imagen: c.image_url, precio_usd: null, source: 'stock' }))
+            if (extras.length > 0) {
+              setSuggestions(prev => {
+                const existingNames = new Set(prev.map(p => `${p.nombre}|${p.numero}`))
+                const newExtras = extras.filter(e => !existingNames.has(`${e.nombre}|${e.numero}`))
+                return [...newExtras, ...prev]
+              })
+              setShowSug(true)
+            }
+          })
+      }
       return
     }
 
