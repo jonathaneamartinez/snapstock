@@ -585,7 +585,7 @@ function ClaimRow({ claim }) {
     setAddLoading(true)
     const { data } = await supabase
       .from('inventory')
-      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards(id, name, set_name, card_number, image_url, language, is_holo)')
+      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
       .eq('store_id', STORE_ID)
       .neq('status', 'vendida')
       .ilike('cards.name', `%${term}%`)
