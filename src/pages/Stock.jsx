@@ -208,6 +208,7 @@ export default function Stock() {
   const [claimCards,   setClaimCards]   = useState(null)    // array para modal de generación
   const [showCartModal, setShowCartModal] = useState(false) // carrito review modal
   const [priceCard,    setPriceCard]    = useState(null)   // carta para modal de historial de precio
+  const [zeroCard,     setZeroCard]     = useState(null)   // carta que llegó a 0 → modal eliminar
   // ── Carrito de claim persistente (sobrevive cambios de página) ──────────
   const [claimCart,   setClaimCart]   = useState(new Map()) // inventory_id → row data
 
@@ -374,6 +375,12 @@ export default function Stock() {
 
   // ── Guardar cantidad inline (stepper +/-) ───────────────────────────────
   const saveStock = async (inventoryId, nuevaCantidad) => {
+    // Si llega a 0 → mostrar modal para confirmar eliminación
+    if (nuevaCantidad === 0) {
+      const row = sortedRows.find(r => r.inventory_id === inventoryId)
+      setZeroCard(row ?? { inventory_id: inventoryId })
+      return
+    }
     const { error } = await supabase
       .from('inventory')
       .update({ quantity: nuevaCantidad })
@@ -382,6 +389,16 @@ export default function Stock() {
       queryClient.invalidateQueries({ queryKey: ['stock'] })
       queryClient.invalidateQueries({ queryKey: ['metricas'] })
     }
+  }
+
+  // ── Eliminar del stock (cuando confirman en el modal de cero) ────────────
+  const handleDeleteFromStock = async () => {
+    if (!zeroCard) return
+    await supabase.from('inventory').delete().eq('id', zeroCard.inventory_id)
+    queryClient.invalidateQueries({ queryKey: ['stock'] })
+    queryClient.invalidateQueries({ queryKey: ['metricas'] })
+    setZeroCard(null)
+    showToast(`${zeroCard.nombre || 'Carta'} eliminada del stock`)
   }
 
   // ── Guardar precio de venta inline (Feature 2) ──────────────────────────
@@ -969,6 +986,38 @@ export default function Stock() {
             showToast('Claim guardado correctamente ✓')
           }}
         />
+      )}
+
+      {/* Modal: carta en cero → confirmar eliminación */}
+      {zeroCard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+            <div className="text-center">
+              <p className="text-3xl mb-2">📦</p>
+              <h3 className="font-bold text-gray-800 text-base">Stock en cero</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                <span className="font-semibold text-gray-700">{zeroCard.nombre || 'Esta carta'}</span> llegó a 0 unidades.
+                ¿Querés eliminarla del stock?
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setZeroCard(null)}
+                className="flex-1 px-4 py-2 rounded-xl border border-gray-200
+                           text-gray-600 text-sm font-semibold hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteFromStock}
+                className="flex-1 px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600
+                           text-white text-sm font-bold transition"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}
