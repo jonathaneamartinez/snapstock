@@ -94,14 +94,14 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
-  // Al cambiar de carta: mostrar image_url de Supabase de inmediato y corregir
-  // con la imagen real de R2 (búsqueda por nombre+número → siempre correcta)
+  // Al cambiar de carta: buscar imagen correcta por nombre+número
+  // Si no se encuentra → dorso (nunca conservar image_url incorrecta de Supabase)
   useEffect(() => {
-    setSrc(card.image || CARD_BACK)
+    setSrc(card.image || CARD_BACK)   // placeholder instantáneo mientras carga R2
     if (!card.name) return
     let cancelled = false
     fetchImgUrl(card.name, card.number, card._lang).then(url => {
-      if (!cancelled && url) setSrc(url)
+      if (!cancelled) setSrc(url || CARD_BACK)
     })
     return () => { cancelled = true }
   }, [card])
@@ -190,8 +190,9 @@ function PokedexCard({ card, onClick }) {
     let cancelled = false
     fetchImgUrl(card.name, card.number, card._lang).then(url => {
       if (cancelled) return
-      if (url) setSrc(url)
-      else if (!card.image) setSrc(CARD_BACK)
+      // Si R2/pokemontcg.io no encontró imagen → mostrar dorso en lugar de
+      // conservar una image_url potencialmente incorrecta de Supabase
+      setSrc(url || CARD_BACK)
     })
     return () => { cancelled = true }
   }, [card.name, card.number, card._lang])
