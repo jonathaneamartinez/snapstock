@@ -6,30 +6,12 @@ export function useMetricas() {
   return useQuery({
     queryKey: ['metricas'],
     queryFn: async () => {
-      // ── 1. Counts totales (queries rápidas sin traer datos) ──────────────────
-      const { count: totalCartas = 0 } = await supabase
-        .from('inventory')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', STORE_ID)
-
-      const { count: totalDisponibles = 0 } = await supabase
-        .from('inventory')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', STORE_ID)
-        .or('status.eq.disponible,estado.eq.disponible')
-        .gt('quantity', 0)
-
-      const { count: totalReservadas = 0 } = await supabase
-        .from('inventory')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', STORE_ID)
-        .or('status.eq.reservada,estado.eq.reservada')
-
-      // ── 2. Datos para valores — solo disponibles (cantidad << total) ──────────
-      //    Paginamos de a 5000 para no depender del límite default de Supabase.
+      // ── 1. Counts y sumas via RPC o paginando inventory ──────────────────────
+      // Traemos en una sola query: quantity, price, status para todas las filas
       const PAGE = 5000
       let disponiblesRows = []
       let reservadasRows  = []
+      let allRows         = []
       let from = 0
       let done = false
 
@@ -38,28 +20,37 @@ export function useMetricas() {
           .from('inventory')
           .select('quantity, price_usd, price_ars_blue, price_ars_oficial, status, estado')
           .eq('store_id', STORE_ID)
-          .or('status.eq.disponible,status.eq.reservada,estado.eq.disponible,estado.eq.reservada')
           .range(from, from + PAGE - 1)
 
         if (error) throw error
         const chunk = data ?? []
         for (const r of chunk) {
+          allRows.push(r)
           if (r.status === 'disponible' || r.estado === 'disponible') disponiblesRows.push(r)
-          else if (r.status === 'reservada' || r.estado === 'reservada')  reservadasRows.push(r)
+          else if (r.status === 'reservada' || r.estado === 'reservada') reservadasRows.push(r)
         }
         done = chunk.length < PAGE
         from += PAGE
       }
 
-      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd        || 0) * (r.quantity || 0), 0)
-      const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue   || 0) * (r.quantity || 0), 0)
+      // Total de cartas = SUM de quantities (cuántas cartas físicas hay en total)
+      const totalCartas      = allRows.reduce((s, r) => s + (r.quantity || 0), 0)
+      // Disponibles = SUM de quantities de las disponibles con stock > 0
+      const totalDisponibles = disponiblesRows
+        .filter(r => (r.quantity || 0) > 0)
+        .reduce((s, r) => s + (r.quantity || 0), 0)
+      // Reservadas = cantidad de filas reservadas (no suma de quantity)
+      const totalReservadas  = reservadasRows.length
+
+      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd         || 0) * (r.quantity || 0), 0)
+      const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue    || 0) * (r.quantity || 0), 0)
       const valorARSOficial = disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 0), 0)
       const deudasActivas   = reservadasRows.reduce((s, r)  => s + (r.price_ars_blue   || 0) * (r.quantity || 0), 0)
 
       return {
-        totalCartas,          // count total del catálogo (coincide con paginador)
-        totalDisponibles,     // cartas con quantity > 0 y status disponible
-        totalReservadas,      // cartas reservadas
+        totalCartas,          // SUM de quantities (total físico de cartas)
+        totalDisponibles,     // SUM de quantities disponibles con stock > 0
+        totalReservadas,      // cantidad de reservas activas
         valorUSD,
         valorARSBlue,
         valorARSOficial,
@@ -67,6 +58,6 @@ export function useMetricas() {
         cantReservadas: reservadasRows.length,
       }
     },
-    staleTime: 60_000,
+    staleTime: 30_000,   // 30s — más fresco para que el stepper se refleje rápido
   })
 }

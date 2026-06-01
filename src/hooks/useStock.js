@@ -4,21 +4,23 @@ import { STORE_ID } from '../constants'
 
 const PAGE_SIZE = 50
 
-// Mapeo de key de columna UI → columna real en Supabase (y tabla si es foreign)
+// Mapeo de key de columna UI → columna real en Supabase
+// table: null → columna directa de inventory (sort server-side)
+// table: 'cards' → columna de tabla relacionada (sort server-side via foreignTable)
 const SORT_MAP = {
-  nombre:       { col: 'name',              table: 'cards'     },
-  set_name:     { col: 'set_name',          table: 'cards'     },
-  numero:       { col: 'card_number',       table: 'cards'     },
-  idioma:       { col: 'language',          table: 'cards'     },
-  holo:         { col: 'is_holo',           table: 'cards'     },
-  condicion:    { col: 'condition',         table: null        },
-  stock:        { col: 'quantity',          table: null        },
-  price_usd:    { col: 'price_usd',         table: null        },
-  _ars_ofic:    { col: 'price_ars_oficial', table: null        },
-  _ars_blue:    { col: 'price_ars_blue',    table: null        },
-  precio_venta: { col: 'price_ars_blue',    table: null        },
-  status:       { col: 'status',            table: null        },
-  buyer_name:   { col: 'buyer_name',        table: null        },
+  nombre:       { col: 'name',              table: 'cards',    foreignTable: true  },
+  set_name:     { col: 'set_name',          table: 'cards',    foreignTable: true  },
+  numero:       { col: 'card_number',       table: 'cards',    foreignTable: true  },
+  idioma:       { col: 'language',          table: 'cards',    foreignTable: true  },
+  holo:         { col: 'is_holo',           table: 'cards',    foreignTable: true  },
+  condicion:    { col: 'condition',         table: null                            },
+  stock:        { col: 'quantity',          table: null                            },
+  price_usd:    { col: 'price_usd',         table: null                            },
+  _ars_ofic:    { col: 'price_ars_oficial', table: null                            },
+  _ars_blue:    { col: 'price_ars_blue',    table: null                            },
+  precio_venta: { col: 'price_ars_blue',    table: null                            },
+  status:       { col: 'status',            table: null                            },
+  buyer_name:   { col: 'buyer_name',        table: null                            },
 }
 
 export function useStock(filters = {}) {
@@ -123,29 +125,28 @@ export function useStock(filters = {}) {
         .eq('store_id', STORE_ID)
       q = applyFilters(q)
 
-      // ── Ordenamiento ─────────────────────────────────────────────────────
-      const sortDef       = sortCol ? SORT_MAP[sortCol] : null
-      const isForeignSort = sortDef?.table != null   // columna en tabla cards
+      // ── Ordenamiento — siempre server-side ───────────────────────────────
+      const sortDef = sortCol ? SORT_MAP[sortCol] : null
+      const asc     = sortDir !== 'desc'
 
-      if (sortDef && !isForeignSort) {
-        // Sort server-side sólo para columnas directas de inventory
-        const asc = sortDir !== 'desc'
-        q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
-        q = q.order('id', { ascending: false })
-      } else {
-        // Sin sort explícito o foreign sort → más recientes primero
-        q = q.order('id', { ascending: false })
+      if (sortDef) {
+        if (sortDef.foreignTable) {
+          // Columna de tabla relacionada → usar foreignTable en .order()
+          q = q.order(sortDef.col, { foreignTable: 'cards', ascending: asc, nullsFirst: false })
+        } else {
+          q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
+        }
       }
+      // Siempre agregar orden secundario por id para paginación estable
+      q = q.order('id', { ascending: false })
 
-      // Paginación server-side (para foreign sort: traemos TODO y paginamos client-side)
-      if (!isForeignSort) {
-        q = q.range(from, to)
-      }
+      // Paginación siempre server-side
+      q = q.range(from, to)
 
       const { data, error } = await q
       if (error) throw error
 
-      let rows = (data ?? []).map(r => ({
+      const rows = (data ?? []).map(r => ({
         inventory_id:      r.id,
         card_id:           r.cards?.id || null,
         // Carta
@@ -173,22 +174,6 @@ export function useStock(filters = {}) {
         fecha_escaneada:   r.scanned_at || r.scan_date || r.updated_at || '',
         tags:              r.tags ?? [],
       }))
-
-      // Sort + paginación client-side cuando la columna pertenece a `cards`
-      if (isForeignSort && sortDef) {
-        const asc   = sortDir !== 'desc'
-        const field = sortCol   // 'nombre', 'set_name', 'numero', 'idioma', 'holo'
-        rows.sort((a, b) => {
-          const va = (a[field] ?? '').toString().toLowerCase()
-          const vb = (b[field] ?? '').toString().toLowerCase()
-          if (va < vb) return asc ? -1 :  1
-          if (va > vb) return asc ?  1 : -1
-          return 0
-        })
-        const total = rows.length
-        const sliced = rows.slice(from, from + PAGE_SIZE)
-        return { rows: sliced, total, page, pageSize: PAGE_SIZE }
-      }
 
       return { rows, total: totalCount ?? 0, page, pageSize: PAGE_SIZE }
     },
