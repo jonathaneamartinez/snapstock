@@ -6,11 +6,24 @@ export function useMetricas() {
   return useQuery({
     queryKey: ['metricas'],
     queryFn: async () => {
-      // ── 1. Count total de entradas en catálogo (query rápida, sin traer datos) ─
+      // ── 1. Counts totales (queries rápidas sin traer datos) ──────────────────
       const { count: totalCartas = 0 } = await supabase
         .from('inventory')
         .select('id', { count: 'exact', head: true })
         .eq('store_id', STORE_ID)
+
+      const { count: totalDisponibles = 0 } = await supabase
+        .from('inventory')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+        .or('status.eq.disponible,estado.eq.disponible')
+        .gt('quantity', 0)
+
+      const { count: totalReservadas = 0 } = await supabase
+        .from('inventory')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+        .or('status.eq.reservada,estado.eq.reservada')
 
       // ── 2. Datos para valores — solo disponibles (cantidad << total) ──────────
       //    Paginamos de a 5000 para no depender del límite default de Supabase.
@@ -45,6 +58,8 @@ export function useMetricas() {
 
       return {
         totalCartas,          // count total del catálogo (coincide con paginador)
+        totalDisponibles,     // cartas con quantity > 0 y status disponible
+        totalReservadas,      // cartas reservadas
         valorUSD,
         valorARSBlue,
         valorARSOficial,
