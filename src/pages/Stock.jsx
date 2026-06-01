@@ -413,6 +413,20 @@ export default function Stock() {
     }
   }
 
+  // ── Guardar campos de reserva/contacto/notas ─────────────────────────────
+  const saveField = async (inventoryId, field, value) => {
+    const map = {
+      buyer_name:    { buyer_name: value },
+      buyer_contact: { buyer_contact: value },
+      notes:         { notas: value, sale_notes: value },
+      reserved_at:   { reserved_at: value || null, fecha_reserva: value || null },
+    }
+    const update = map[field]
+    if (!update) return
+    const { error } = await supabase.from('inventory').update(update).eq('id', inventoryId)
+    if (!error) queryClient.invalidateQueries({ queryKey: ['stock'] })
+  }
+
   // ── Guardar tipo (Normal/Holofoil/Reverse) ───────────────────────────────
   const saveTipo = async (inventoryId, finish) => {
     const isHolo    = finish === 'holofoil' || finish === 'reverse'
@@ -950,21 +964,32 @@ export default function Stock() {
                         />
                       </td>
                       <td className="px-3 py-2"><Badge label={r.status} /></td>
-                      {/* Comprador editable solo si está reservada (Feature 1) */}
+                      {/* Comprador — editable siempre */}
                       <td className="px-3 py-2 text-gray-600">
-                        {r.status === 'reservada'
-                          ? <InlineEdit
-                              value={r.buyer_name ?? null}
-                              type="text"
-                              placeholder={t('stock_buyer_ph_none')}
-                              onSave={v => saveBuyerName(r.inventory_id, v)}
-                            />
-                          : (r.buyer_name || '—')
-                        }
+                        <InlineEdit
+                          value={r.buyer_name ?? null}
+                          type="text"
+                          placeholder="—"
+                          onSave={v => saveField(r.inventory_id, 'buyer_name', v)}
+                        />
                       </td>
-                      <td className="px-3 py-2 text-gray-500">{r.buyer_contact || '—'}</td>
-                      <td className="px-3 py-2 text-gray-400 max-w-[100px]">
-                        <span className="truncate block">{r.notes || '—'}</span>
+                      {/* Contacto — editable */}
+                      <td className="px-3 py-2 text-gray-500">
+                        <InlineEdit
+                          value={r.buyer_contact ?? null}
+                          type="text"
+                          placeholder="—"
+                          onSave={v => saveField(r.inventory_id, 'buyer_contact', v)}
+                        />
+                      </td>
+                      {/* Notas — editable */}
+                      <td className="px-3 py-2 text-gray-400 max-w-[120px]">
+                        <InlineEdit
+                          value={r.notes ?? null}
+                          type="text"
+                          placeholder="—"
+                          onSave={v => saveField(r.inventory_id, 'notes', v)}
+                        />
                       </td>
                       <td className="px-3 py-2 max-w-[160px]">
                         <InlineTags
@@ -973,7 +998,16 @@ export default function Stock() {
                           onRemove={tag => removeTagFromRow(r.inventory_id, tag)}
                         />
                       </td>
-                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{fmtFecha(r.reserved_at)}</td>
+                      {/* F. Reserva — editable con input date */}
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">
+                        <InlineEdit
+                          value={r.reserved_at ? r.reserved_at.split('T')[0] : null}
+                          type="date"
+                          placeholder="—"
+                          formatDisplay={v => v ? fmtFecha(v) : null}
+                          onSave={v => saveField(r.inventory_id, 'reserved_at', v)}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{fmtFecha(r.fecha_escaneada)}</td>
                     </tr>
                   )
