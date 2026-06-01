@@ -355,6 +355,32 @@ export default function Stock() {
     })
   }
 
+  // ── Refresh precio desde pokemontcg.io + guardar en inventory/cards ──────
+  const [refreshingId, setRefreshingId] = useState(null)
+  const refreshPrice = async (r) => {
+    if (refreshingId) return
+    setRefreshingId(r.inventory_id)
+    try {
+      // Llamar al backend para obtener precio actualizado
+      const params = new URLSearchParams({ name: r.nombre, lang: r.idioma || 'en' })
+      if (r.numero) params.set('number', r.numero)
+      const res = await fetch(`https://stock-tcg-production.up.railway.app/card-image-url?${params}`)
+      if (!res.ok) throw new Error('sin datos')
+      const { price_usd } = await res.json()
+      if (price_usd) {
+        await supabase.from('inventory').update({ price_usd }).eq('id', r.inventory_id)
+        queryClient.invalidateQueries({ queryKey: ['stock'] })
+        showToast(`✅ Precio actualizado: $${price_usd.toFixed(2)} USD`)
+      } else {
+        showToast('Sin precio disponible para esta carta', 'error')
+      }
+    } catch {
+      showToast('No se pudo obtener el precio', 'error')
+    } finally {
+      setRefreshingId(null)
+    }
+  }
+
   // ── Toast helper ────────────────────────────────────────────────────────
   const showToast = (mensaje, tipo = 'success') => {
     setToast({ visible: true, mensaje, tipo })
@@ -891,6 +917,16 @@ export default function Stock() {
                               {fmtUSD(r.price_usd_efectivo ?? r.price_usd)}
                             </span>
                           )}
+                          {/* Botón refresh precio */}
+                          <button
+                            onClick={e => { e.stopPropagation(); refreshPrice(r) }}
+                            disabled={refreshingId === r.inventory_id}
+                            title="Actualizar precio de mercado"
+                            className="ml-1 text-gray-300 hover:text-blue-400 transition text-[11px]
+                                       disabled:animate-spin disabled:text-blue-300"
+                          >
+                            {refreshingId === r.inventory_id ? '⏳' : '🔄'}
+                          </button>
                           <span className="text-[10px] text-gray-400 leading-none">{r.precio_fuente_flag}</span>
                         </div>
                         {/* KPI badge inline (solo plan pro, si hay datos) */}

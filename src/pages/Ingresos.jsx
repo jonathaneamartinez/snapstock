@@ -643,9 +643,23 @@ export default function Ingresos() {
 
               {/* Precios de mercado (read-only) */}
               <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
-                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">
-                  {t('ingresos_market_price')}
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">
+                    {t('ingresos_market_price')}
+                  </p>
+                  {form.nombre && (
+                    <button
+                      type="button"
+                      onClick={() => fetchPreviewImage(form.nombre, form.numero, form.set)}
+                      disabled={previewLoad}
+                      title="Actualizar precio"
+                      className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-700
+                                 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition disabled:opacity-40"
+                    >
+                      {previewLoad ? '⏳' : '🔄'} Actualizar
+                    </button>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-3">
                   {[
                     { label: 'USD',        value: usd     != null ? `$${Number(usd).toFixed(2)}` : '—', color: 'text-emerald-600' },
