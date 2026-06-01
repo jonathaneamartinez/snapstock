@@ -36,6 +36,8 @@ export function useStock(filters = {}) {
       const applyFilters = (q) => {
         // Columnas de inventory
         if (estado)    q = q.or(`status.eq.${estado},and(status.is.null,estado.eq.${estado})`)
+        // En vista "Disponible" ocultamos las cartas sin stock físico (quantity = 0)
+        if (estado === 'disponible') q = q.gt('quantity', 0)
         if (condicion) q = q.or(`condition.eq.${condicion},condicion.eq.${condicion}`)
 
         // Filtro de idioma — server-side sobre cards
