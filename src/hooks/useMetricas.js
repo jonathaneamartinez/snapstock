@@ -6,49 +6,29 @@ export function useMetricas() {
   return useQuery({
     queryKey: ['metricas'],
     queryFn: async () => {
-      // ── 1. Sumas y counts via agregados server-side (sin traer filas) ──────────
-      const [
-        sumTotalRes,
-        sumDispRes,
-        { count: totalReservadas = 0 },
-      ] = await Promise.all([
-        // SUM de quantity — total de unidades físicas en catálogo
-        supabase.from('inventory')
-          .select('quantity.sum()')
-          .eq('store_id', STORE_ID),
+      // ── 1. Totales via RPC (SUM y COUNT server-side, una sola query) ──────────
+      const { data: totals, error: totalsError } = await supabase
+        .rpc('get_stock_totals', { p_store_id: STORE_ID })
 
-        // SUM de quantity de disponibles con stock > 0
-        supabase.from('inventory')
-          .select('quantity.sum()')
-          .eq('store_id', STORE_ID)
-          .or('status.eq.disponible,estado.eq.disponible')
-          .gt('quantity', 0),
+      const totalCartas      = totals?.[0]?.total_unidades ?? 0
+      const totalDisponibles = totals?.[0]?.disponibles    ?? 0
+      const totalReservadas  = totals?.[0]?.reservadas     ?? 0
 
-        // COUNT de reservadas
-        supabase.from('inventory')
-          .select('id', { count: 'exact', head: true })
-          .eq('store_id', STORE_ID)
-          .or('status.eq.reservada,estado.eq.reservada'),
-      ])
+      if (totalsError) console.warn('[useMetricas] RPC error:', totalsError.message)
 
-      // PostgREST devuelve el aggregate bajo el nombre de la columna
-      const totalCartas      = sumTotalRes.data?.[0]?.quantity ?? 0
-      const totalDisponibles = sumDispRes.data?.[0]?.quantity  ?? 0
-
-      // ── 2. Valor total — paginamos de a 5000 solo para el cálculo de USD ────
+      // ── 2. Valor total USD — solo cartas con precio (no trae todas las filas) ─
       const PAGE = 5000
       let disponiblesRows = []
       let reservadasRows  = []
       let from = 0
-      let done = false
 
-      while (!done) {
+      while (true) {
         const { data, error } = await supabase
           .from('inventory')
           .select('quantity, price_usd, price_ars_blue, price_ars_oficial, status, estado')
           .eq('store_id', STORE_ID)
           .or('status.eq.disponible,status.eq.reservada,estado.eq.disponible,estado.eq.reservada')
-          .not('price_usd', 'is', null)   // solo las que tienen precio para el valor
+          .not('price_usd', 'is', null)
           .range(from, from + PAGE - 1)
 
         if (error) break
@@ -67,9 +47,9 @@ export function useMetricas() {
       const deudasActivas   = reservadasRows.reduce((s, r)  => s + (r.price_ars_blue   || 0) * (r.quantity || 1), 0)
 
       return {
-        totalCartas,          // count de entradas en catálogo (tipos de cartas)
-        totalDisponibles,     // count de entradas disponibles con quantity > 0
-        totalReservadas,      // count de entradas reservadas
+        totalCartas,          // SUM de quantity (unidades físicas totales)
+        totalDisponibles,     // SUM de quantity disponibles con qty > 0
+        totalReservadas,      // COUNT de reservadas
         valorUSD,
         valorARSBlue,
         valorARSOficial,
@@ -77,6 +57,6 @@ export function useMetricas() {
         cantReservadas: reservadasRows.length,
       }
     },
-    staleTime: 30_000,
+    staleTime: 15_000,   // 15s — refresco rápido para que stepper se refleje pronto
   })
 }
