@@ -583,13 +583,15 @@ function ClaimRow({ claim }) {
     setAddSearch(term)
     if (term.length < 2) { setAddResults([]); return }
     setAddLoading(true)
-    const { data } = await supabase
+    const trimmed = term.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const { data, error } = await supabase
       .from('inventory')
-      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
+      .select('id, price_usd, price_ars_blue, sale_price_ars, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
       .eq('store_id', STORE_ID)
       .neq('status', 'vendida')
-      .ilike('cards.name', `%${term}%`)
-      .limit(8)
+      .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { foreignTable: 'cards' })
+      .order('id', { ascending: false })
+      .limit(10)
     setAddLoading(false)
     setAddResults((data ?? []).filter(r => r.cards?.name))
   }
