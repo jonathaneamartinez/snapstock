@@ -6,12 +6,35 @@ export function useMetricas() {
   return useQuery({
     queryKey: ['metricas'],
     queryFn: async () => {
-      // ── 1. Counts y sumas via RPC o paginando inventory ──────────────────────
-      // Traemos en una sola query: quantity, price, status para todas las filas
+      // ── 1. Counts totales via queries HEAD (instantáneas, sin traer filas) ───
+      const [
+        { count: totalCartas    = 0 },
+        { count: totalDisponibles = 0 },
+        { count: totalReservadas  = 0 },
+      ] = await Promise.all([
+        // Total entradas en catálogo
+        supabase.from('inventory')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', STORE_ID),
+
+        // Disponibles con stock físico (quantity > 0)
+        supabase.from('inventory')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', STORE_ID)
+          .or('status.eq.disponible,estado.eq.disponible')
+          .gt('quantity', 0),
+
+        // Reservadas
+        supabase.from('inventory')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', STORE_ID)
+          .or('status.eq.reservada,estado.eq.reservada'),
+      ])
+
+      // ── 2. Valor total — paginamos de a 5000 solo para el cálculo de USD ────
       const PAGE = 5000
       let disponiblesRows = []
       let reservadasRows  = []
-      let allRows         = []
       let from = 0
       let done = false
 
@@ -20,37 +43,29 @@ export function useMetricas() {
           .from('inventory')
           .select('quantity, price_usd, price_ars_blue, price_ars_oficial, status, estado')
           .eq('store_id', STORE_ID)
+          .or('status.eq.disponible,status.eq.reservada,estado.eq.disponible,estado.eq.reservada')
+          .not('price_usd', 'is', null)   // solo las que tienen precio para el valor
           .range(from, from + PAGE - 1)
 
-        if (error) throw error
+        if (error) break
         const chunk = data ?? []
         for (const r of chunk) {
-          allRows.push(r)
           if (r.status === 'disponible' || r.estado === 'disponible') disponiblesRows.push(r)
           else if (r.status === 'reservada' || r.estado === 'reservada') reservadasRows.push(r)
         }
-        done = chunk.length < PAGE
+        if (chunk.length < PAGE) break
         from += PAGE
       }
 
-      // Total de cartas = SUM de quantities (cuántas cartas físicas hay en total)
-      const totalCartas      = allRows.reduce((s, r) => s + (r.quantity || 0), 0)
-      // Disponibles = SUM de quantities de las disponibles con stock > 0
-      const totalDisponibles = disponiblesRows
-        .filter(r => (r.quantity || 0) > 0)
-        .reduce((s, r) => s + (r.quantity || 0), 0)
-      // Reservadas = cantidad de filas reservadas (no suma de quantity)
-      const totalReservadas  = reservadasRows.length
-
-      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd         || 0) * (r.quantity || 0), 0)
-      const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue    || 0) * (r.quantity || 0), 0)
-      const valorARSOficial = disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 0), 0)
-      const deudasActivas   = reservadasRows.reduce((s, r)  => s + (r.price_ars_blue   || 0) * (r.quantity || 0), 0)
+      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd         || 0) * (r.quantity || 1), 0)
+      const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue    || 0) * (r.quantity || 1), 0)
+      const valorARSOficial = disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 1), 0)
+      const deudasActivas   = reservadasRows.reduce((s, r)  => s + (r.price_ars_blue   || 0) * (r.quantity || 1), 0)
 
       return {
-        totalCartas,          // SUM de quantities (total físico de cartas)
-        totalDisponibles,     // SUM de quantities disponibles con stock > 0
-        totalReservadas,      // cantidad de reservas activas
+        totalCartas,          // count de entradas en catálogo (tipos de cartas)
+        totalDisponibles,     // count de entradas disponibles con quantity > 0
+        totalReservadas,      // count de entradas reservadas
         valorUSD,
         valorARSBlue,
         valorARSOficial,
@@ -58,6 +73,6 @@ export function useMetricas() {
         cantReservadas: reservadasRows.length,
       }
     },
-    staleTime: 30_000,   // 30s — más fresco para que el stepper se refleje rápido
+    staleTime: 30_000,
   })
 }
