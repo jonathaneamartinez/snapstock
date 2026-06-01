@@ -269,7 +269,7 @@ export default function Pokedex() {
       const { data, count, error } = await supabase
         .from('cards')
         .select('id, name, set_name, card_number, language, image_url', { count: 'exact' })
-        .ilike('name', `%${q}%`)
+        .ilike('name', `${q}%`)
         .in('language', [...langs])
         .range(from, to)
         .order('name')
