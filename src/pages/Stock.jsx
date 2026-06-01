@@ -457,7 +457,8 @@ export default function Stock() {
   const saveTipo = async (inventoryId, finish) => {
     const isHolo = finish === 'holofoil' || finish === 'reverse'
     await supabase.from('inventory').update({
-      holo: isHolo,   // boolean
+      finish,          // texto: 'normal' | 'holofoil' | 'reverse'
+      holo: isHolo,    // boolean derivado
     }).eq('id', inventoryId)
     queryClient.invalidateQueries({ queryKey: ['stock'] })
   }
@@ -882,7 +883,7 @@ export default function Stock() {
                       <td className="px-3 py-2 text-center">{IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}</td>
                       <td className="px-3 py-2 text-center">
                         <select
-                          value={r.holo || 'normal'}
+                          value={r.finish || 'normal'}
                           onChange={e => saveTipo(r.inventory_id, e.target.value)}
                           onClick={e => e.stopPropagation()}
                           className="text-xs bg-transparent border border-gray-200 rounded-lg px-1.5 py-0.5
