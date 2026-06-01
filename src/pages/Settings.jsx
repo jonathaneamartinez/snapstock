@@ -15,9 +15,14 @@ const USUARIOS_MAP = {
   ],
   'singles-ut': [
     { nombre: 'Kardia',  tel: '5491122541350' },
-    { nombre: 'Sebas',   tel: '5491125284...' },
-    { nombre: 'Melody',  tel: '5491159730...' },
+    { nombre: 'Sebas',   tel: '5491125284975' },
+    { nombre: 'Melody',  tel: '5491159734879' },
     { nombre: 'Mayra',   tel: '5491132583386' },
+  ],
+  'ayrton': [
+    { nombre: 'Kardia (admin)', tel: '5491122544135' },
+    { nombre: 'Ayrton',        tel: '5491953198368' },
+    { nombre: 'Agustín',       tel: '5491167472477' },
   ],
 }
 
