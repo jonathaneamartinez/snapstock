@@ -237,7 +237,7 @@ export default function Settings() {
           ))}
         </div>
         <p className="text-xs text-gray-400 mt-3">
-          TCGPlayer = mercado USA · CardMarket = mercado europeo (EUR → USD estimado)
+          TCGPlayer = precios de lista USA · PriceCharting = ventas reales eBay+TCG (más preciso) · CardMarket = Europa (próx.)
         </p>
       </div>
 

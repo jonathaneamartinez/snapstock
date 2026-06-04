@@ -2,11 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { STORE_ID } from '../constants'
 
-// Solo fuentes con integración activa
-// PriceCharting requiere plan Legendary ($49/mes) — no integrado
 export const PRICE_SOURCES = [
-  { id: 'tcgplayer',  label: 'TCGPlayer',  currency: 'USD', flag: '🇺🇸', active: true,  note: 'mercado USA · via pokemontcg.io' },
-  { id: 'cardmarket', label: 'CardMarket', currency: 'EUR', flag: '🇪🇺', active: false, note: 'mercado europeo · próximamente' },
+  { id: 'tcgplayer',     label: 'TCGPlayer',     currency: 'USD', flag: '🇺🇸', active: true,  note: 'mercado USA · TCGPlayer market price' },
+  { id: 'pricecharting', label: 'PriceCharting',  currency: 'USD', flag: '🏷️', active: true,  note: 'ventas reales eBay + TCGPlayer · más preciso' },
+  { id: 'cardmarket',    label: 'CardMarket',     currency: 'EUR', flag: '🇪🇺', active: false, note: 'mercado europeo · próximamente' },
 ]
 
 export function useSettings() {
