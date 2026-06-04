@@ -361,10 +361,11 @@ export default function Stock() {
     if (refreshingId) return
     setRefreshingId(r.inventory_id)
     try {
-      // Llamar al backend para obtener precio actualizado
+      // Llamar al endpoint dedicado de precio (EN: TCGPlayer, JP/CN: PriceCharting)
       const params = new URLSearchParams({ name: r.nombre, lang: r.idioma || 'en' })
       if (r.numero) params.set('number', r.numero)
-      const res = await fetch(`https://stock-tcg-production.up.railway.app/card-image-url?${params}`)
+      if (r.set_name) params.set('set_name', r.set_name)
+      const res = await fetch(`https://stock-tcg-production.up.railway.app/card-price?${params}`)
       if (!res.ok) throw new Error('sin datos')
       const { price_usd } = await res.json()
       if (price_usd) {
