@@ -171,46 +171,61 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
 
   return (
     <div ref={ref} className="flex flex-col items-center gap-0.5">
-      <div
-        onClick={src && !failed ? handleClick : (failed ? handleRetry : undefined)}
-        className={`w-7 h-10 rounded overflow-hidden flex items-center justify-center
-          ${(src || failed) ? 'cursor-pointer hover:scale-110 transition-transform duration-150' : 'bg-gray-100'}`}
-        title={
-          src && !failed ? `Ver ${nombre}` :
-          failed         ? 'Reintentar cargar imagen' :
-          fetching       ? 'Cargando...' : ''
-        }
-      >
-        {src && !failed ? (
-          <img
-            src={src}
-            alt={nombre}
-            className={`w-full h-full object-cover transition-opacity duration-300
-              ${loaded ? 'opacity-100' : 'opacity-0'}`}
-            onLoad={() => setLoaded(true)}
-            onError={() => {
-              srcRef.current = null
-              setSrc(null)
-              setLoaded(false)
-              if (!triedApiFallback && nombre) {
-                setTriedApiFallback(true)
-                doFetch()
-              } else {
-                setFailed(true)
-              }
-            }}
-          />
-        ) : fetching ? (
-          <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
-        ) : failed ? (
-          <img
-            src={CARD_BACK}
-            alt="Reintentar"
-            className="w-full h-full object-cover opacity-40"
-            onError={(e) => { e.target.style.display = 'none' }}
-          />
-        ) : (
-          <div className="w-full h-full bg-gray-100 rounded" />
+      <div className="relative group">
+        <div
+          onClick={src && !failed ? handleClick : (failed ? handleRetry : undefined)}
+          className={`w-7 h-10 rounded overflow-hidden flex items-center justify-center
+            ${(src || failed) ? 'cursor-pointer' : 'bg-gray-100'}`}
+          title={src && !failed ? `Ver ${nombre}` : failed ? 'Reintentar' : ''}
+        >
+          {src && !failed ? (
+            <img
+              src={src}
+              alt={nombre}
+              className={`w-full h-full object-cover transition-opacity duration-300
+                ${loaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setLoaded(true)}
+              onError={() => {
+                srcRef.current = null
+                setSrc(null)
+                setLoaded(false)
+                if (!triedApiFallback && nombre) {
+                  setTriedApiFallback(true)
+                  doFetch()
+                } else {
+                  setFailed(true)
+                }
+              }}
+            />
+          ) : fetching ? (
+            <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+          ) : failed ? (
+            <img
+              src={CARD_BACK}
+              alt="Reintentar"
+              className="w-full h-full object-cover opacity-40"
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
+          ) : (
+            <div className="w-full h-full bg-gray-100 rounded" />
+          )}
+        </div>
+
+        {/* Botón 🔄 sobre la imagen — visible en hover o cuando falló */}
+        {nombre && (
+          <button
+            onClick={e => { e.stopPropagation(); handleRetry() }}
+            title="Actualizar imagen"
+            className={`absolute inset-0 flex items-center justify-center rounded
+                        bg-black/50 text-white text-[9px] transition
+                        ${failed
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100'}`}
+          >
+            {fetching
+              ? <div className="w-2.5 h-2.5 border border-white border-t-transparent rounded-full animate-spin" />
+              : '🔄'}
+          </button>
         )}
       </div>
     </div>
