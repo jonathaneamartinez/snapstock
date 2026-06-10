@@ -593,7 +593,7 @@ function ClaimRow({ claim }) {
       .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
       .eq('store_id', STORE_ID)
       .neq('status', 'vendida')
-      .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { foreignTable: 'cards' })
+      .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { referencedTable: 'cards' })
       .order('id', { ascending: false })
       .range(offset, offset + PAGE - 1)
     return (data ?? []).filter(r => r.cards?.name)

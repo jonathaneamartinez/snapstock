@@ -50,7 +50,7 @@ export function useStock(filters = {}) {
             (l === 'jp' || l === 'ja') ? 'language.eq.jp,language.eq.ja' :
             (l === 'cn' || l === 'zh') ? 'language.eq.cn,language.eq.zh' :
             `language.eq.${l}`
-          q = q.or(variants, { foreignTable: 'cards' })
+          q = q.or(variants, { referencedTable: 'cards' })
         }
 
         // Búsqueda de texto — server-side sobre cards (todas las páginas)
@@ -61,7 +61,7 @@ export function useStock(filters = {}) {
             .replace(/_/g, '\\_')
           q = q.or(
             `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`,
-            { foreignTable: 'cards' }
+            { referencedTable: 'cards' }
           )
         }
 
@@ -78,6 +78,7 @@ export function useStock(filters = {}) {
         price_usd,
         price_ars_blue,
         price_ars_oficial,
+        sale_price_ars,
         precios_fuentes,
         precio_fuente_override,
         buyer_name,
@@ -137,7 +138,7 @@ export function useStock(filters = {}) {
       if (sortDef) {
         if (sortDef.foreignTable) {
           // Columna de tabla relacionada → usar foreignTable en .order()
-          q = q.order(sortDef.col, { foreignTable: 'cards', ascending: asc, nullsFirst: false })
+          q = q.order(sortDef.col, { referencedTable: 'cards', ascending: asc, nullsFirst: false })
         } else {
           q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
         }
@@ -168,7 +169,8 @@ export function useStock(filters = {}) {
         price_usd:          r.price_usd,
         price_ars_blue:     r.price_ars_blue,
         price_ars_oficial:  r.price_ars_oficial,
-        precio_venta:       r.price_ars_blue,
+        sale_price_ars:     r.sale_price_ars ?? null,
+        precio_venta:       r.sale_price_ars ?? r.price_ars_blue,
         precios_fuentes:    r.precios_fuentes || {},
         precio_fuente_override: r.precio_fuente_override || null,
         status:             r.status || r.estado || '',

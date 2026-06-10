@@ -11,6 +11,31 @@ import { supabase } from '../lib/supabase'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
+
+// ── Busca precio de PriceCharting desde price_history por card_id ─────────────
+async function fetchPrecioPC(cardId) {
+  if (!cardId) return null
+  const { data } = await supabase
+    .from('price_history')
+    .select('price_usd, snapshot_date')
+    .eq('card_id', cardId)
+    .eq('source', 'pricecharting')
+    .order('snapshot_date', { ascending: false })
+    .limit(1)
+  return data?.[0]?.price_usd ?? null
+}
+
+// ── Busca card_id en Supabase por nombre+numero+idioma ────────────────────────
+async function fetchCardId(nombre, numero, idioma, setName) {
+  if (!nombre) return null
+  let q = supabase.from('cards').select('id, language')
+    .ilike('name', nombre.trim())
+    .eq('language', idioma || 'en')
+  if (numero) q = q.eq('card_number', numero.trim())
+  if (setName) q = q.eq('set_name', setName.trim())
+  const { data } = await q.limit(1).maybeSingle()
+  return data?.id ?? null
+}
 import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
 import SetSelect  from '../components/ui/SetSelect'
@@ -287,28 +312,44 @@ export default function Ingresos() {
   }
 
   // ── Seleccionar sugerencia ─────────────────────────────────────────────
-  const selectSuggestion = useCallback((sug) => {
-    let autoPrice = ''
-    if (sug.precio_usd && blue) {
-      const m = margen ?? 0
-      const raw = sug.precio_usd * blue * (1 + m / 100)
-      autoPrice = String(Math.round(raw / 500) * 500)
-    }
-
+  const selectSuggestion = useCallback(async (sug) => {
     setForm(f => ({
       ...f,
-      nombre:      sug.nombre  || '',
-      set:         sug.set     || '',
-      set_id:      sug.set_id  ?? f.set_id,  // conservar set_id si ya hay uno
-      numero:      sug.numero  || '',
-      precioVenta: autoPrice   || f.precioVenta,
+      nombre:  sug.nombre  || '',
+      set:     sug.set     || '',
+      set_id:  sug.set_id  ?? f.set_id,
+      numero:  sug.numero  || '',
     }))
     setShowSug(false)
     setSuggestions([])
-    setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd })
-    // Si falta imagen O precio → ir a pokemontcg.io (también actualiza el precio)
-    if (!sug.imagen || !sug.precio_usd) fetchPreviewImage(sug.nombre, sug.numero, sug.set)
-  }, [blue, margen])
+    setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd ?? null })
+
+    // 1. Buscar precio de PriceCharting primero (fuente principal)
+    const idioma = sug.idioma || form.idioma || 'en'
+    const normLangLocal = (l) => ['ja','jp'].includes(l) ? 'jp' : ['zh','cn'].includes(l) ? 'cn' : 'en'
+    const cardId = await fetchCardId(sug.nombre, sug.numero, normLangLocal(idioma), sug.set)
+    let precioBase = sug.precio_usd ?? null
+
+    if (cardId) {
+      const pcPrice = await fetchPrecioPC(cardId)
+      // Usar PC si tiene precio — es el más preciso (ventas reales)
+      // Si PC < TCGPlayer, igual usamos PC porque TCGPlayer puede tener listings inflados
+      if (pcPrice) precioBase = pcPrice
+    }
+    // Precio base nunca puede ser 0 o negativo
+    if (precioBase && precioBase <= 0) precioBase = null
+
+    if (precioBase && blue) {
+      const m = margen ?? 0
+      const autoPrice = String(Math.round(precioBase * blue * (1 + m / 100) / 500) * 500)
+      setForm(f => ({ ...f, precioVenta: autoPrice || f.precioVenta }))
+    }
+
+    setPreview(prev => ({ ...prev, precio_usd: precioBase }))
+
+    // 2. Si falta imagen → buscar en scanner/pokemontcg.io
+    if (!sug.imagen) fetchPreviewImage(sug.nombre, sug.numero, sug.set)
+  }, [blue, margen, form.idioma])
 
   // ── Preview: busca imagen Y precio si faltan ──────────────────────────
   // fetchCardImages retorna { small, large, price_usd } — los tres se aprovechan.
@@ -343,6 +384,25 @@ export default function Ingresos() {
           const res = await fetchImageFromBackend(form.nombre, numNorm, form.idioma, form.set_id || '')
           if (res?.url) {
             setPreview(prev => ({ ...prev, imagen: res.url }))
+            // Si el backend devuelve set_name y número, actualizamos el form
+            if (res.set_name || res.number) {
+              setForm(f => ({
+                ...f,
+                set:    res.set_name || f.set,
+                numero: res.number   || f.numero,
+              }))
+            }
+            // Buscar precio PC para este resultado
+            const lang = normLang(form.idioma)
+            const cid = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set)
+            if (cid) {
+              const pcPrice = await fetchPrecioPC(cid)
+              if (pcPrice) {
+                const m = margen ?? 0
+                setPreview(prev => ({ ...prev, precio_usd: pcPrice }))
+                setForm(f => ({ ...f, precioVenta: String(Math.round(pcPrice * blue * (1 + m / 100) / 500) * 500) || f.precioVenta }))
+              }
+            }
             setSugLoading(false)
             return
           }
@@ -359,14 +419,28 @@ export default function Ingresos() {
               numero:     card.card_number,
               imagen:     card.image_url,
               precio_usd: card.price_usd,
+              idioma:     form.idioma,
               source:     'market',
             })
             return
           }
         }
 
-        // 3. Fallback: buscar imagen por nombre+número+set en pokemontcg.io
+        // 3. Si hay nombre: buscar card_id y precio PriceCharting
         if (form.nombre) {
+          const lang = normLang(form.idioma)
+          const cid = await fetchCardId(form.nombre, numNorm, lang, form.set)
+          if (cid) {
+            const pcPrice = await fetchPrecioPC(cid)
+            if (pcPrice) {
+              const m = margen ?? 0
+              const autoPrice = String(Math.round(pcPrice * blue * (1 + m / 100) / 500) * 500)
+              setPreview(prev => ({ ...prev, precio_usd: pcPrice }))
+              setForm(f => ({ ...f, precioVenta: autoPrice || f.precioVenta }))
+              setSugLoading(false)
+              return
+            }
+          }
           fetchPreviewImage(form.nombre, numNorm, form.set)
         }
       } finally {
@@ -431,10 +505,14 @@ export default function Ingresos() {
       // 1. Buscar o crear la carta en `cards`
       let cardId = null
       // Buscar carta existente (cards es tabla global, sin store_id)
+      const langFinal = normLang(form.idioma) || 'en'
+
+      // Buscar carta existente filtrando también por idioma
       let cardQuery = supabase
         .from('cards')
         .select('id')
         .ilike('name', form.nombre.trim())
+        .eq('language', langFinal)
 
       if (form.set.trim())    cardQuery = cardQuery.eq('set_name', form.set.trim())
       if (form.numero.trim()) cardQuery = cardQuery.eq('card_number', form.numero.trim())
@@ -448,14 +526,14 @@ export default function Ingresos() {
           await supabase.from('cards').update({ image_url: preview.imagen }).eq('id', cardId)
         }
       } else {
-        // Insertar nueva carta
+        // Insertar nueva carta con idioma del formulario (siempre form.idioma, nunca default EN)
         const { data: newCard, error: cardErr } = await supabase
           .from('cards')
           .insert({
             name:        form.nombre.trim(),
             set_name:    form.set.trim()    || null,
             card_number: form.numero.trim() || null,
-            language:    form.idioma        || 'en',
+            language:    langFinal,
             image_url:   preview?.imagen    || null,
           })
           .select('id')

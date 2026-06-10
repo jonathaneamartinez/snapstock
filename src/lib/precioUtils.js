@@ -42,8 +42,8 @@ export function usdToArs(usd, blue, margen = 0) {
  * Etiqueta corta del proveedor para mostrar en UI.
  */
 export const FUENTE_LABELS = {
-  tcgplayer:    { label: 'TCGPlayer',  flag: '🇺🇸', currency: 'USD' },
-  cardmarket:   { label: 'CardMarket', flag: '🇪🇺', currency: 'EUR' },
-  pricecharting:{ label: 'PriceCharting', flag: '📊', currency: 'USD' },
-  legacy:       { label: 'Precio',     flag: '💲', currency: 'USD' },
+  tcgplayer:    { label: 'TCGPlayer',     flag: '🇺🇸', currency: 'USD' },
+  cardmarket:   { label: 'CardMarket',    flag: '🇪🇺', currency: 'EUR' },
+  pricecharting:{ label: 'PriceCharting', flag: '🏷️', currency: 'USD' },
+  legacy:       { label: 'Precio',        flag: '💲',  currency: 'USD' },
 }

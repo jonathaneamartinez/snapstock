@@ -199,6 +199,8 @@ export default function Stock() {
   const [kpiSort,      setKpiSort]      = useState('')   // '' | 'score' | 'demand' | 'liquidity' | 'trend' | 'demand_asc' | 'liquidity_asc'
   const [kpiStateFilter, setKpiStateFilter] = useState('') // '' | 'buyable' | 'sell_now' | 'normal' | 'con_datos'
   const [selectedIds, setSelectedIds] = useState(new Set())
+  // Cache de rows seleccionados entre páginas (para claims multi-página)
+  const [selectedRowsCache, setSelectedRowsCache] = useState({})
   const [bulkLoading, setBulkLoading] = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
   const [confirmSell, setConfirmSell] = useState(false)
@@ -327,7 +329,8 @@ export default function Stock() {
 
   const disponibles = rows.filter(r => r.status === 'disponible').length
   const reservadas  = rows.filter(r => r.status === 'reservada').length
-  const valorUSD    = rows.reduce((s, r) => s + (r.price_usd || 0) * (r.stock || 1), 0)
+  // Usar precio efectivo (respeta proveedor seleccionado: PC, TCG, etc.)
+  const valorUSD = rows.reduce((s, r) => s + (r.price_usd_efectivo ?? r.price_usd ?? 0) * (r.stock || 1), 0)
 
   const toggleAll = () => {
     if (allSelected) {
@@ -350,7 +353,14 @@ export default function Stock() {
   const toggleOne = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+        setSelectedRowsCache(c => { const n = {...c}; delete n[id]; return n })
+      } else {
+        next.add(id)
+        const row = sortedRows.find(r => r.inventory_id === id)
+        if (row) setSelectedRowsCache(c => ({ ...c, [id]: row }))
+      }
       return next
     })
   }
@@ -538,35 +548,32 @@ export default function Stock() {
     setBulkLoading(false)
   }
 
-  // ── Agregar al carrito de claim (solo disponibles de la página actual) ───
+  // ── Agregar al carrito de claim (todas las seleccionadas, incluso de otras páginas) ───
   const handleAddToClaim = () => {
-    const toAdd = sortedRows.filter(r =>
-      selectedIds.has(r.inventory_id) && r.status === 'disponible'
-    )
+    // Combinar rows de la página actual + cache de páginas anteriores
+    const allSelected = [...selectedIds].map(id =>
+      sortedRows.find(r => r.inventory_id === id) || selectedRowsCache[id]
+    ).filter(r => r && r.status === 'disponible')
 
-    if (!toAdd.length) {
+    if (!allSelected.length) {
       showToast(t('stock_select_available'), 'error')
       return
     }
 
     setClaimCart(prev => {
       const next = new Map(prev)
-      toAdd.forEach(r => {
+      allSelected.forEach(r => {
         next.set(r.inventory_id, {
           ...r,
-          // Capturar la mejor URL disponible en este momento (blob ya cacheado mientras estaba visible)
           image_url: getCardImageUrl(r.card_id) || r.image_url || imageMap[r.card_id] || '',
         })
       })
       return next
     })
 
-    // Deseleccionar las cartas de esta página
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      sortedRows.forEach(r => next.delete(r.inventory_id))
-      return next
-    })
+    // Limpiar selección y cache
+    setSelectedIds(new Set())
+    setSelectedRowsCache({})
 
     // Pre-calentar blobs en background (fire-and-forget, 6 a la vez)
     // Así cuando el usuario configure y genere el claim, muchos/todos ya están en cache
@@ -915,6 +922,13 @@ export default function Stock() {
                           ) : (
                             <span className="text-emerald-600 font-semibold">
                               {fmtUSD(r.price_usd_efectivo ?? r.price_usd)}
+                            </span>
+                          )}
+                          {/* Badge fuente de precio */}
+                          {r.precio_fuente_flag && (
+                            <span className="text-[9px] text-gray-400 leading-none"
+                              title={r.precio_fuente_label || r.precio_fuente_flag}>
+                              {r.precio_fuente_flag}
                             </span>
                           )}
                           {/* Botón refresh precio */}
