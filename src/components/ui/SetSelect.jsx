@@ -2,6 +2,21 @@ import { useState, useRef, useEffect } from 'react'
 import { fetchAllSets } from '../../lib/pokemonTcg'
 import { scannerApi } from '../../lib/scanner'
 import { translateSetName } from '../../lib/setTranslations'
+import { STORE_ID } from '../../constants'
+
+// ── Sets personalizados en localStorage ───────────────────────────────────────
+const LS_KEY = `custom_sets_${STORE_ID}`
+
+function loadCustomSets() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
+}
+
+function saveCustomSet(name) {
+  const existing = loadCustomSets()
+  if (existing.some(s => s.name.toLowerCase() === name.toLowerCase())) return
+  existing.unshift({ id: `custom_${Date.now()}`, name, custom: true })
+  localStorage.setItem(LS_KEY, JSON.stringify(existing))
+}
 
 /**
  * Dropdown buscable con todos los sets del TCG.
@@ -22,13 +37,14 @@ const _normLang = (l = 'en') => {
 }
 
 export default function SetSelect({ value, setId, onChange, disabled = false, className = '', size = 'md', lang = 'en' }) {
-  const [open,    setOpen]    = useState(false)
-  const [query,   setQuery]   = useState('')
-  const [sets,    setSets]    = useState([])
-  const [loading, setLoading] = useState(false)
+  const [open,       setOpen]       = useState(false)
+  const [query,      setQuery]      = useState('')
+  const [sets,       setSets]       = useState([])
+  const [customSets, setCustomSets] = useState([])
+  const [loading,    setLoading]    = useState(false)
   const wrapRef    = useRef(null)
   const inputRef   = useRef(null)
-  const loadedLang = useRef(null)   // idioma con el que se cargaron los sets
+  const loadedLang = useRef(null)
 
   const normalizedLang = _normLang(lang)
 
@@ -37,25 +53,21 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
     if (disabled) return
     setOpen(true)
     setQuery('')
+    setCustomSets(loadCustomSets())
     if (sets.length === 0 || loadedLang.current !== normalizedLang) {
       setLoading(true)
       let data = []
       if (normalizedLang === 'en') {
         const raw = await fetchAllSets()
-        data = raw  // [{id, name, series, year, total, symbol}]
+        data = raw
       } else {
-        // JP / CN: sets del índice pHash del backend
-        // Deduplicar por nombre en inglés: el índice tiene entradas de TCGdex (nombre JP)
-        // Y entradas locales (nombre EN del slug). Nos quedamos con una por nombre traducido,
-        // priorizando la entrada local (set_id tipo "clay-burst") sobre la de TCGdex ("SV2D").
         const raw = await scannerApi.availableSets(normalizedLang)
-        const seen = new Map() // englishName → entry
+        const seen = new Map()
         for (const s of raw) {
           const en = translateSetName(s.name, s.id)
           if (!seen.has(en)) {
             seen.set(en, s)
           } else {
-            // Prefiere entrada local (set_id sin patron "LETRAS+DIGITOS" como "SV2D", "S12a")
             const isLocal = (id) => !/^[A-Za-z]{1,3}\d/.test(id)
             if (isLocal(s.id) && !isLocal(seen.get(en).id)) seen.set(en, s)
           }
@@ -68,6 +80,22 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
       setLoading(false)
     }
     setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  const handleAddCustom = () => {
+    const name = query.trim()
+    if (!name) return
+    saveCustomSet(name)
+    setCustomSets(loadCustomSets())
+    onChange({ set_name: name, set_id: null })
+    setOpen(false)
+  }
+
+  const handleRemoveCustom = (e, customId) => {
+    e.stopPropagation()
+    const updated = loadCustomSets().filter(s => s.id !== customId)
+    localStorage.setItem(LS_KEY, JSON.stringify(updated))
+    setCustomSets(updated)
   }
 
   // Reiniciar sets cacheados cuando cambia el idioma
@@ -88,9 +116,9 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const filtered = query.trim()
+  const q = query.trim().toLowerCase()
+  const filtered = q
     ? sets.filter(s => {
-        const q   = query.toLowerCase()
         const en  = translateSetName(s.name, s.id).toLowerCase()
         const raw = s.name.toLowerCase()
         return en.includes(q) || raw.includes(q) ||
@@ -98,6 +126,14 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
                s.year?.includes(q)
       })
     : sets
+
+  const filteredCustom = q
+    ? customSets.filter(s => s.name.toLowerCase().includes(q))
+    : customSets
+
+  // Si hay query escrito y no coincide exactamente con ningún set, ofrecemos agregar
+  const queryIsNew = q && !filtered.some(s => translateSetName(s.name, s.id).toLowerCase() === q)
+                       && !filteredCustom.some(s => s.name.toLowerCase() === q)
 
   const handleSelect = (set) => {
     onChange({ set_name: set.name, set_id: set.id })
@@ -168,9 +204,34 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
                 <div className="w-5 h-5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
               </div>
             )}
-            {!loading && filtered.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-4">Sin resultados</p>
+
+            {/* Sets personalizados guardados */}
+            {!loading && filteredCustom.length > 0 && (
+              <>
+                <p className="px-3 pt-2 pb-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wide">
+                  Personalizados
+                </p>
+                {filteredCustom.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { onChange({ set_name: s.name, set_id: null }); setOpen(false) }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-purple-50 transition group"
+                  >
+                    <span className="w-5 h-5 shrink-0 text-purple-300 flex items-center justify-center">✏️</span>
+                    <span className="flex-1 font-medium text-gray-800 truncate">{s.name}</span>
+                    <span
+                      onClick={(e) => handleRemoveCustom(e, s.id)}
+                      className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-[10px] cursor-pointer"
+                      title="Eliminar set personalizado"
+                    >✕</span>
+                  </button>
+                ))}
+                {filtered.length > 0 && <div className="border-t border-gray-100 my-1" />}
+              </>
             )}
+
+            {/* Sets oficiales */}
             {!loading && filtered.map(s => (
               <button
                 key={s.id}
@@ -197,6 +258,24 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
                 {s.id === setId && <span className="text-blue-500 text-[10px] shrink-0">✓</span>}
               </button>
             ))}
+
+            {/* Sin resultados + botón para agregar set personalizado */}
+            {!loading && filtered.length === 0 && filteredCustom.length === 0 && !queryIsNew && (
+              <p className="text-xs text-gray-400 text-center py-4">Sin resultados</p>
+            )}
+            {!loading && queryIsNew && (
+              <div className="border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleAddCustom}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left
+                             hover:bg-purple-50 text-purple-600 transition font-medium"
+                >
+                  <span className="text-base leading-none">+</span>
+                  <span>Agregar <strong>"{query.trim()}"</strong> como set personalizado</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
