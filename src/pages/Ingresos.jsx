@@ -498,9 +498,11 @@ export default function Ingresos() {
     if (!form.nombre.trim()) return
     setLoading(true)
     try {
-      const precioVenta = parseFloat(form.precioVenta) || null
-      const precioUsd   = usd ?? null   // NUNCA usar el precio ARS como USD
+      const precioUsd   = usd ?? null
       const cantidad    = parseInt(form.cantidad) || 1
+      // Si el usuario no puso precio manual, calcular desde precio de mercado
+      const precioVenta = parseFloat(form.precioVenta) ||
+        (precioUsd && blue ? Math.round(precioUsd * blue * (1 + (margen ?? 0) / 100) / 500) * 500 : null)
 
       // 1. Buscar o crear la carta en `cards`
       let cardId = null
