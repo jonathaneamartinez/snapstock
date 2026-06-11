@@ -211,11 +211,11 @@ export default function CardImage({ imageUrl, cardId, nombre, numero, idioma, se
           )}
         </div>
 
-        {/* Botón 🔄 sobre la imagen — visible en hover o cuando falló */}
-        {nombre && (
+        {/* Botón 🔄 — solo cuando no hay imagen o cuando falló */}
+        {nombre && (!src || failed) && (
           <button
             onClick={e => { e.stopPropagation(); handleRetry() }}
-            title="Actualizar imagen"
+            title="Buscar imagen"
             className={`absolute inset-0 flex items-center justify-center rounded
                         bg-black/50 text-white text-[9px] transition
                         ${failed

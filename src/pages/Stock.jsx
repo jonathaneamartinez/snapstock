@@ -916,7 +916,14 @@ export default function Stock() {
                         />
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px]">
-                        <span className="truncate block">{r.nombre || '—'}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPriceCard(r)}
+                          className="truncate block text-left w-full hover:text-blue-600 transition-colors"
+                          title="Ver detalle de precio"
+                        >
+                          {r.nombre || '—'}
+                        </button>
                       </td>
                       <td className="px-3 py-2 text-gray-500 max-w-[100px]">
                         <span className="truncate block">{translateSetName(r.set_name) || '—'}</span>
