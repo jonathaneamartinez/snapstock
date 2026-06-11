@@ -405,10 +405,11 @@ export default function Stock() {
     if (refreshingId) return
     setRefreshingId(r.inventory_id)
     try {
-      // Llamar al endpoint dedicado de precio (EN: TCGPlayer, JP/CN: PriceCharting)
+      // PriceCharting como primario (EN+JP+CN), TCGPlayer como fallback EN
       const params = new URLSearchParams({ name: r.nombre, lang: r.idioma || 'en' })
-      if (r.numero) params.set('number', r.numero)
+      if (r.numero)   params.set('number', r.numero)
       if (r.set_name) params.set('set_name', r.set_name)
+      if (r.card_id)  params.set('card_id', r.card_id)   // para guardar en price_history
       const res = await fetch(`https://stock-tcg-production.up.railway.app/card-price?${params}`)
       if (!res.ok) throw new Error('sin datos')
       const { price_usd } = await res.json()
