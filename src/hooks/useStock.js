@@ -59,10 +59,14 @@ export function useStock(filters = {}) {
             .replace(/\\/g, '\\\\')
             .replace(/%/g, '\\%')
             .replace(/_/g, '\\_')
-          q = q.or(
-            `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`,
-            { referencedTable: 'cards' }
-          )
+          // Si el término tiene formato XXX/XXX (ej: "078/217"), normalizar → "78"
+          const numNorm = /^\d+\/\d+$/.test(term)
+            ? String(parseInt(term.split('/')[0], 10))
+            : term
+          const numFilter = numNorm !== term
+            ? `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%,card_number.ilike.%${numNorm}%`
+            : `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`
+          q = q.or(numFilter, { referencedTable: 'cards' })
         }
 
         return q

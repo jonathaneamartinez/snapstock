@@ -16,6 +16,14 @@ export function useMetricas() {
 
       if (totalsError) console.warn('[useMetricas] RPC error:', totalsError.message)
 
+      // ── 1b. Count de entradas (filas) para alinear con paginador ─────────────
+      const { count: totalEntradas } = await supabase
+        .from('inventory')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+        .or('status.eq.disponible,status.eq.reservada,estado.eq.disponible,estado.eq.reservada')
+        .gt('quantity', 0)
+
       // ── 2. Valor total USD — solo cartas con precio (no trae todas las filas) ─
       const PAGE = 5000
       let disponiblesRows = []
@@ -48,6 +56,7 @@ export function useMetricas() {
 
       return {
         totalCartas,          // SUM de quantity (unidades físicas totales)
+        totalEntradas:        totalEntradas ?? 0, // COUNT de filas (alineado con paginador)
         totalDisponibles,     // SUM de quantity disponibles con qty > 0
         totalReservadas,      // COUNT de reservadas
         valorUSD,

@@ -25,16 +25,36 @@ async function fetchPrecioPC(cardId) {
   return data?.[0]?.price_usd ?? null
 }
 
-// ── Busca card_id en Supabase por nombre+numero+idioma ────────────────────────
+// ── Normaliza número de carta (strip ceros leading, quita /total) ─────────────
+function normalizeCardNum(raw) {
+  if (!raw) return ''
+  const s = String(raw).trim()
+  const left = s.includes('/') ? s.split('/')[0] : s
+  if (/^\d+$/.test(left)) return String(parseInt(left, 10))
+  return left
+}
+
+// ── Busca card_id + set_name en Supabase por nombre+numero+idioma ─────────────
 async function fetchCardId(nombre, numero, idioma, setName) {
   if (!nombre) return null
-  let q = supabase.from('cards').select('id, language')
+  const numNorm = normalizeCardNum(numero)
+  let q = supabase.from('cards').select('id, set_name, language')
     .ilike('name', nombre.trim())
     .eq('language', idioma || 'en')
-  if (numero) q = q.eq('card_number', numero.trim())
+  if (numNorm) q = q.eq('card_number', numNorm)
   if (setName) q = q.eq('set_name', setName.trim())
-  const { data } = await q.limit(1).maybeSingle()
-  return data?.id ?? null
+  let { data } = await q.limit(1).maybeSingle()
+  // Fallback: si no matchea con número normalizado, probar con el raw
+  if (!data && numero && numNorm !== numero.trim()) {
+    let q2 = supabase.from('cards').select('id, set_name, language')
+      .ilike('name', nombre.trim())
+      .eq('language', idioma || 'en')
+      .eq('card_number', numero.trim())
+    if (setName) q2 = q2.eq('set_name', setName.trim())
+    const { data: d2 } = await q2.limit(1).maybeSingle()
+    data = d2
+  }
+  return data ? { id: data.id, set_name: data.set_name } : null
 }
 import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
@@ -327,11 +347,11 @@ export default function Ingresos() {
     // 1. Buscar precio de PriceCharting primero (fuente principal)
     const idioma = sug.idioma || form.idioma || 'en'
     const normLangLocal = (l) => ['ja','jp'].includes(l) ? 'jp' : ['zh','cn'].includes(l) ? 'cn' : 'en'
-    const cardId = await fetchCardId(sug.nombre, sug.numero, normLangLocal(idioma), sug.set)
+    const cardResult = await fetchCardId(sug.nombre, sug.numero, normLangLocal(idioma), sug.set)
     let precioBase = sug.precio_usd ?? null
 
-    if (cardId) {
-      const pcPrice = await fetchPrecioPC(cardId)
+    if (cardResult) {
+      const pcPrice = await fetchPrecioPC(cardResult.id)
       // Usar PC si tiene precio — es el más preciso (ventas reales)
       // Si PC < TCGPlayer, igual usamos PC porque TCGPlayer puede tener listings inflados
       if (pcPrice) precioBase = pcPrice
@@ -341,8 +361,11 @@ export default function Ingresos() {
 
     if (precioBase && blue) {
       const m = margen ?? 0
-      const autoPrice = String(Math.round(precioBase * blue * (1 + m / 100) / 500) * 500)
-      setForm(f => ({ ...f, precioVenta: autoPrice || f.precioVenta }))
+      // Precio = PC × blue × (1 + margen%), mínimo PC × blue sin margen negativo
+      const baseARS    = precioBase * blue
+      const conMargen  = baseARS * (1 + m / 100)
+      const autoARS    = Math.round(Math.max(conMargen, baseARS) / 500) * 500
+      setForm(f => ({ ...f, precioVenta: String(autoARS) || f.precioVenta }))
     }
 
     setPreview(prev => ({ ...prev, precio_usd: precioBase }))
@@ -394,9 +417,10 @@ export default function Ingresos() {
             }
             // Buscar precio PC para este resultado
             const lang = normLang(form.idioma)
-            const cid = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set)
-            if (cid) {
-              const pcPrice = await fetchPrecioPC(cid)
+            const cidResult = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set)
+            if (cidResult) {
+              if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
+              const pcPrice = await fetchPrecioPC(cidResult.id)
               if (pcPrice) {
                 const m = margen ?? 0
                 setPreview(prev => ({ ...prev, precio_usd: pcPrice }))
@@ -429,9 +453,10 @@ export default function Ingresos() {
         // 3. Si hay nombre: buscar card_id y precio PriceCharting
         if (form.nombre) {
           const lang = normLang(form.idioma)
-          const cid = await fetchCardId(form.nombre, numNorm, lang, form.set)
-          if (cid) {
-            const pcPrice = await fetchPrecioPC(cid)
+          const cidResult = await fetchCardId(form.nombre, numNorm, lang, form.set)
+          if (cidResult) {
+            if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
+            const pcPrice = await fetchPrecioPC(cidResult.id)
             if (pcPrice) {
               const m = margen ?? 0
               const autoPrice = String(Math.round(pcPrice * blue * (1 + m / 100) / 500) * 500)
@@ -449,12 +474,24 @@ export default function Ingresos() {
     }, 400)
   }
 
-  // ── Al cambiar idioma con carta ya seleccionada → re-buscar imagen desde R2 ──
+  // ── Al cambiar idioma → limpiar sugerencias y re-buscar con el nuevo idioma ──
   const prevIdiomaRef = useRef(form.idioma)
   useEffect(() => {
     const prev = prevIdiomaRef.current
     prevIdiomaRef.current = form.idioma
-    if (!form.nombre || form.idioma === prev) return
+    if (form.idioma === prev) return
+
+    // Siempre limpiar sugerencias y caché de set al cambiar idioma
+    setSuggestions([])
+    setShowSug(false)
+    allSetCardsRef.current = []
+
+    // Si hay nombre escrito, re-disparar búsqueda con nuevo idioma
+    if (form.nombre && form.nombre.length >= 2) {
+      handleNombreChange(form.nombre)
+    }
+
+    if (!form.nombre) return
 
     const lang = normLang(form.idioma)
 

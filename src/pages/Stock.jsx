@@ -630,10 +630,10 @@ export default function Stock() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: t('stock_kpi_total'),     value: (m?.totalCartas     ?? 0).toLocaleString('es-AR'), sub: t('stock_kpi_in_stock'),   color: 'text-blue-600'    },
+          { label: t('stock_kpi_total'),     value: (m?.totalEntradas   ?? 0).toLocaleString('es-AR'), sub: t('stock_kpi_in_stock'),   color: 'text-blue-600'    },
           { label: t('stock_kpi_available'), value: (m?.totalDisponibles ?? 0).toLocaleString('es-AR'), sub: t('stock_kpi_for_sale'),   color: 'text-emerald-600' },
           { label: t('stock_kpi_reserved'),  value: (m?.totalReservadas  ?? 0).toLocaleString('es-AR'), sub: t('stock_kpi_to_deliver'), color: 'text-amber-500'   },
-          { label: t('stock_kpi_value'),     value: `$${valorUSD.toLocaleString('en', { maximumFractionDigits: 0 })}`, sub: t('stock_kpi_usd'), color: 'text-gray-800' },
+          { label: t('stock_kpi_value'),     value: `$${(m?.valorUSD ?? 0).toLocaleString('en', { maximumFractionDigits: 0 })}`, sub: t('stock_kpi_usd'), color: 'text-gray-800' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{k.label}</p>
