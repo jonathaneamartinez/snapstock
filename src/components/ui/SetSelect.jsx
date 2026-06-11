@@ -127,9 +127,10 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
       })
     : sets
 
-  const filteredCustom = q
+  const filteredCustom = (q
     ? customSets.filter(s => s.name.toLowerCase().includes(q))
     : customSets
+  ).slice().sort((a, b) => a.name.localeCompare(b.name))
 
   // Si hay query escrito y no coincide exactamente con ningún set, ofrecemos agregar
   const queryIsNew = q && !filtered.some(s => translateSetName(s.name, s.id).toLowerCase() === q)

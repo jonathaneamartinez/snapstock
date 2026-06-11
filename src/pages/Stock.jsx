@@ -286,7 +286,11 @@ export default function Stock() {
     })
   }
 
-  // ── Sort / filter KPI client-side (sobre la página actual) ─────────────
+  // ── Sort / filter KPI + columnas client-side ────────────────────────────
+  // Las columnas de la tabla `cards` (nombre, set, numero, idioma) no se pueden
+  // ordenar server-side via PostgREST con !inner join, así que se ordenan aquí.
+  // Las columnas de inventory (precio, stock, estado…) el servidor ya las ordena
+  // correctamente, pero aplicar client-side también es correcto e inocuo.
   const sortedRows = useMemo(() => {
     let list = [...rows]
 
@@ -315,10 +319,40 @@ export default function Stock() {
         }
       }
       list.sort((a, b) => getVal(b) - getVal(a))
+    } else if (sortCol) {
+      const asc = sortDir !== 'desc'
+      const getSortVal = (r) => {
+        switch (sortCol) {
+          case 'nombre':      return (r.nombre   || '').toLowerCase()
+          case 'set_name':    return (r.set_name || '').toLowerCase()
+          case 'idioma':      return (r.idioma   || '').toLowerCase()
+          case 'condicion':   return (r.condicion || '').toLowerCase()
+          case 'status':      return (r.status   || '').toLowerCase()
+          case 'buyer_name':  return (r.buyer_name || '').toLowerCase()
+          case 'stock':       return r.stock ?? 0
+          case 'price_usd':   return r.price_usd_efectivo ?? r.price_usd ?? 0
+          case '_ars_ofic':   return r._ars_ofic ?? 0
+          case '_ars_blue':   return r._ars_blue ?? 0
+          case 'precio_venta':return r.precio_venta ?? 0
+          case 'numero': {
+            // Ordenar numéricamente (4 < 9 < 29 < 105) y alfanumérico al final
+            const n = parseInt(r.numero, 10)
+            return isNaN(n) ? 1e9 + (r.numero || '') : n
+          }
+          default: return ''
+        }
+      }
+      list.sort((a, b) => {
+        const va = getSortVal(a)
+        const vb = getSortVal(b)
+        if (va < vb) return asc ? -1 : 1
+        if (va > vb) return asc ? 1 : -1
+        return 0
+      })
     }
 
     return list
-  }, [rows, kpiMap, kpiSort, kpiStateFilter])
+  }, [rows, kpiMap, kpiSort, kpiStateFilter, sortCol, sortDir])
 
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
