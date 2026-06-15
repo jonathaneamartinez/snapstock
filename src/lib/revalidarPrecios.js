@@ -2,16 +2,18 @@
  * revalidarPrecios.js
  *
  * Función central que recorre todo el inventario disponible,
- * consulta la API TCG por cada carta y actualiza price_usd + ARS.
+ * consulta PriceCharting (via backend /card-price) por cada carta y actualiza
+ * price_usd + ARS en inventory. El backend también guarda en price_history.
  *
  * Usada por:
  *   - Settings.jsx  → botón manual con UI de progreso
  *   - usePriceAutoUpdate.js → cron silencioso 1 vez/día
  */
 
-import { supabase }             from './supabase'
-import { fetchCardMarketData }  from './pokemonTcg'
-import { STORE_ID }             from '../constants'
+import { supabase }  from './supabase'
+import { STORE_ID }  from '../constants'
+
+const BACKEND = 'https://stock-tcg-production.up.railway.app'
 
 /**
  * @param {object} opts
@@ -26,7 +28,7 @@ export async function revalidarPrecios({ blue, oficial, onProgress }) {
   // Traer todo el inventario disponible con la info de la carta
   const { data: items, error } = await supabase
     .from('inventory')
-    .select('id, price_usd, cards(name, set_name, card_number)')
+    .select('id, price_usd, cards(id, name, set_name, card_number, language)')
     .eq('store_id', STORE_ID)
     .eq('status', 'disponible')
 
@@ -44,9 +46,24 @@ export async function revalidarPrecios({ blue, oficial, onProgress }) {
     const card = item.cards
     if (!card?.name) { noPrice++; continue }
 
-    // Buscar precio + imagen en TCG API (comparte caché con el visor de imágenes)
-    const data   = await fetchCardMarketData(card.name, card.card_number, card.set_name)
-    const newUsd = data?.price_usd ?? null
+    let newUsd = null
+    try {
+      const params = new URLSearchParams({
+        name: card.name,
+        lang: card.language || 'en',
+      })
+      if (card.card_number) params.set('number', card.card_number)
+      if (card.set_name)    params.set('set_name', card.set_name)
+      if (card.id)          params.set('card_id', card.id)   // guarda en price_history
+
+      const res = await fetch(`${BACKEND}/card-price?${params}`)
+      if (res.ok) {
+        const json = await res.json()
+        newUsd = json.price_usd ?? null
+      }
+    } catch (e) {
+      // sin precio
+    }
 
     let entry = null
 
