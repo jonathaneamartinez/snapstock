@@ -3,6 +3,31 @@
 
 const BASE = 'https://api.pokemontcg.io/v2'
 
+const SUPA_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+async function _fetchSetsSupabase(lang = 'en') {
+  try {
+    const res = await fetch(
+      `${SUPA_URL}/rest/v1/sets?language=eq.${lang}&order=year.desc&limit=300`,
+      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } }
+    )
+    if (!res.ok) return []
+    const rows = await res.json()
+    return rows.map(s => ({
+      id:     s.id,
+      name:   s.name,
+      series: s.series,
+      total:  s.total,
+      year:   s.year ?? '',
+      logo:   s.logo_url ?? null,
+      symbol: s.symbol_url ?? null,
+    }))
+  } catch {
+    return []
+  }
+}
+
 // Resultados ya resueltos (nombre|numero → result)
 const _cache = new Map()
 
@@ -48,23 +73,25 @@ export async function fetchAllSets() {
   _setsFetching = (async () => {
     try {
       const res  = await fetch(`${BASE}/sets?orderBy=-releaseDate&pageSize=250`)
-      if (!res.ok) return []
-      const json = await res.json()
-      _setsCache = (json.data ?? []).map(s => ({
-        id:         s.id,
-        name:       s.name,
-        series:     s.series,
-        total:      s.total,
-        year:       s.releaseDate?.slice(0, 4) ?? '',
-        logo:       s.images?.logo ?? null,
-        symbol:     s.images?.symbol ?? null,
-      }))
-      return _setsCache
-    } catch {
-      return []
-    } finally {
-      _setsFetching = null
-    }
+      if (res.ok) {
+        const json = await res.json()
+        _setsCache = (json.data ?? []).map(s => ({
+          id:         s.id,
+          name:       s.name,
+          series:     s.series,
+          total:      s.total,
+          year:       s.releaseDate?.slice(0, 4) ?? '',
+          logo:       s.images?.logo ?? null,
+          symbol:     s.images?.symbol ?? null,
+        }))
+        return _setsCache
+      }
+    } catch { /* caer al fallback */ }
+
+    // Fallback: Supabase
+    console.warn('[fetchAllSets] pokemontcg.io no disponible, usando Supabase')
+    _setsCache = await _fetchSetsSupabase('en')
+    return _setsCache
   })()
   return _setsFetching
 }

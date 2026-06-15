@@ -3,6 +3,26 @@ import { fetchAllSets } from '../../lib/pokemonTcg'
 import { scannerApi } from '../../lib/scanner'
 import { translateSetName } from '../../lib/setTranslations'
 import { STORE_ID } from '../../constants'
+import { supabase } from '../../lib/supabase'
+
+async function fetchSetsJpSupabase() {
+  const { data } = await supabase
+    .from('sets')
+    .select('id, name, series, total, year, symbol_url, logo_url')
+    .eq('language', 'jp')
+    .order('year', { ascending: false })
+    .limit(300)
+  if (!data?.length) return []
+  return data.map(s => ({
+    id:     s.id,
+    name:   s.name,
+    series: s.series,
+    total:  s.total,
+    year:   s.year ?? '',
+    logo:   s.logo_url ?? null,
+    symbol: s.symbol_url ?? null,
+  }))
+}
 
 // ── Sets personalizados en localStorage ───────────────────────────────────────
 const LS_KEY = `custom_sets_${STORE_ID}`
@@ -61,7 +81,11 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
         const raw = await fetchAllSets()
         data = raw
       } else {
-        const raw = await scannerApi.availableSets(normalizedLang)
+        let raw = await scannerApi.availableSets(normalizedLang)
+        if (!raw?.length) {
+          console.warn('[SetSelect] availableSets vacío, usando Supabase')
+          raw = await fetchSetsJpSupabase()
+        }
         const seen = new Map()
         for (const s of raw) {
           const en = translateSetName(s.name, s.id)
