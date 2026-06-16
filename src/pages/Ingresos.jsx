@@ -12,17 +12,26 @@ import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
 
-// ── Busca precio de PriceCharting desde price_history por card_id ─────────────
-async function fetchPrecioPC(cardId) {
+// ── Busca precio de PriceCharting desde price_history por card_id + grade ────
+async function fetchPrecioPC(cardId, finish = 'normal', grade = 'ungraded') {
   if (!cardId) return null
-  const { data } = await supabase
+  let q = supabase
     .from('price_history')
-    .select('price_usd, snapshot_date')
+    .select('price_usd, price_buy_usd, price_sell_usd, snapshot_date, finish')
     .eq('card_id', cardId)
     .eq('source', 'pricecharting')
+    .eq('grade', grade)
     .order('snapshot_date', { ascending: false })
-    .limit(1)
-  return data?.[0]?.price_usd ?? null
+  const { data } = await q.limit(5)
+  if (!data?.length) return null
+  // Preferir el finish exacto, sino el más reciente
+  const exact = data.find(r => r.finish === finish || r.finish === 'normal')
+  const row   = exact ?? data[0]
+  return {
+    price_usd:      row.price_usd      ?? null,
+    price_buy_usd:  row.price_buy_usd  ?? null,
+    price_sell_usd: row.price_sell_usd ?? null,
+  }
 }
 
 // ── Normaliza número de carta (strip ceros leading, quita /total) ─────────────
@@ -74,7 +83,7 @@ export default function Ingresos() {
 
   const [form, setForm] = useState({
     nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
-    condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal',
+    condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded',
   })
   const [loading,   setLoading]   = useState(false)
   const [toast,     setToast]     = useState({ visible: false, msg: '', tipo: 'success' })
@@ -94,7 +103,7 @@ export default function Ingresos() {
   const allSetCardsRef = useRef([])
 
   // Preview / precios de mercado
-  const [preview,     setPreview]     = useState(null)   // { imagen, precio_usd }
+  const [preview,     setPreview]     = useState(null)   // { imagen, precio_usd, precio_buy_usd, precio_sell_usd, grade }
   const [previewLoad, setPreviewLoad] = useState(false)
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -352,20 +361,25 @@ export default function Ingresos() {
     let precioBase = sug.precio_usd ?? null
 
     if (cardResult) {
-      const pcPrice = await fetchPrecioPC(cardResult.id)
-      // Usar PC si tiene precio — es el más preciso (ventas reales)
-      // Si PC < TCGPlayer, igual usamos PC porque TCGPlayer puede tener listings inflados
-      if (pcPrice) precioBase = pcPrice
+      const pcResult = await fetchPrecioPC(cardResult.id, form.finish, form.grade)
+      if (pcResult?.price_usd) {
+        precioBase = pcResult.price_usd
+        setPreview(prev => ({
+          ...prev,
+          precio_buy_usd:  pcResult.price_buy_usd  ?? null,
+          precio_sell_usd: pcResult.price_sell_usd ?? null,
+          grade:           form.grade,
+        }))
+      }
     }
     // Precio base nunca puede ser 0 o negativo
     if (precioBase && precioBase <= 0) precioBase = null
 
     if (precioBase && blue) {
       const m = margen ?? 0
-      // Precio = PC × blue × (1 + margen%), mínimo PC × blue sin margen negativo
-      const baseARS    = precioBase * blue
-      const conMargen  = baseARS * (1 + m / 100)
-      const autoARS    = Math.round(Math.max(conMargen, baseARS) / 500) * 500
+      const baseARS   = precioBase * blue
+      const conMargen = baseARS * (1 + m / 100)
+      const autoARS   = Math.round(Math.max(conMargen, baseARS) / 500) * 500
       setForm(f => ({ ...f, precioVenta: String(autoARS) || f.precioVenta }))
     }
 
@@ -421,11 +435,11 @@ export default function Ingresos() {
             const cidResult = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set)
             if (cidResult) {
               if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
-              const pcPrice = await fetchPrecioPC(cidResult.id)
-              if (pcPrice) {
+              const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
+              if (pcResult?.price_usd) {
                 const m = margen ?? 0
-                setPreview(prev => ({ ...prev, precio_usd: pcPrice }))
-                setForm(f => ({ ...f, precioVenta: String(Math.round(pcPrice * blue * (1 + m / 100) / 500) * 500) || f.precioVenta }))
+                setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, grade: form.grade }))
+                setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) || f.precioVenta }))
               }
             }
             setSugLoading(false)
@@ -457,11 +471,11 @@ export default function Ingresos() {
           const cidResult = await fetchCardId(form.nombre, numNorm, lang, form.set)
           if (cidResult) {
             if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
-            const pcPrice = await fetchPrecioPC(cidResult.id)
-            if (pcPrice) {
+            const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
+            if (pcResult?.price_usd) {
               const m = margen ?? 0
-              const autoPrice = String(Math.round(pcPrice * blue * (1 + m / 100) / 500) * 500)
-              setPreview(prev => ({ ...prev, precio_usd: pcPrice }))
+              const autoPrice = String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500)
+              setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, grade: form.grade }))
               setForm(f => ({ ...f, precioVenta: autoPrice || f.precioVenta }))
               setSugLoading(false)
               return
@@ -526,9 +540,12 @@ export default function Ingresos() {
   }, [])
 
   // ── Precios calculados ──────────────────────────────────────────────────
-  const usd     = preview?.precio_usd ?? null
-  const arsOfic = usd != null && oficial ? usd * oficial : null
-  const arsBlue = usd != null && blue    ? usd * blue    : null
+  const usd          = preview?.precio_usd      ?? null
+  const usdBuy       = preview?.precio_buy_usd  ?? null
+  const usdSell      = preview?.precio_sell_usd ?? null
+  const arsOfic      = usd != null && oficial ? usd * oficial : null
+  const arsBlue      = usd != null && blue    ? usd * blue    : null
+  const GRADE_LABELS = { ungraded: 'Sin graduar', psa9: 'PSA 9', psa10: 'PSA 10', bgs10: 'BGS 10' }
 
   // ── Submit: escribe directo en Supabase ────────────────────────────────
   const handleSubmit = async (e) => {
@@ -604,6 +621,7 @@ export default function Ingresos() {
             price_ars_oficial: arsOfic   ?? null,
             price_ars_blue:    arsBlue   ?? null,
             sale_price_ars:    form.precioVenta ? parseFloat(form.precioVenta) : null,
+            grade:             form.grade || 'ungraded',
           })
           .eq('id', existingInv.id)
         if (invErr) throw invErr
@@ -625,12 +643,13 @@ export default function Ingresos() {
             scan_date:         new Date().toISOString(),
             finish:            form.finish || 'normal',
             holo:              isHolo,
+            grade:             form.grade || 'ungraded',
           })
         if (invErr) throw invErr
       }
 
       showToast(`✅ ${cantidad > 1 ? `${cantidad} ${t('ingresos_added_many')}` : t('ingresos_added_one')} al stock`)
-      setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal' })
+      setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded' })
       setPreview(null)
     } catch (err) {
       console.error('Error al guardar carta:', err)
@@ -791,6 +810,45 @@ export default function Ingresos() {
                     className="w-full"
                   />
                 </div>
+                <div className="col-span-3">
+                  <label className={labelCls}>Grado</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'ungraded', label: 'Sin graduar' },
+                      { value: 'psa9',     label: 'PSA 9' },
+                      { value: 'psa10',    label: 'PSA 10' },
+                      { value: 'bgs10',    label: 'BGS 10' },
+                    ].map(g => (
+                      <button
+                        key={g.value}
+                        type="button"
+                        onClick={async () => {
+                          setForm(f => ({ ...f, grade: g.value }))
+                          // Re-fetch precio para el nuevo grado
+                          if (preview?.precio_usd !== undefined) {
+                            const cardResult = await fetchCardId(form.nombre, form.numero, normLang(form.idioma), form.set)
+                            if (cardResult) {
+                              const pcResult = await fetchPrecioPC(cardResult.id, form.finish, g.value)
+                              if (pcResult?.price_usd) {
+                                const m = margen ?? 0
+                                setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, grade: g.value }))
+                                setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
+                              } else {
+                                setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, grade: g.value }))
+                              }
+                            }
+                          }
+                        }}
+                        className={`flex-1 py-1.5 text-xs font-semibold rounded-xl border transition
+                          ${form.grade === g.value
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50'}`}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className={labelCls}>{t('ingresos_language')}</label>
                   <select value={form.idioma}
@@ -811,9 +869,16 @@ export default function Ingresos() {
               {/* Precios de mercado (read-only) */}
               <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">
-                    {t('ingresos_market_price')}
-                  </p>
+                  <div>
+                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">
+                      {t('ingresos_market_price')}
+                    </p>
+                    {usd != null && (
+                      <p className="text-[10px] text-blue-500 font-medium mt-0.5">
+                        PriceCharting · {GRADE_LABELS[form.grade] ?? form.grade}
+                      </p>
+                    )}
+                  </div>
                   {form.nombre && (
                     <button
                       type="button"
@@ -839,6 +904,23 @@ export default function Ingresos() {
                     </div>
                   ))}
                 </div>
+                {/* Buy/Sell refs — solo disponibles para ungraded */}
+                {form.grade === 'ungraded' && (usdBuy || usdSell) && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {usdBuy && (
+                      <div className="bg-white rounded-xl p-2 border border-gray-200 text-center">
+                        <p className="text-[10px] text-gray-400 mb-0.5">Buy ref</p>
+                        <p className="text-xs font-bold text-orange-500">${Number(usdBuy).toFixed(2)}</p>
+                      </div>
+                    )}
+                    {usdSell && (
+                      <div className="bg-white rounded-xl p-2 border border-gray-200 text-center">
+                        <p className="text-[10px] text-gray-400 mb-0.5">Sell ref</p>
+                        <p className="text-xs font-bold text-teal-600">${Number(usdSell).toFixed(2)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {usd == null && (
                   <p className="text-[11px] text-gray-400 text-center pt-1">
                     {t('ingresos_autocomplete_hint')}
