@@ -40,13 +40,15 @@ const LANG_CFG = {
 
 /* ─── Normalizar carta a formato uniforme ────────────────────────────── */
 const norm = (c, lang) => ({
-  _lang:   lang,
-  _key:    `${lang}|${(c.name ?? c.nombre ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? c.numero ?? ''}`,
-  name:    c.name    ?? c.nombre   ?? '—',
-  set:     c.set_name ?? '—',
-  set_id:  c.set_id  ?? null,
-  number:  c.card_number ?? c.numero  ?? '',
-  image:   c.image_url   ?? c.imagen   ?? null,
+  _lang:     lang,
+  _key:      `${lang}|${(c.name ?? c.nombre ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? c.numero ?? ''}`,
+  id:        c.id       ?? null,
+  name:      c.name     ?? c.nombre   ?? '—',
+  set:       c.set_name ?? '—',
+  set_id:    c.set_id   ?? null,
+  number:    c.card_number ?? c.numero  ?? '',
+  image:     c.image_url   ?? c.imagen   ?? null,
+  price_usd: c.price_usd   ?? null,
 })
 
 /* ─── Deduplicar por _key ────────────────────────────────────────────── */
@@ -59,12 +61,14 @@ const dedupe = (arr) => {
 const normSupabase = (c) => ({
   _lang:   c.language ?? 'en',
   _key:    `${c.language}|${(c.name ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? ''}`,
+  id:      c.id       ?? null,
   name:    c.name    ?? '—',
   set:     c.set_name ?? '—',
   set_id:  null,
   number:  c.card_number ?? '',
   image:   c.image_url   ?? null,
   variant: c.variant     ?? 'normal',
+  price_usd: null,
 })
 
 /* ─── Badge de idioma ────────────────────────────────────────────────── */
@@ -80,9 +84,14 @@ function LangBadge({ lang }) {
 }
 
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
-function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
+function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const [src,   setSrc]   = useState(card.image || CARD_BACK)
-  const [price, setPrice] = useState(null)  // { price_usd, source, finish } | null | 'loading'
+  // Mostrar precio cacheado inmediatamente mientras llega el fetch de PC
+  const [price, setPrice] = useState(
+    cachedPrice != null
+      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: card.variant || 'normal' }
+      : 'loading'
+  )
 
   const handleError = () => setSrc(CARD_BACK)
 
@@ -98,7 +107,9 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
 
   useEffect(() => {
     setSrc(card.image || CARD_BACK)
-    setPrice('loading')
+    setPrice(cachedPrice != null
+      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: card.variant || 'normal' }
+      : 'loading')
     if (!card.name) return
     let cancelled = false
     scannerApi.cardPrice(card.name, card.number, card._lang, card.variant || 'normal')
@@ -197,12 +208,10 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
 }
 
 /* ─── Card individual ────────────────────────────────────────────────── */
-function PokedexCard({ card, onClick }) {
+function PokedexCard({ card, price, onClick }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
 
   useEffect(() => {
-    // Usar siempre la URL de Supabase si existe — Railway puede devolver imagen equivocada
-    // cuando hay múltiples cartas con el mismo nombre+número en sets distintos
     setSrc(card.image || CARD_BACK)
   }, [card.image])
 
@@ -217,7 +226,7 @@ function PokedexCard({ card, onClick }) {
                  transition-all duration-200 cursor-pointer group"
     >
       {/* Imagen */}
-      <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden">
+      <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden relative">
         <img
           src={src}
           alt={card.name}
@@ -226,6 +235,15 @@ function PokedexCard({ card, onClick }) {
                      group-hover:scale-[1.04] transition-transform duration-300"
           onError={handleError}
         />
+        {/* Badge de precio sobre la imagen */}
+        {price != null && (
+          <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-center">
+            <span className="bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold
+                             px-2 py-0.5 rounded-full leading-tight">
+              U$D {Number(price).toFixed(2)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Info */}
@@ -265,6 +283,7 @@ export default function Pokedex() {
   const [loadingAlt,  setLoadingAlt] = useState(false) // JP/CN cargando (solo en modo set)
   const [hasMore,     setHasMore]    = useState(false)
   const [modalIdx,    setModalIdx]   = useState(null)  // índice de carta abierta en modal
+  const [pricesMap,   setPricesMap]  = useState({})    // card_id → price_usd (desde price_history)
 
   // Warm-up: despertar Railway apenas el usuario entra a la página
   useEffect(() => { scannerApi.health().catch(() => {}) }, [])
@@ -277,6 +296,23 @@ export default function Pokedex() {
   const loadMoreRef  = useRef(null) // ref estable para el IntersectionObserver
   const searchIdRef  = useRef(0)    // evita que resultados viejos sobreescriban los nuevos
 
+  /* ── Fetch precios desde price_history en un solo batch ─────────────── */
+  const batchFetchPrices = async (cardIds) => {
+    if (!cardIds.length) return
+    const { data } = await supabase
+      .from('price_history')
+      .select('card_id, price_usd, snapshot_date')
+      .in('card_id', cardIds)
+      .eq('source', 'pricecharting')
+      .order('snapshot_date', { ascending: false })
+      .limit(cardIds.length * 5)
+    const map = {}
+    for (const row of (data ?? [])) {
+      if (!map[row.card_id] && row.price_usd > 0) map[row.card_id] = row.price_usd
+    }
+    if (Object.keys(map).length > 0) setPricesMap(prev => ({ ...prev, ...map }))
+  }
+
   /* ── Buscar por nombre — usa Supabase directamente (todas las langs juntas) ── */
   const runNameSearch = async (q, page, langs) => {
     if (!q || q.length < 2) return
@@ -285,7 +321,7 @@ export default function Pokedex() {
     searchIdRef.current += 1
     const myId = searchIdRef.current
 
-    if (page === 1) { setLoading(true); setLoadingAlt(false); setCards([]) }
+    if (page === 1) { setLoading(true); setLoadingAlt(false); setCards([]); setPricesMap({}) }
     else             setLoadingMore(true)
 
     try {
@@ -319,6 +355,10 @@ export default function Pokedex() {
           return [...prev, ...results.filter(c => !seen.has(c._key))]
         })
       }
+
+      // Batch: precios desde price_history para todas las cartas cargadas
+      const ids = results.map(c => c.id).filter(Boolean)
+      batchFetchPrices(ids)
     } catch (err) {
       if (searchIdRef.current !== myId) return
       console.error('Pokédex search error:', err)
@@ -339,6 +379,7 @@ export default function Pokedex() {
     setLoading(true)
     setLoadingAlt(false)
     setCards([])
+    setPricesMap({})
     setCacheRef.current = { en: [], jp: [], cn: [] }
     setHasMore(false)
 
@@ -562,7 +603,12 @@ export default function Pokedex() {
         {!loading && cards.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {cards.map((card, i) => (
-              <PokedexCard key={card._key} card={card} onClick={() => setModalIdx(i)} />
+              <PokedexCard
+                key={card._key}
+                card={card}
+                price={pricesMap[card.id] ?? card.price_usd ?? null}
+                onClick={() => setModalIdx(i)}
+              />
             ))}
           </div>
         )}
@@ -594,6 +640,7 @@ export default function Pokedex() {
       {modalIdx !== null && cards[modalIdx] && (
         <CardModal
           card={cards[modalIdx]}
+          cachedPrice={pricesMap[cards[modalIdx].id] ?? cards[modalIdx].price_usd ?? null}
           onClose={() => setModalIdx(null)}
           onPrev={() => setModalIdx(i => Math.max(0, i - 1))}
           onNext={() => setModalIdx(i => Math.min(cards.length - 1, i + 1))}
