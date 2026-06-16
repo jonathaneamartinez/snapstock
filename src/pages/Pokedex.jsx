@@ -97,19 +97,10 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
   useEffect(() => {
+    setSrc(card.image || CARD_BACK)
     setPrice('loading')
-    if (card.image && card.image.includes(R2_HOST)) {
-      setSrc(card.image)
-    } else {
-      setSrc(card.image || CARD_BACK)
-    }
     if (!card.name) return
     let cancelled = false
-    if (!card.image || !card.image.includes(R2_HOST)) {
-      fetchImgUrl(card.name, card.number, card._lang).then(url => {
-        if (!cancelled) setSrc(url || card.image || CARD_BACK)
-      })
-    }
     scannerApi.cardPrice(card.name, card.number, card._lang, card.variant || 'normal')
       .then(r => { if (!cancelled) setPrice(r) })
       .catch(() => { if (!cancelled) setPrice(null) })
@@ -205,26 +196,15 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   )
 }
 
-const R2_HOST = 'pub-9bff851767154369b00cfc4be1fadb87.r2.dev'
-
 /* ─── Card individual ────────────────────────────────────────────────── */
 function PokedexCard({ card, onClick }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
 
   useEffect(() => {
-    // Si ya tenemos URL de R2 en Supabase, usarla directamente sin llamar a Railway
-    if (card.image && card.image.includes(R2_HOST)) {
-      setSrc(card.image)
-      return
-    }
-    if (!card.name) return
-    let cancelled = false
-    fetchImgUrl(card.name, card.number, card._lang).then(url => {
-      if (cancelled) return
-      setSrc(url || card.image || CARD_BACK)
-    })
-    return () => { cancelled = true }
-  }, [card.name, card.number, card._lang, card.image])
+    // Usar siempre la URL de Supabase si existe — Railway puede devolver imagen equivocada
+    // cuando hay múltiples cartas con el mismo nombre+número en sets distintos
+    setSrc(card.image || CARD_BACK)
+  }, [card.image])
 
   const handleError = () => setSrc(CARD_BACK)
 
