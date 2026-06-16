@@ -314,11 +314,11 @@ export default function Pokedex() {
 
       const { data, count, error } = await supabase
         .from('cards')
-        .select('id, name, set_name, card_number, language, image_url, variant', { count: 'exact' })
-        .ilike('name', `${q}%`)
+        .select('id, name, name_en, set_name, card_number, language, image_url, variant', { count: 'exact' })
+        .or(`name.ilike.${q}%,name_en.ilike.${q}%`)
         .in('language', [...langs])
         .range(from, to)
-        .order('name')
+        .order('name_en', { nullsFirst: false })
         .order('card_number')
 
       if (searchIdRef.current !== myId) return // búsqueda cancelada
