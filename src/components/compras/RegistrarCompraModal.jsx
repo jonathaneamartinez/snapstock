@@ -13,6 +13,15 @@ import Spinner      from '../ui/Spinner'
 import SetSelect    from '../ui/SetSelect'
 import FinishSelect from '../ui/FinishSelect'
 
+const BACKEND = 'https://stock-tcg-production.up.railway.app'
+
+const GRADE_OPTIONS = [
+  { value: 'ungraded', label: 'Sin graduar' },
+  { value: 'psa9',     label: 'PSA 9'       },
+  { value: 'psa10',    label: 'PSA 10'      },
+  { value: 'bgs10',    label: 'BGS 10'      },
+]
+
 const normLang = (idioma) => {
   if (['ja', 'jp', 'japanese'].includes(idioma)) return 'jp'
   if (['zh', 'cn', 'chinese'].includes(idioma))  return 'cn'
@@ -39,6 +48,76 @@ const detectFirstEdition = (card) => {
   return { detected: false, possible: false, reason: '' }
 }
 
+/* ─── Enriquecer sugerencias con precios PC (batch desde price_history) ──── */
+async function enrichSuggestionsWithPCPrices(suggestions, lang = 'en') {
+  if (!suggestions.length) return suggestions
+  const names = [...new Set(suggestions.map(s => s.name).filter(Boolean))]
+  if (!names.length) return suggestions
+
+  // Buscar card_ids en Supabase por nombre + idioma
+  const { data: cards } = await supabase
+    .from('cards')
+    .select('id, name, card_number, set_name')
+    .in('name', names)
+    .eq('language', lang)
+    .limit(100)
+
+  const cardList = cards ?? []
+
+  // Fallback ilike para los que no matchearon exacto
+  const matched  = new Set(cardList.map(c => c.name.toLowerCase()))
+  const missing  = names.filter(n => !matched.has(n.toLowerCase()))
+  if (missing.length > 0) {
+    for (const nm of missing.slice(0, 5)) {
+      const { data: like } = await supabase
+        .from('cards')
+        .select('id, name, card_number, set_name')
+        .ilike('name', `%${nm}%`)
+        .eq('language', lang)
+        .limit(3)
+      if (like?.length) cardList.push(...like)
+    }
+  }
+
+  if (!cardList.length) return suggestions
+
+  // Batch query price_history
+  const ids = cardList.map(c => c.id)
+  const { data: prices } = await supabase
+    .from('price_history')
+    .select('card_id, price_usd')
+    .in('card_id', ids)
+    .eq('source', 'pricecharting')
+    .eq('grade', 'ungraded')
+    .order('snapshot_date', { ascending: false })
+
+  // Construir map: card_id → price
+  const priceById = {}
+  for (const p of (prices ?? [])) {
+    if (!priceById[p.card_id]) priceById[p.card_id] = p.price_usd
+  }
+
+  // Mapas de matching
+  const byNameNum  = {}   // "nombre|numero" → price_usd
+  const byName     = {}   // "nombre" → price_usd
+  for (const c of cardList) {
+    const prc = priceById[c.id]
+    if (!prc) continue
+    const key = c.name.toLowerCase()
+    const numKey = `${key}|${(c.card_number || '').toLowerCase()}`
+    byNameNum[numKey] = prc
+    if (!byName[key]) byName[key] = prc
+  }
+
+  return suggestions.map(s => {
+    const key    = (s.name || '').toLowerCase()
+    const numKey = `${key}|${(s.card_number || '').toLowerCase()}`
+    const pcPrice = byNameNum[numKey] ?? byName[key]
+    if (pcPrice) return { ...s, price_usd: pcPrice, source_price: 'pc' }
+    return s
+  })
+}
+
 /* ─── Fila vacía ──────────────────────────────────────────────────────────── */
 const emptyRow = () => ({
   _key:             crypto.randomUUID(),
@@ -51,10 +130,12 @@ const emptyRow = () => ({
   can_be_first_ed:  false,
   first_ed_reason:  '',
   finish:           'normal',
+  grade:            'ungraded',
   quantity:         1,
   condition:        'NM',
-  price_usd:        '',
-  price_ars:        '',
+  price_usd:        '',      // costo real pagado (entrada manual)
+  price_ars:        '',      // = price_usd × blue (auto)
+  price_market_usd: null,    // precio PC de referencia (informativo)
   suggestions:      [],
   searching:        false,
   _setCards:        [],       // cartas preloadeadas del set seleccionado
@@ -97,40 +178,60 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   }
 
   /* ── Buscar cartas ─────────────────────────────────────────────────────── */
-  const searchCards = async (query, key) => {
+  const searchCards = async (query, key, language = 'en') => {
     if (!query || query.length < 2) {
       updateRow(key, { suggestions: [], searching: false })
       return
     }
     updateRow(key, { searching: true })
 
+    const lang = normLang(language)
+
     const [tcgCards, dbRes] = await Promise.allSettled([
-      searchCardsByName(query, 25),
-      supabase.from('cards').select('id, name, image_url, set_name').ilike('name', `%${query}%`).limit(8),
+      lang === 'en' ? searchCardsByName(query, 25) : Promise.resolve({ results: [] }),
+      supabase.from('cards').select('id, name, image_url, set_name, card_number, language')
+        .ilike('name', `%${query}%`)
+        .eq('language', lang)
+        .limit(8),
     ])
 
-    // searchCardsByName ahora devuelve { results, totalCount }
     const fromTcg = tcgCards.status === 'fulfilled' ? (tcgCards.value?.results ?? []) : []
     const fromDb  = dbRes.status === 'fulfilled'
       ? (dbRes.value?.data ?? []).map(c => ({
           id: c.id, name: c.name, set_name: c.set_name || null,
-          image_url: c.image_url, price_usd: null, source: 'stock',
+          card_number: c.card_number, image_url: c.image_url,
+          price_usd: null, source: 'stock',
           subtypes: [], has_first_ed_price: false,
         }))
       : []
 
+    // Para JP/CN, buscar en scanner backend
+    let fromScanner = []
+    if (lang !== 'en') {
+      try {
+        const res = await scannerApi.buscar(query, lang, null, 20)
+        fromScanner = (res?.results ?? []).map(c => ({
+          name: c.nombre || c.name, set_name: c.set_name || c.set,
+          card_number: c.numero || c.number, image_url: c.imagen || c.image_url,
+          price_usd: null, source: 'scanner', subtypes: [], has_first_ed_price: false,
+        }))
+      } catch (_) {}
+    }
+
     const seen = new Set()
-    const merged = [...fromDb, ...fromTcg].filter(c => {
+    const merged = [...fromDb, ...fromTcg, ...fromScanner].filter(c => {
       const k = `${c.name?.toLowerCase()}|${(c.set_name || '').toLowerCase()}`
       if (seen.has(k)) return false
       seen.add(k)
       return true
     })
 
-    updateRow(key, { suggestions: merged, searching: false })
+    // Enriquecer con precios PC en background
+    const enriched = await enrichSuggestionsWithPCPrices(merged, lang)
+    updateRow(key, { suggestions: enriched, searching: false })
   }
 
-  const debouncedSearch = useDebounce(searchCards, 150)
+  const debouncedSearch = useDebounce((q, key, lang) => searchCards(q, key, lang), 150)
 
   /* ── Preload de cartas del set seleccionado ────────────────────────────── */
   const preloadSetCards = async (setId, language, key) => {
@@ -182,36 +283,47 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   const addRow = () =>
     setRows(prev => [...prev, emptyRow()])
 
-  const selectCard = async (key, card) => {
-    const usd = card.price_usd ? parseFloat(card.price_usd).toFixed(2) : ''
-    const ars = usd && blue ? String(Math.round(parseFloat(usd) * blue)) : ''
+  const selectCard = async (key, card, language = 'en', grade = 'ungraded') => {
     const firstEd = detectFirstEdition(card)
-    // card.id puede ser el ID de la API TCG ("ex8-16") — no es un UUID de Supabase.
-    // Solo usamos card_id si la carta vino del stock propio (source === 'stock').
-    // Para cartas de mercado, dejamos card_id en null y guardamos todo en _market
-    // para que handleSubmit haga el lookup/upsert en la tabla cards y obtenga el UUID real.
     const isStockCard = card.source === 'stock' && card.id
+
+    // PC reference price (si ya vino enriquecida del dropdown)
+    const marketUsd = card.source_price === 'pc' && card.price_usd
+      ? parseFloat(card.price_usd)
+      : null
+
     updateRow(key, {
       card_id:          isStockCard ? card.id : null,
       card_name:        card.name,
       set_name:         card.set_name || '',
       set_id:           card.set_id   || null,
       _market:          isStockCard ? null : card,
-      price_usd:        usd,
-      price_ars:        ars,
+      price_usd:        '',              // usuario ingresa el costo real
+      price_ars:        '',
+      price_market_usd: marketUsd,
       is_first_edition: firstEd.detected,
       can_be_first_ed:  firstEd.possible,
       first_ed_reason:  firstEd.reason,
       suggestions:      [],
     })
-    // Si no tiene precio, buscar desde la API (siempre mostrar precio de mercado)
-    if (!card.price_usd) {
-      const imgs = await fetchCardImages(card.name, card.card_number, card.set_name)
-      if (imgs?.price_usd) {
-        const newUsd = parseFloat(imgs.price_usd).toFixed(2)
-        const newArs = blue ? String(Math.round(parseFloat(newUsd) * blue)) : ''
-        updateRow(key, { price_usd: newUsd, price_ars: newArs })
-      }
+
+    // Si no hay precio PC referencia, buscar on-demand
+    if (!marketUsd && card.name) {
+      try {
+        const lang = normLang(language)
+        const params = new URLSearchParams({ name: card.name, lang, grade })
+        if (card.card_number) params.set('number',   card.card_number)
+        if (card.set_name)    params.set('set_name', card.set_name)
+        if (isStockCard)      params.set('card_id',  card.id)
+
+        const res = await fetch(`${BACKEND}/card-price?${params}`)
+        if (res.ok) {
+          const json = await res.json()
+          if (json.price_usd) {
+            updateRow(key, { price_market_usd: json.price_usd })
+          }
+        }
+      } catch (_) {}
     }
   }
 
@@ -273,25 +385,30 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       const validRows = rows.filter(r => r.card_id)
       if (validRows.length > 0) {
         const items = validRows.map(r => ({
-          purchase_id: purchase.id,
-          card_id:     r.card_id,
-          quantity:    r.quantity || 1,
-          condition:   r.condition || 'NM',
-          price_usd:   parseFloat(r.price_usd) || null,
-          price_ars:   parseFloat(r.price_ars) || null,
+          purchase_id:      purchase.id,
+          card_id:          r.card_id,
+          quantity:         r.quantity || 1,
+          condition:        r.condition || 'NM',
+          finish:           r.finish || 'normal',
+          grade:            r.grade || 'ungraded',
+          price_usd:        parseFloat(r.price_usd) || null,     // costo real pagado
+          price_ars:        parseFloat(r.price_ars) || null,
+          price_market_usd: r.price_market_usd || null,          // precio PC referencia
         }))
 
         const { error: errI } = await supabase.from('purchase_items').insert(items)
         if (errI) throw errI
 
-        // 4. Upsert inventory
+        // 4. Upsert inventory — price_usd = precio PC de mercado (no el costo)
         for (const r of validRows) {
+          const grade = r.grade || 'ungraded'
           const { data: existing } = await supabase
             .from('inventory')
             .select('id, quantity')
             .eq('store_id', STORE_ID)
             .eq('card_id', r.card_id)
             .eq('condition', r.condition || 'NM')
+            .eq('grade', grade)
             .eq('status', 'disponible')
             .maybeSingle()
 
@@ -301,19 +418,24 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
               .update({ quantity: (existing.quantity || 1) + (r.quantity || 1) })
               .eq('id', existing.id)
           } else {
+            const mktUsd = r.price_market_usd || null
+            const arsBlue = (mktUsd && blue) ? Math.round(mktUsd * blue) : null
             await supabase
               .from('inventory')
               .insert({
-                store_id:       STORE_ID,
-                card_id:        r.card_id,
-                quantity:       r.quantity || 1,
-                condition:      r.condition || 'NM',
-                finish:         r.finish || 'normal',
-                holo:           ['holofoil','reverse_holo','gold_star'].includes(r.finish),
-                status:         'disponible',
-                estado:         'disponible',
-                price_ars_blue: parseFloat(r.price_ars) || null,
-                idioma:         r.language || 'en',
+                store_id:         STORE_ID,
+                card_id:          r.card_id,
+                quantity:         r.quantity || 1,
+                condition:        r.condition || 'NM',
+                condicion:        r.condition || 'NM',
+                finish:           r.finish || 'normal',
+                holo:             ['holofoil','reverse_holo','gold_star'].includes(r.finish),
+                grade,
+                status:           'disponible',
+                estado:           'disponible',
+                price_usd:        mktUsd,        // precio PC mercado, null si no hay
+                price_ars_blue:   arsBlue,
+                scan_date:        new Date().toISOString(),
               })
           }
         }
@@ -417,8 +539,8 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                   row={row}
                   isLast={rows.length === 1}
                   onChange={patch => updateRow(row._key, patch)}
-                  onSearch={q => debouncedSearch(q, row._key)}
-                  onSelect={card => selectCard(row._key, card)}
+                  onSearch={q => debouncedSearch(q, row._key, row.language)}
+                  onSelect={(card, lang, grade) => selectCard(row._key, card, lang ?? row.language, grade ?? row.grade)}
                   onRemove={() => removeRow(row._key)}
                   onPreload={(setId, lang) => preloadSetCards(setId, lang, row._key)}
                 />
@@ -489,7 +611,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 ══════════════════════════════════════════════════════════════════════════ */
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
-function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreload }) {
+function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreload, onGradeChange }) {
   const wrapRef    = useRef(null)
   const numTimer   = useRef(null)
   const [numInput, setNumInput] = useState(row.card_number || '')
@@ -604,7 +726,7 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
                 const fe = detectFirstEdition(card)
                 return (
                   <button key={`${card.id || card.name}|${idx}`}
-                    onClick={() => { onSelect(card); onChange({ suggestions: [] }) }}
+                    onClick={() => { onSelect(card, row.language, row.grade); onChange({ suggestions: [] }) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
                     {card.image_url
                       ? <img src={card.image_url} alt={card.name} className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
@@ -617,7 +739,12 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
                       </span>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {card.price_usd && (
-                          <span className="text-emerald-600 font-bold">U$D {parseFloat(card.price_usd).toFixed(2)}</span>
+                          <span className={`font-bold text-[10px] ${card.source_price === 'pc' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                            U$D {parseFloat(card.price_usd).toFixed(2)}
+                          </span>
+                        )}
+                        {card.source_price === 'pc' && (
+                          <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">PC</span>
                         )}
                         {fe.possible && (
                           <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-semibold">
@@ -748,6 +875,46 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
               : <span className="text-gray-400 text-[10px]">○</span>
             }
           </button>
+        )}
+      </div>
+
+      {/* ── Fila 3: Grado + Badge precio PC referencia ─────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 pl-1">
+        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Grado</span>
+        {GRADE_OPTIONS.map(g => (
+          <button
+            key={g.value}
+            type="button"
+            onClick={() => {
+              onChange({ grade: g.value })
+              // Re-fetch precio PC referencia para el nuevo grado
+              if (row.card_name) {
+                const params = new URLSearchParams({ name: row.card_name, lang: normLang(row.language), grade: g.value })
+                if (row.set_name) params.set('set_name', row.set_name)
+                fetch(`${BACKEND}/card-price?${params}`)
+                  .then(r => r.ok ? r.json() : null)
+                  .then(json => {
+                    if (json?.price_usd) onChange({ price_market_usd: json.price_usd })
+                    else onChange({ price_market_usd: null })
+                  })
+                  .catch(() => {})
+              }
+            }}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition
+              ${row.grade === g.value
+                ? 'bg-slate-800 text-white border-slate-800'
+                : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}
+          >
+            {g.label}
+          </button>
+        ))}
+
+        {/* Badge precio PC referencia */}
+        {row.price_market_usd != null && (
+          <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700
+                           border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+            ● Mercado PC: U$D {Number(row.price_market_usd).toFixed(2)}
+          </span>
         )}
       </div>
     </div>

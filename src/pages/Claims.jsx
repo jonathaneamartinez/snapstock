@@ -13,6 +13,48 @@ import { AnimatePresence, motion } from 'framer-motion'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
+const BACKEND   = 'https://stock-tcg-production.up.railway.app'
+
+/* ── Enriquecer cartas del claim con precio PC si falta ──────────────── */
+async function enrichClaimCardsWithPC(cards) {
+  const missing = cards.filter(c => !c.usd && c.id)
+  if (!missing.length) return cards
+
+  // Paso 1: batch desde price_history
+  const cardIds = [...new Set(missing.map(c => c.id))]
+  const { data: prices } = await supabase
+    .from('price_history')
+    .select('card_id, price_usd')
+    .in('card_id', cardIds)
+    .eq('source', 'pricecharting')
+    .eq('grade', 'ungraded')
+    .order('snapshot_date', { ascending: false })
+
+  const priceMap = {}
+  for (const p of (prices ?? [])) {
+    if (!priceMap[p.card_id]) priceMap[p.card_id] = p.price_usd
+  }
+
+  // Paso 2: on-demand para los que siguen sin precio (máx 5 para no saturar)
+  const stillMissing = missing.filter(c => !priceMap[c.id]).slice(0, 5)
+  for (const c of stillMissing) {
+    try {
+      const params = new URLSearchParams({ name: c.name || c.nombre || '', grade: 'ungraded' })
+      if (c.lang) params.set('lang', c.lang)
+      if (c.id)   params.set('card_id', c.id)
+      const res = await fetch(`${BACKEND}/card-price?${params}`)
+      if (res.ok) {
+        const json = await res.json()
+        if (json.price_usd) priceMap[c.id] = json.price_usd
+      }
+    } catch (_) {}
+  }
+
+  return cards.map(c => {
+    if (c.usd || !c.id || !priceMap[c.id]) return c
+    return { ...c, usd: priceMap[c.id] }
+  })
+}
 
 const fmtFecha = (s) =>
   s ? new Date(s).toLocaleDateString('es-AR', {
@@ -557,10 +599,12 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
 function ClaimRow({ claim }) {
   const { t } = useI18n()
   const qc = useQueryClient()
-  const [expanded,    setExpanded]    = useState(false)
-  const [fullImg,     setFullImg]     = useState(null)
-  const [regenCards,  setRegenCards]  = useState(null)
-  const [editMode,     setEditMode]    = useState(false)
+  const [expanded,      setExpanded]      = useState(false)
+  const [fullImg,       setFullImg]       = useState(null)
+  const [regenCards,    setRegenCards]    = useState(null)
+  const [editMode,      setEditMode]      = useState(false)
+  const [enrichedCards, setEnrichedCards] = useState(null)
+  const [enriching,     setEnriching]     = useState(false)
   const [addSearch,    setAddSearch]   = useState('')
   const [addResults,   setAddResults]  = useState([])
   const [addLoading,   setAddLoading]  = useState(false)
@@ -570,6 +614,18 @@ function ClaimRow({ claim }) {
   const addQueryRef  = useRef('')
   const sentinelRef  = useRef(null)
   const addTimerRef  = useRef(null)
+
+  // Enriquecer precios PC cuando se expande el claim
+  useEffect(() => {
+    if (!expanded) return
+    const cards = claim.cards_data ?? []
+    const hasMissing = cards.some(c => !c.usd && c.id)
+    if (!hasMissing) { setEnrichedCards(cards); return }
+    setEnriching(true)
+    enrichClaimCardsWithPC(cards)
+      .then(setEnrichedCards)
+      .finally(() => setEnriching(false))
+  }, [expanded, claim.id])
 
   const hasImages = claim.image_urls?.length > 0
   const hasCards  = claim.cards_data?.length > 0
@@ -642,6 +698,37 @@ function ClaimRow({ claim }) {
   /* ── Agregar carta al claim ─────────────────────────────────────────── */
   const addCardToClaim = async (invRow) => {
     const c = invRow.cards
+    let usd  = invRow.price_usd ?? null
+    let ars  = invRow.price_ars_blue ?? null
+    let sale = invRow.sale_price_ars ?? invRow.price_ars_blue ?? null
+
+    // [A] Si no tiene precio, buscar en price_history o /card-price
+    if (!usd && c.id) {
+      const { data: ph } = await supabase
+        .from('price_history')
+        .select('price_usd')
+        .eq('card_id', c.id)
+        .eq('source', 'pricecharting')
+        .eq('grade', 'ungraded')
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (ph?.price_usd) {
+        usd = ph.price_usd
+      } else if (c.name) {
+        try {
+          const params = new URLSearchParams({ name: c.name, grade: 'ungraded', card_id: c.id })
+          if (c.language) params.set('lang', c.language)
+          const res = await fetch(`${BACKEND}/card-price?${params}`)
+          if (res.ok) {
+            const json = await res.json()
+            if (json.price_usd) usd = json.price_usd
+          }
+        } catch (_) {}
+      }
+    }
+
     const newCard = {
       id:           c.id,
       inventory_id: invRow.id,
@@ -652,9 +739,9 @@ function ClaimRow({ claim }) {
       holo:         c.is_holo || false,
       finish:       invRow.finish || 'normal',
       img:          c.image_url || '',
-      usd:          invRow.price_usd ?? null,
-      ars:          invRow.price_ars_blue ?? null,
-      sale:         invRow.sale_price_ars ?? invRow.price_ars_blue ?? null,
+      usd,
+      ars,
+      sale,
       tags:         [],
     }
     const newCards = [...(claim.cards_data ?? []), newCard]
@@ -834,8 +921,13 @@ function ClaimRow({ claim }) {
                         </button>
                       </div>
 
+                      {enriching && (
+                        <p className="text-[10px] text-gray-400 animate-pulse mb-1">
+                          Cargando precios PC…
+                        </p>
+                      )}
                       <CardTable
-                        cards={claim.cards_data}
+                        cards={enrichedCards ?? claim.cards_data}
                         claimId={claim.id}
                         editMode={editMode}
                         onRemove={removeCardFromClaim}

@@ -17,20 +17,27 @@ const BACKEND = 'https://stock-tcg-production.up.railway.app'
 
 /**
  * @param {object} opts
- * @param {number} opts.blue      — cotización dólar blue
- * @param {number} [opts.oficial] — cotización dólar oficial (opcional)
+ * @param {number} opts.blue        — cotización dólar blue
+ * @param {number} [opts.oficial]   — cotización dólar oficial (opcional)
+ * @param {boolean} [opts.onlyMissing=false] — si true, solo revalida cartas con price_usd IS NULL
  * @param {function} [opts.onProgress] — callback({ current, total, updated, noPrice, entry })
  * @returns {Promise<{ updated: number, noPrice: number, total: number }>}
  */
-export async function revalidarPrecios({ blue, oficial, onProgress }) {
+export async function revalidarPrecios({ blue, oficial, onProgress, onlyMissing = false }) {
   if (!blue) return { updated: 0, noPrice: 0, total: 0 }
 
   // Traer inventario disponible con grade + info de carta
-  const { data: items, error } = await supabase
+  let query = supabase
     .from('inventory')
     .select('id, price_usd, finish, grade, cards(id, name, set_name, card_number, language)')
     .eq('store_id', STORE_ID)
     .eq('status', 'disponible')
+
+  if (onlyMissing) {
+    query = query.is('price_usd', null)
+  }
+
+  const { data: items, error } = await query
 
   if (error || !items) {
     console.warn('[revalidarPrecios] Error cargando inventario:', error?.message)
