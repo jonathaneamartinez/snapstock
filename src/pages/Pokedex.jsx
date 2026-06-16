@@ -97,13 +97,19 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
   useEffect(() => {
-    setSrc(card.image || CARD_BACK)
     setPrice('loading')
+    if (card.image && card.image.includes(R2_HOST)) {
+      setSrc(card.image)
+    } else {
+      setSrc(card.image || CARD_BACK)
+    }
     if (!card.name) return
     let cancelled = false
-    fetchImgUrl(card.name, card.number, card._lang).then(url => {
-      if (!cancelled) setSrc(url || CARD_BACK)
-    })
+    if (!card.image || !card.image.includes(R2_HOST)) {
+      fetchImgUrl(card.name, card.number, card._lang).then(url => {
+        if (!cancelled) setSrc(url || card.image || CARD_BACK)
+      })
+    }
     scannerApi.cardPrice(card.name, card.number, card._lang, card.variant || 'normal')
       .then(r => { if (!cancelled) setPrice(r) })
       .catch(() => { if (!cancelled) setPrice(null) })
@@ -199,24 +205,26 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
   )
 }
 
+const R2_HOST = 'pub-9bff851767154369b00cfc4be1fadb87.r2.dev'
+
 /* ─── Card individual ────────────────────────────────────────────────── */
 function PokedexCard({ card, onClick }) {
-  // Arrancar con la image_url de Supabase (render instantáneo), pero siempre
-  // buscar la imagen CORRECTA por nombre+número en R2. Así si la BD tiene
-  // una URL incorrecta (otro card), se sobreescribe con la imagen real.
   const [src, setSrc] = useState(card.image || CARD_BACK)
 
   useEffect(() => {
+    // Si ya tenemos URL de R2 en Supabase, usarla directamente sin llamar a Railway
+    if (card.image && card.image.includes(R2_HOST)) {
+      setSrc(card.image)
+      return
+    }
     if (!card.name) return
     let cancelled = false
     fetchImgUrl(card.name, card.number, card._lang).then(url => {
       if (cancelled) return
-      // Si R2/pokemontcg.io no encontró imagen → mostrar dorso en lugar de
-      // conservar una image_url potencialmente incorrecta de Supabase
-      setSrc(url || CARD_BACK)
+      setSrc(url || card.image || CARD_BACK)
     })
     return () => { cancelled = true }
-  }, [card.name, card.number, card._lang])
+  }, [card.name, card.number, card._lang, card.image])
 
   const handleError = () => setSrc(CARD_BACK)
 
