@@ -16,19 +16,42 @@ import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
 // Hace 1 sola query batch por nombre × idioma, sin necesitar card_id previo.
 async function enrichSuggestionsWithPCPrices(suggestions, lang) {
   if (!suggestions.length) return suggestions
+
+  // Recolectar nombres únicos (case-insensitive normalizados)
   const names = [...new Set(suggestions.map(s => s.nombre).filter(Boolean))]
   if (!names.length) return suggestions
 
-  // Buscar card_ids para los nombres
+  // Buscar card_ids — usamos ilike OR sobre todos los nombres para tolerar
+  // diferencias de capitalización. Supabase no soporta ilike+in nativo,
+  // así que pedimos por los nombres tal cual y complementamos con número+set.
   const { data: cards } = await supabase
     .from('cards')
     .select('id, name, card_number, set_name')
     .in('name', names)
     .eq('language', lang)
-    .limit(200)
-  if (!cards?.length) return suggestions
+    .limit(300)
 
-  const cardIds = cards.map(c => c.id)
+  // Segunda pasada: buscar por nombre case-insensitive para los que no matchearon
+  const foundNames = new Set((cards ?? []).map(c => c.name))
+  const missing = names.filter(n => !foundNames.has(n))
+  let extraCards = []
+  if (missing.length) {
+    // Buscar cada nombre faltante con ilike (hasta 5 para no abusar)
+    for (const nm of missing.slice(0, 5)) {
+      const { data } = await supabase
+        .from('cards')
+        .select('id, name, card_number, set_name')
+        .ilike('name', nm)
+        .eq('language', lang)
+        .limit(10)
+      if (data?.length) extraCards.push(...data)
+    }
+  }
+
+  const allCards = [...(cards ?? []), ...extraCards]
+  if (!allCards.length) return suggestions
+
+  const cardIds = [...new Set(allCards.map(c => c.id))]
   const { data: prices } = await supabase
     .from('price_history')
     .select('card_id, price_usd, snapshot_date')
@@ -45,17 +68,27 @@ async function enrichSuggestionsWithPCPrices(suggestions, lang) {
   for (const p of prices) {
     if (!priceMap[p.card_id]) priceMap[p.card_id] = p.price_usd
   }
-  // Mapa nombre+numero → card_id
-  const cardMap = {}
-  for (const c of cards) {
-    cardMap[`${c.name}|${c.card_number}`] = c.id
-    cardMap[`${c.name}|`]                 = c.id // fallback sin numero
+
+  // Índices de búsqueda: nombre (lower) + numero → id, y nombre (lower) + set (lower) → id
+  const byNameNum = {}
+  const byNameSet = {}
+  const byNameOnly = {}
+  for (const c of allCards) {
+    const nl = (c.name || '').toLowerCase()
+    const nu = (c.card_number || '').toLowerCase()
+    const sl = (c.set_name || '').toLowerCase()
+    byNameNum[`${nl}|${nu}`]  = c.id
+    byNameSet[`${nl}|${sl}`]  = c.id
+    byNameOnly[nl]            = c.id // fallback más débil
   }
 
   return suggestions.map(s => {
-    const key1 = `${s.nombre}|${s.numero}`
-    const key2 = `${s.nombre}|`
-    const cid  = cardMap[key1] ?? cardMap[key2]
+    const nl = (s.nombre || '').toLowerCase()
+    const nu = (s.numero  || '').toLowerCase()
+    const sl = (s.set     || '').toLowerCase()
+    const cid = byNameNum[`${nl}|${nu}`]
+             ?? byNameSet[`${nl}|${sl}`]
+             ?? byNameOnly[nl]
     const pcPrice = cid ? priceMap[cid] : null
     return pcPrice ? { ...s, precio_usd: pcPrice, source_price: 'pc' } : s
   })
