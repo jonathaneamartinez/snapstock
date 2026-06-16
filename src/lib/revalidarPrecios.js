@@ -1,9 +1,9 @@
 /**
  * revalidarPrecios.js
  *
- * Función central que recorre todo el inventario disponible,
- * consulta PriceCharting (via backend /card-price) por cada carta y actualiza
- * price_usd + ARS en inventory. El backend también guarda en price_history.
+ * Recorre el inventario disponible, consulta PriceCharting (/card-price)
+ * por cada carta+grado y actualiza price_usd + ARS en inventory.
+ * El backend guarda en price_history con grade, price_buy_usd, price_sell_usd.
  *
  * Usada por:
  *   - Settings.jsx  → botón manual con UI de progreso
@@ -17,18 +17,18 @@ const BACKEND = 'https://stock-tcg-production.up.railway.app'
 
 /**
  * @param {object} opts
- * @param {number} opts.blue     — cotización dólar blue
- * @param {number} [opts.oficial]— cotización dólar oficial (opcional)
+ * @param {number} opts.blue      — cotización dólar blue
+ * @param {number} [opts.oficial] — cotización dólar oficial (opcional)
  * @param {function} [opts.onProgress] — callback({ current, total, updated, noPrice, entry })
  * @returns {Promise<{ updated: number, noPrice: number, total: number }>}
  */
 export async function revalidarPrecios({ blue, oficial, onProgress }) {
   if (!blue) return { updated: 0, noPrice: 0, total: 0 }
 
-  // Traer todo el inventario disponible con la info de la carta
+  // Traer inventario disponible con grade + info de carta
   const { data: items, error } = await supabase
     .from('inventory')
-    .select('id, price_usd, cards(id, name, set_name, card_number, language)')
+    .select('id, price_usd, finish, grade, cards(id, name, set_name, card_number, language)')
     .eq('store_id', STORE_ID)
     .eq('status', 'disponible')
 
@@ -37,31 +37,41 @@ export async function revalidarPrecios({ blue, oficial, onProgress }) {
     return { updated: 0, noPrice: 0, total: 0 }
   }
 
-  const total   = items.length
-  let updated   = 0
-  let noPrice   = 0
+  const total = items.length
+  let updated = 0
+  let noPrice = 0
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
     const card = item.cards
     if (!card?.name) { noPrice++; continue }
 
-    let newUsd = null
+    const grade  = item.grade  || 'ungraded'
+    const finish = item.finish || 'normal'
+
+    let newUsd      = null
+    let newBuyUsd   = null
+    let newSellUsd  = null
+
     try {
       const params = new URLSearchParams({
-        name: card.name,
-        lang: card.language || 'en',
+        name:    card.name,
+        lang:    card.language || 'en',
+        grade,
+        finish,
       })
-      if (card.card_number) params.set('number', card.card_number)
+      if (card.card_number) params.set('number',   card.card_number)
       if (card.set_name)    params.set('set_name', card.set_name)
-      if (card.id)          params.set('card_id', card.id)   // guarda en price_history
+      if (card.id)          params.set('card_id',  card.id)
 
       const res = await fetch(`${BACKEND}/card-price?${params}`)
       if (res.ok) {
         const json = await res.json()
-        newUsd = json.price_usd ?? null
+        newUsd     = json.price_usd      ?? null
+        newBuyUsd  = json.price_buy_usd  ?? null
+        newSellUsd = json.price_sell_usd ?? null
       }
-    } catch (e) {
+    } catch (_) {
       // sin precio
     }
 
@@ -77,20 +87,25 @@ export async function revalidarPrecios({ blue, oficial, onProgress }) {
           price_usd:         newUsd,
           price_ars_blue:    newArsBlue,
           price_ars_oficial: newArsOfic,
+          grade,
         })
         .eq('id', item.id)
 
       updated++
       entry = {
         label:  `${card.name}${card.set_name ? ` · ${card.set_name}` : ''}`,
+        grade,
         before: item.price_usd,
         after:  newUsd,
+        buy:    newBuyUsd,
+        sell:   newSellUsd,
         ok:     true,
       }
     } else {
       noPrice++
       entry = {
         label:  `${card.name}${card.set_name ? ` · ${card.set_name}` : ''}`,
+        grade,
         before: item.price_usd,
         after:  null,
         ok:     false,

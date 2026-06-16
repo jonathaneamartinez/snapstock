@@ -30,9 +30,9 @@ function fmtDate(str) {
  * Gráfico de historial de precios (30 días) para una carta.
  * Recibe cardId (inventory UUID) y muestra líneas por fuente.
  */
-export default function PriceHistoryChart({ cardId, days = 30 }) {
+export default function PriceHistoryChart({ cardId, days = 30, grade = 'ungraded' }) {
   const { t } = useI18n()
-  const { data, isLoading, error } = usePriceHistory(cardId, days)
+  const { data, isLoading, error } = usePriceHistory(cardId, days, grade)
 
   if (isLoading) return (
     <div className="flex justify-center items-center h-40">

@@ -36,9 +36,17 @@ const fmtDate = (str) => {
  *               price_usd_efectivo, price_usd, _ars_blue, _ars_ofic, image_url }
  *   onClose — () => void
  */
+const GRADE_OPTIONS = [
+  { value: 'ungraded', label: 'Sin graduar' },
+  { value: 'psa9',     label: 'PSA 9'       },
+  { value: 'psa10',    label: 'PSA 10'      },
+  { value: 'bgs10',    label: 'BGS 10'      },
+]
+
 export default function CardPriceModal({ card, onClose }) {
   const { t } = useI18n()
-  const [days, setDays] = useState(30)
+  const [days,  setDays]  = useState(30)
+  const [grade, setGrade] = useState(card?.grade || 'ungraded')
 
   const showMarket   = isFeatureEnabled('marketIntel')
   const marketCardId = card?.card_id ?? card?.inventory_id
@@ -52,7 +60,10 @@ export default function CardPriceModal({ card, onClose }) {
   const stateConf = KPI_STATE_CONFIG[state] ?? KPI_STATE_CONFIG.normal
   const score     = kpi?.kpi_score
 
+  // Precio según grado seleccionado (card puede traer precio del grado activo)
   const priceCurrent = card.price_usd_efectivo ?? card.price_usd
+  const priceBuy     = grade === 'ungraded' ? (card.price_buy_usd  ?? null) : null
+  const priceSell    = grade === 'ungraded' ? (card.price_sell_usd ?? null) : null
   const change7d     = kpi?.price_change_7d_pct
   const isPositive   = change7d != null && Number(change7d) >= 0
 
@@ -169,11 +180,32 @@ export default function CardPriceModal({ card, onClose }) {
                 </div>
               </div>
 
-              {/* ── Fila 2: Precio hero — full width ── */}
-              <div className="mt-4 pt-3.5 border-t border-slate-700/50">
-                <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-1">
-                  {t('market_price_label')}
-                </p>
+              {/* ── Fila 2: Selector de grado ── */}
+              <div className="mt-4 flex gap-2">
+                {GRADE_OPTIONS.map(g => (
+                  <button
+                    key={g.value}
+                    onClick={() => setGrade(g.value)}
+                    className={`flex-1 py-1 text-[11px] font-bold rounded-lg border transition
+                      ${grade === g.value
+                        ? 'bg-white text-slate-900 border-white'
+                        : 'bg-white/10 text-slate-400 border-white/20 hover:bg-white/20'}`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── Fila 3: Precio hero — full width ── */}
+              <div className="mt-3 pt-3.5 border-t border-slate-700/50">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">
+                    {t('market_price_label')}
+                  </p>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400">
+                    PC · {GRADE_OPTIONS.find(g => g.value === grade)?.label}
+                  </span>
+                </div>
                 <div className="flex items-end gap-3 flex-wrap">
                   <p className="text-white text-[30px] font-black leading-none">
                     {fmtUSD(priceCurrent)}
@@ -190,23 +222,28 @@ export default function CardPriceModal({ card, onClose }) {
                       <span className="text-[11px] font-normal ml-1 opacity-70">7d</span>
                     </span>
                   )}
-                  {/* ARS en la misma línea si hay espacio */}
-                  {(card._ars_blue || card._ars_ofic) && (
-                    <div className="flex items-center gap-3 mb-0.5">
-                      {card._ars_blue && (
-                        <span className="text-slate-400 text-[11px]">
-                          Blue: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_blue)}</span>
-                        </span>
-                      )}
-                      {card._ars_blue && card._ars_ofic && (
-                        <span className="text-slate-700 text-[11px]">·</span>
-                      )}
-                      {card._ars_ofic && (
-                        <span className="text-slate-400 text-[11px]">
-                          Oficial: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_ofic)}</span>
-                        </span>
-                      )}
-                    </div>
+                </div>
+                {/* ARS + Buy/Sell refs */}
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  {card._ars_blue && (
+                    <span className="text-slate-400 text-[11px]">
+                      Blue: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_blue)}</span>
+                    </span>
+                  )}
+                  {card._ars_ofic && (
+                    <span className="text-slate-400 text-[11px]">
+                      Oficial: <span className="text-slate-300 font-semibold">{fmtARS(card._ars_ofic)}</span>
+                    </span>
+                  )}
+                  {priceBuy && (
+                    <span className="text-orange-400 text-[11px]">
+                      Buy ref: <span className="font-semibold">{fmtUSD(priceBuy)}</span>
+                    </span>
+                  )}
+                  {priceSell && (
+                    <span className="text-teal-400 text-[11px]">
+                      Sell ref: <span className="font-semibold">{fmtUSD(priceSell)}</span>
+                    </span>
                   )}
                 </div>
               </div>
@@ -242,7 +279,7 @@ export default function CardPriceModal({ card, onClose }) {
                   </div>
                 </div>
 
-                <PriceHistoryChart cardId={card.card_id ?? card.inventory_id} days={days} />
+                <PriceHistoryChart cardId={card.card_id ?? card.inventory_id} days={days} grade={grade} />
               </section>
 
               {/* ── Sección 2: Señales de mercado ───────────────── */}
