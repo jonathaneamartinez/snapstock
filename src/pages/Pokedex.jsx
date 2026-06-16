@@ -212,8 +212,14 @@ function PokedexCard({ card, price, onClick }) {
   const [src, setSrc] = useState(card.image || CARD_BACK)
 
   useEffect(() => {
+    // Siempre verificar imagen via scanner backend (pHash index) para corregir
+    // URLs de Supabase que pueden apuntar a la carta equivocada.
+    // _imgCache evita llamadas duplicadas para la misma carta.
     setSrc(card.image || CARD_BACK)
-  }, [card.image])
+    fetchImgUrl(card.name, card.number, card._lang)
+      .then(url => { if (url) setSrc(url) })
+      .catch(() => {})
+  }, [card._key])
 
   const handleError = () => setSrc(CARD_BACK)
 

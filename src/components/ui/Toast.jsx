@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 
 export default function Toast({ mensaje, tipo = 'success', visible }) {
-  const bg = tipo === 'success' ? 'bg-emerald-600' : 'bg-red-600'
+  const bg = tipo === 'success' ? 'bg-emerald-600' : tipo === 'warning' ? 'bg-amber-500' : 'bg-red-600'
   return (
     <AnimatePresence>
       {visible && (

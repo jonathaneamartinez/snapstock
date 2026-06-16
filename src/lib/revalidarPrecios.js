@@ -48,10 +48,13 @@ export async function revalidarPrecios({ blue, oficial, onProgress, onlyMissing 
   let updated = 0
   let noPrice = 0
 
+  const sleep = (ms) => new Promise(res => setTimeout(res, ms))
+
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
     const card = item.cards
     if (!card?.name) { noPrice++; continue }
+    if (i > 0 && i % 10 === 0) await sleep(300)
 
     const grade  = item.grade  || 'ungraded'
     const finish = item.finish || 'normal'

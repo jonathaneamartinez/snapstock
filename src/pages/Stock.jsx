@@ -413,17 +413,17 @@ export default function Stock() {
       if (r.set_name) params.set('set_name', r.set_name)
       if (r.card_id)  params.set('card_id', r.card_id)   // para guardar en price_history
       const res = await fetch(`https://stock-tcg-production.up.railway.app/card-price?${params}`)
-      if (!res.ok) throw new Error('sin datos')
-      const { price_usd } = await res.json()
+      const json = await res.json()
+      const price_usd = json.price_usd ?? null
       if (price_usd) {
         await supabase.from('inventory').update({ price_usd }).eq('id', r.inventory_id)
         queryClient.invalidateQueries({ queryKey: ['stock'] })
         showToast(`✅ Precio actualizado: $${price_usd.toFixed(2)} USD`)
       } else {
-        showToast('Sin precio disponible para esta carta', 'error')
+        showToast('Sin precio en PriceCharting para esta carta', 'warning')
       }
     } catch {
-      showToast('No se pudo obtener el precio', 'error')
+      showToast('Error al conectar con el servidor', 'error')
     } finally {
       setRefreshingId(null)
     }
