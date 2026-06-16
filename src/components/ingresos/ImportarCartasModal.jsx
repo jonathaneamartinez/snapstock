@@ -12,12 +12,26 @@ const COLUMN_ALIASES = {
   condicion:  ['condicion', 'condición', 'condition', 'cond'],
   idioma:     ['idioma', 'language', 'lang'],
   cantidad:   ['cantidad', 'qty', 'quantity', 'stock', 'unidades', 'units', 'qty.', 'cantidad total'],
+  grade:      ['grade', 'grado', 'gradeo', 'psa', 'bgs', 'grading'],
   precio_usd: ['precio_usd', 'price_usd', 'usd', 'precio usd', 'price',
                'pricecharting', 'costo x unidad', 'precio usd mercado', 'market price',
                'precio', 'costo'],
   precio_ars: ['precio_ars', 'price_ars', 'ars', 'sale_price', 'final',
                'precio de venta', 'precio venta', 'sale price',
                'costo x unidad ars', 'precio ars', 'precio_ars_blue'],
+}
+
+const VALID_GRADES = new Set(['ungraded', 'psa9', 'psa10', 'bgs10'])
+const normGrade = (v) => {
+  if (!v) return 'ungraded'
+  const s = String(v).toLowerCase().trim().replace(/\s/g, '')
+  if (VALID_GRADES.has(s)) return s
+  // Aliases comunes
+  if (s === 'singraduar' || s === 'raw' || s === 'ng') return 'ungraded'
+  if (s === 'psa9' || s === '9')  return 'psa9'
+  if (s === 'psa10'|| s === '10') return 'psa10'
+  if (s === 'bgs10')              return 'bgs10'
+  return 'ungraded'
 }
 
 // Errores típicos de fórmulas rotas en Excel
@@ -239,11 +253,14 @@ export default function ImportarCartasModal({ onClose, onDone }) {
 
         if (invSearchErr) throw new Error(`Buscar inventario falló: ${invSearchErr.message}`)
 
+        const grade = normGrade(r.grade)
+
         if (existingInv) {
           const { error: updateErr } = await supabase
             .from('inventory')
             .update({
               quantity:       (existingInv.quantity || 1) + qty,
+              grade,
               ...(priceUsd && { price_usd: priceUsd }),
               ...(priceArs && { sale_price_ars: priceArs }),
             })
@@ -253,16 +270,17 @@ export default function ImportarCartasModal({ onClose, onDone }) {
           const { error: insertInvErr } = await supabase
             .from('inventory')
             .insert({
-              store_id:      STORE_ID,
-              card_id:       cardId,
-              quantity:      qty,
-              condicion:     cond,
-              condition:     cond,
-              status:        'disponible',
-              estado:        'disponible',
-              price_usd:     priceUsd,
+              store_id:       STORE_ID,
+              card_id:        cardId,
+              quantity:       qty,
+              condicion:      cond,
+              condition:      cond,
+              status:         'disponible',
+              estado:         'disponible',
+              price_usd:      priceUsd,
               sale_price_ars: priceArs,
-              scan_date:     new Date().toISOString(),
+              grade,
+              scan_date:      new Date().toISOString(),
             })
           if (insertInvErr) throw new Error(`Insertar en inventario falló: ${insertInvErr.message}`)
         }
@@ -342,6 +360,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
                     ['expansion / set', 'Opcional'],
                     ['numero / number', 'Opcional'],
                     ['condicion / condition', 'NM por defecto'],
+                    ['grade / grado', 'ungraded por defecto'],
                     ['unidades / qty / cantidad', '1 por defecto'],
                     ['pricecharting / precio_usd', 'Opcional'],
                     ['final / precio_ars', 'Opcional'],
@@ -376,7 +395,7 @@ export default function ImportarCartasModal({ onClose, onDone }) {
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 text-gray-400 uppercase sticky top-0">
                     <tr>
-                      {['Nombre', 'Set', 'Cond.', 'Qty', 'USD', 'ARS'].map(h => (
+                      {['Nombre', 'Set', 'Cond.', 'Grado', 'Qty', 'USD', 'ARS'].map(h => (
                         <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>
                       ))}
                     </tr>
@@ -384,11 +403,19 @@ export default function ImportarCartasModal({ onClose, onDone }) {
                   <tbody className="divide-y divide-gray-100">
                     {rows.map((r, i) => (
                       <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px] truncate">{r.nombre}</td>
-                        <td className="px-3 py-2 text-gray-500 max-w-[80px] truncate">{r.set || '—'}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800 max-w-[120px] truncate">{r.nombre}</td>
+                        <td className="px-3 py-2 text-gray-500 max-w-[70px] truncate">{r.set || '—'}</td>
                         <td className="px-3 py-2">
                           <span className="bg-gray-100 px-1.5 py-0.5 rounded font-medium text-gray-600">
                             {normCond(r.condicion)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold
+                            ${normGrade(r.grade) === 'ungraded'
+                              ? 'bg-gray-100 text-gray-500'
+                              : 'bg-blue-100 text-blue-700'}`}>
+                            {normGrade(r.grade) === 'ungraded' ? 'Raw' : normGrade(r.grade).toUpperCase()}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-gray-700">{r.cantidad || 1}</td>
