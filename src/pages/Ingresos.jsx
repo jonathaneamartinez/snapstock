@@ -12,6 +12,55 @@ import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
 
+// ── Enriquece una lista de sugerencias con precios PC desde price_history ─────
+// Hace 1 sola query batch por nombre × idioma, sin necesitar card_id previo.
+async function enrichSuggestionsWithPCPrices(suggestions, lang) {
+  if (!suggestions.length) return suggestions
+  const names = [...new Set(suggestions.map(s => s.nombre).filter(Boolean))]
+  if (!names.length) return suggestions
+
+  // Buscar card_ids para los nombres
+  const { data: cards } = await supabase
+    .from('cards')
+    .select('id, name, card_number, set_name')
+    .in('name', names)
+    .eq('language', lang)
+    .limit(200)
+  if (!cards?.length) return suggestions
+
+  const cardIds = cards.map(c => c.id)
+  const { data: prices } = await supabase
+    .from('price_history')
+    .select('card_id, price_usd, snapshot_date')
+    .in('card_id', cardIds)
+    .eq('source', 'pricecharting')
+    .eq('grade', 'ungraded')
+    .order('snapshot_date', { ascending: false })
+    .limit(500)
+
+  if (!prices?.length) return suggestions
+
+  // Mapa card_id → precio más reciente
+  const priceMap = {}
+  for (const p of prices) {
+    if (!priceMap[p.card_id]) priceMap[p.card_id] = p.price_usd
+  }
+  // Mapa nombre+numero → card_id
+  const cardMap = {}
+  for (const c of cards) {
+    cardMap[`${c.name}|${c.card_number}`] = c.id
+    cardMap[`${c.name}|`]                 = c.id // fallback sin numero
+  }
+
+  return suggestions.map(s => {
+    const key1 = `${s.nombre}|${s.numero}`
+    const key2 = `${s.nombre}|`
+    const cid  = cardMap[key1] ?? cardMap[key2]
+    const pcPrice = cid ? priceMap[cid] : null
+    return pcPrice ? { ...s, precio_usd: pcPrice, source_price: 'pc' } : s
+  })
+}
+
 // ── Busca precio de PriceCharting desde price_history por card_id + grade ────
 async function fetchPrecioPC(cardId, finish = 'normal', grade = 'ungraded') {
   if (!cardId) return null
@@ -173,7 +222,7 @@ export default function Ingresos() {
   }, [])
 
   // ── Filtrado local instantáneo sobre las cartas ya precargadas ──────────
-  const filterFromCache = useCallback((val) => {
+  const filterFromCache = useCallback(async (val) => {
     const q = val.trim().toLowerCase()
     const filtered = q
       ? allSetCardsRef.current.filter(c =>
@@ -181,10 +230,16 @@ export default function Ingresos() {
           c.numero?.toLowerCase().startsWith(q)
         )
       : allSetCardsRef.current
-    setSuggestions(filtered.slice(0, 60))
-    setShowSug(filtered.length > 0)
+    const slice = filtered.slice(0, 60)
+    setSuggestions(slice)
+    setShowSug(slice.length > 0)
     setSugLoading(false)
-  }, [])
+    // Enriquecer en background sin bloquear el render inicial
+    const lang = normLang(form.idioma)
+    enrichSuggestionsWithPCPrices(slice, lang).then(enriched => {
+      setSuggestions(enriched)
+    })
+  }, [form.idioma])
 
   // ── Carga la siguiente página de resultados (infinite scroll) ──────────
   const loadMoreSuggestions = useCallback(async () => {
@@ -308,9 +363,11 @@ export default function Ingresos() {
           const combined = [...supaExtra, ...mapped]
 
           sugTotalRef.current = totalCount
-          setSuggestions(combined)
+          // Enriquecer con precios PC (reemplaza precio TCGPlayer si PC tiene precio)
+          const enriched = await enrichSuggestionsWithPCPrices(combined, 'en')
+          setSuggestions(enriched)
           setHasMore(mapped.length < totalCount)
-          setShowSug(combined.length > 0)
+          setShowSug(enriched.length > 0)
         } else {
           const res = await scannerApi.buscar(val.trim(), lang, '', 20)
           const mapped = (res?.results ?? res?.opciones ?? []).map(c => ({
@@ -322,8 +379,9 @@ export default function Ingresos() {
             precio_usd: null,
             source:     'phash',
           }))
-          setSuggestions(mapped)
-          setShowSug(mapped.length > 0)
+          const enriched = await enrichSuggestionsWithPCPrices(mapped, lang)
+          setSuggestions(enriched)
+          setShowSug(enriched.length > 0)
         }
       } catch (_) {}
       finally { setSugLoading(false) }
@@ -732,10 +790,12 @@ export default function Ingresos() {
                             </span>
                           )}
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                            ${sug.source === 'market'
-                              ? 'bg-blue-100 text-blue-600'
-                              : 'bg-gray-100 text-gray-500'}`}>
-                            {sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
+                            ${sug.source_price === 'pc'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : sug.source === 'market'
+                                ? 'bg-blue-100 text-blue-600'
+                                : 'bg-gray-100 text-gray-500'}`}>
+                            {sug.source_price === 'pc' ? 'PC' : sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
                           </span>
                         </div>
                       </button>
