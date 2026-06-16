@@ -410,7 +410,7 @@ export default function Ingresos() {
     }))
     setShowSug(false)
     setSuggestions([])
-    setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd ?? null })
+    setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd ?? null, precio_source: sug.source_price === 'pc' ? 'pc' : sug.source === 'market' ? 'tcgplayer' : null })
 
     // 1. Buscar precio de PriceCharting primero (fuente principal)
     const idioma = sug.idioma || form.idioma || 'en'
@@ -426,6 +426,7 @@ export default function Ingresos() {
           ...prev,
           precio_buy_usd:  pcResult.price_buy_usd  ?? null,
           precio_sell_usd: pcResult.price_sell_usd ?? null,
+          precio_source:   'pc',
           grade:           form.grade,
         }))
       }
@@ -496,7 +497,7 @@ export default function Ingresos() {
               const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
               if (pcResult?.price_usd) {
                 const m = margen ?? 0
-                setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, grade: form.grade }))
+                setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
                 setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) || f.precioVenta }))
               }
             }
@@ -533,7 +534,7 @@ export default function Ingresos() {
             if (pcResult?.price_usd) {
               const m = margen ?? 0
               const autoPrice = String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500)
-              setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, grade: form.grade }))
+              setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
               setForm(f => ({ ...f, precioVenta: autoPrice || f.precioVenta }))
               setSugLoading(false)
               return
@@ -929,14 +930,23 @@ export default function Ingresos() {
               {/* Precios de mercado (read-only) */}
               <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between mb-3">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">
                       {t('ingresos_market_price')}
                     </p>
                     {usd != null && (
-                      <p className="text-[10px] text-blue-500 font-medium mt-0.5">
-                        PriceCharting · {GRADE_LABELS[form.grade] ?? form.grade}
-                      </p>
+                      preview?.precio_source === 'pc'
+                        ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                            PriceCharting · {GRADE_LABELS[form.grade] ?? form.grade}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-600 border border-blue-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />
+                            TCGPlayer
+                          </span>
+                        )
                     )}
                   </div>
                   {form.nombre && (
