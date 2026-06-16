@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import FinishBadge from '../ui/FinishBadge'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 
@@ -82,7 +83,7 @@ export default function ClaimCartModal({ cart, onClose, onContinue, onRemove, on
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-gray-800 truncate">
                       {card.nombre || '—'}
-                      {card.holo && <span className="ml-1">✨</span>}
+                      <FinishBadge finish={card.finish} />
                     </p>
                     <p className="text-[10px] text-gray-400 truncate">
                       {[card.set_name, card.condicion].filter(Boolean).join(' · ')}

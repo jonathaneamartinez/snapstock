@@ -9,8 +9,9 @@ import {
 import { scannerApi }         from '../../lib/scanner'
 import { useDolar }           from '../../hooks/useDolar'
 import { STORE_ID, CONDICIONES, IDIOMAS, FIRST_ED_SETS } from '../../constants'
-import Spinner    from '../ui/Spinner'
-import SetSelect  from '../ui/SetSelect'
+import Spinner      from '../ui/Spinner'
+import SetSelect    from '../ui/SetSelect'
+import FinishSelect from '../ui/FinishSelect'
 
 const normLang = (idioma) => {
   if (['ja', 'jp', 'japanese'].includes(idioma)) return 'jp'
@@ -49,6 +50,7 @@ const emptyRow = () => ({
   is_first_edition: false,
   can_be_first_ed:  false,
   first_ed_reason:  '',
+  finish:           'normal',
   quantity:         1,
   condition:        'NM',
   price_usd:        '',
@@ -258,7 +260,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                 card_number: m.card_number || null,
                 image_url:   m.image_url   || null,
                 language:    r.language    || 'en',
-                variant:     r.is_first_edition ? 'Primera Edición' : null,
+                variant:     r.finish !== 'normal' ? r.finish : (r.is_first_edition ? 'first_edition' : 'normal'),
               })
               .select('id')
               .single()
@@ -306,6 +308,8 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                 card_id:        r.card_id,
                 quantity:       r.quantity || 1,
                 condition:      r.condition || 'NM',
+                finish:         r.finish || 'normal',
+                holo:           ['holofoil','reverse_holo','gold_star'].includes(r.finish),
                 status:         'disponible',
                 estado:         'disponible',
                 price_ars_blue: parseFloat(r.price_ars) || null,
@@ -632,6 +636,13 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
             </div>
           )}
         </div>
+
+        {/* Finish / Variante */}
+        <FinishSelect
+          value={row.finish || 'normal'}
+          onChange={v => onChange({ finish: v })}
+          size="sm"
+        />
 
         {/* Condición */}
         <select value={row.condition} onChange={e => onChange({ condition: e.target.value })}

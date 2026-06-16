@@ -6,6 +6,7 @@ import { useI18n } from '../lib/i18n'
 import { useClaims } from '../hooks/useClaims'
 import { supabase }  from '../lib/supabase'
 import { STORE_ID }  from '../constants'
+import FinishBadge   from '../components/ui/FinishBadge'
 import Spinner       from '../components/ui/Spinner'
 import EmptyState    from '../components/ui/EmptyState'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -428,7 +429,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
                         <img src={c.img} alt="" className="w-5 h-7 object-cover rounded-sm shrink-0" />
                       )}
                       <span className="truncate">{c.name || '—'}</span>
-                      {c.holo && <span className="shrink-0">✨</span>}
+                      <FinishBadge finish={c.finish} />
                     </div>
                   </td>
                   <td className="px-3 py-1.5 text-gray-500 max-w-[90px]">
@@ -590,7 +591,7 @@ function ClaimRow({ claim }) {
     const trimmed = term.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')
     const { data } = await supabase
       .from('inventory')
-      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
+      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, finish, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
       .eq('store_id', STORE_ID)
       .neq('status', 'vendida')
       .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { referencedTable: 'cards' })
@@ -649,6 +650,7 @@ function ClaimRow({ claim }) {
       num:          c.card_number,
       cond:         invRow.condition || invRow.condicion || 'NM',
       holo:         c.is_holo || false,
+      finish:       invRow.finish || 'normal',
       img:          c.image_url || '',
       usd:          invRow.price_usd ?? null,
       ars:          invRow.price_ars_blue ?? null,
@@ -674,6 +676,7 @@ function ClaimRow({ claim }) {
       numero:         c.num           || '',
       condicion:      c.cond          || '',
       holo:           c.holo          || false,
+      finish:         c.finish        || 'normal',
       image_url:      c.img           || '',
       price_usd:      c.usd           ?? null,
       price_ars_blue: c.ars           ?? null,

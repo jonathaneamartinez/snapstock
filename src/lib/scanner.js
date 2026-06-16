@@ -78,6 +78,14 @@ export const scannerApi = {
       .catch(() => ({ url: null, set_name: null, number: null }))
   },
 
+  cardPrice: (name, number = '', lang = 'en', finish = 'normal') => {
+    const numNorm = number ? (String(number).split('/')[0].replace(/^0+/, '') || '') : ''
+    const params = new URLSearchParams({ name, lang, finish, ...(numNorm ? { number: numNorm } : {}) })
+    return fetch(`${BASE}/card-price?${params}`)
+      .then(r => r.json())
+      .catch(() => null)
+  },
+
   identificarSellado: (imagen_base64) =>
     fetch(`${BASE}/scanner/identificar-sellado`, {
       method: 'POST',

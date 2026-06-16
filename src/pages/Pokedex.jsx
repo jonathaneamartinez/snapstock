@@ -6,6 +6,7 @@ import { scannerApi }       from '../lib/scanner'
 import { supabase }         from '../lib/supabase'
 import SetSelect      from '../components/ui/SetSelect'
 import Spinner        from '../components/ui/Spinner'
+import FinishBadge   from '../components/ui/FinishBadge'
 
 /* ─── Constantes ─────────────────────────────────────────────────────── */
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
@@ -56,13 +57,14 @@ const dedupe = (arr) => {
 
 /* ─── Normalizar fila de Supabase `cards` ────────────────────────────── */
 const normSupabase = (c) => ({
-  _lang:  c.language ?? 'en',
-  _key:   `${c.language}|${(c.name ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? ''}`,
-  name:   c.name    ?? '—',
-  set:    c.set_name ?? '—',
-  set_id: null,
-  number: c.card_number ?? '',
-  image:  c.image_url   ?? null,
+  _lang:   c.language ?? 'en',
+  _key:    `${c.language}|${(c.name ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? ''}`,
+  name:    c.name    ?? '—',
+  set:     c.set_name ?? '—',
+  set_id:  null,
+  number:  c.card_number ?? '',
+  image:   c.image_url   ?? null,
+  variant: c.variant     ?? 'normal',
 })
 
 /* ─── Badge de idioma ────────────────────────────────────────────────── */
@@ -79,11 +81,11 @@ function LangBadge({ lang }) {
 
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
 function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
-  const [src, setSrc] = useState(card.image || CARD_BACK)
+  const [src,   setSrc]   = useState(card.image || CARD_BACK)
+  const [price, setPrice] = useState(null)  // { price_usd, source, finish } | null | 'loading'
 
   const handleError = () => setSrc(CARD_BACK)
 
-  // Cerrar con Escape, navegar con flechas
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape')      onClose()
@@ -94,17 +96,21 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
-  // Al cambiar de carta: buscar imagen correcta por nombre+número
-  // Si no se encuentra → dorso (nunca conservar image_url incorrecta de Supabase)
   useEffect(() => {
-    setSrc(card.image || CARD_BACK)   // placeholder instantáneo mientras carga R2
+    setSrc(card.image || CARD_BACK)
+    setPrice('loading')
     if (!card.name) return
     let cancelled = false
     fetchImgUrl(card.name, card.number, card._lang).then(url => {
       if (!cancelled) setSrc(url || CARD_BACK)
     })
+    scannerApi.cardPrice(card.name, card.number, card._lang, card.variant || 'normal')
+      .then(r => { if (!cancelled) setPrice(r) })
+      .catch(() => { if (!cancelled) setPrice(null) })
     return () => { cancelled = true }
   }, [card])
+
+  const fmtUSD = (n) => n != null ? `U$D ${Number(n).toFixed(2)}` : null
 
   return (
     <div
@@ -112,12 +118,10 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
                  bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
-      {/* Contenedor central — click no cierra */}
       <div
         className="relative flex flex-col items-center gap-4 max-w-sm w-full"
         onClick={e => e.stopPropagation()}
       >
-        {/* Botón cerrar */}
         <button
           onClick={onClose}
           className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full
@@ -128,7 +132,6 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
           <X size={16} />
         </button>
 
-        {/* Flechas de navegación */}
         {hasPrev && (
           <button
             onClick={onPrev}
@@ -152,26 +155,44 @@ function CardModal({ card, onClose, onPrev, onNext, hasPrev, hasNext }) {
           </button>
         )}
 
-        {/* Imagen grande */}
         <img
           src={src}
           alt={card.name}
           className="w-full rounded-2xl shadow-2xl"
-          style={{ maxHeight: '75vh', objectFit: 'contain' }}
+          style={{ maxHeight: '70vh', objectFit: 'contain' }}
           onError={handleError}
         />
 
-        {/* Info debajo */}
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-5 py-3
-                        flex items-center gap-3 shadow-lg w-full">
-          <LangBadge lang={card._lang} />
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-800 text-sm truncate">{card.name}</p>
-            <p className="text-xs text-gray-400 truncate">{card.set}</p>
+                        flex flex-col gap-2 shadow-lg w-full">
+          <div className="flex items-center gap-3">
+            <LangBadge lang={card._lang} />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-gray-800 text-sm truncate">{card.name}</p>
+              <p className="text-xs text-gray-400 truncate">{card.set}</p>
+            </div>
+            {card.number && (
+              <span className="text-xs text-gray-300 shrink-0">#{card.number}</span>
+            )}
           </div>
-          {card.number && (
-            <span className="text-xs text-gray-300 shrink-0">#{card.number}</span>
-          )}
+
+          {/* Variant + precio */}
+          <div className="flex items-center justify-between border-t border-gray-100 pt-2 gap-2">
+            <FinishBadge finish={card.variant || 'normal'} size="sm" />
+            <div className="text-right">
+              {price === 'loading' && (
+                <span className="text-xs text-gray-300">Cargando precio…</span>
+              )}
+              {price && price !== 'loading' && price.price_usd != null && (
+                <span className="text-sm font-bold text-emerald-600">
+                  {fmtUSD(price.price_usd)}
+                </span>
+              )}
+              {price && price !== 'loading' && price.price_usd == null && (
+                <span className="text-xs text-gray-300">Sin precio</span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -231,6 +252,11 @@ function PokedexCard({ card, onClick }) {
             <span className="text-[9px] text-gray-300 shrink-0">#{card.number}</span>
           )}
         </div>
+        {card.variant && card.variant !== 'normal' && (
+          <div className="mt-0.5">
+            <FinishBadge finish={card.variant} size="xs" />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -280,7 +306,7 @@ export default function Pokedex() {
 
       const { data, count, error } = await supabase
         .from('cards')
-        .select('id, name, set_name, card_number, language, image_url', { count: 'exact' })
+        .select('id, name, set_name, card_number, language, image_url, variant', { count: 'exact' })
         .ilike('name', `${q}%`)
         .in('language', [...langs])
         .range(from, to)

@@ -58,7 +58,8 @@ async function fetchCardId(nombre, numero, idioma, setName) {
 }
 import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
-import SetSelect  from '../components/ui/SetSelect'
+import SetSelect    from '../components/ui/SetSelect'
+import FinishSelect  from '../components/ui/FinishSelect'
 import ImportarCartasModal from '../components/ingresos/ImportarCartasModal'
 import { useI18n } from '../lib/i18n'
 
@@ -784,12 +785,11 @@ export default function Ingresos() {
                 </div>
                 <div>
                   <label className={labelCls}>Tipo</label>
-                  <select value={form.finish} onChange={e => setField('finish', e.target.value)}
-                    className={`${inputCls} bg-white`}>
-                    <option value="normal">Normal</option>
-                    <option value="holofoil">✨ Holofoil</option>
-                    <option value="reverse">🔄 Reverse Holofoil</option>
-                  </select>
+                  <FinishSelect
+                    value={form.finish}
+                    onChange={v => setField('finish', v)}
+                    className="w-full"
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>{t('ingresos_language')}</label>

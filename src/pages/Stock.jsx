@@ -24,7 +24,9 @@ import { getCardImageUrl, warmBlobUrls } from '../lib/imageCache'
 import CardPriceModal   from '../components/market/CardPriceModal'
 import MarketKpiBadge  from '../components/market/MarketKpiBadge'
 import { useMarketKpiBatch } from '../hooks/useMarketKpi'
-import InlineTags from '../components/ui/InlineTags'
+import InlineTags    from '../components/ui/InlineTags'
+import FinishBadge   from '../components/ui/FinishBadge'
+import FinishSelect  from '../components/ui/FinishSelect'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 
@@ -925,6 +927,7 @@ export default function Stock() {
                         >
                           {r.nombre || '—'}
                         </button>
+                        <FinishBadge finish={r.finish} />
                       </td>
                       <td className="px-3 py-2 text-gray-500 max-w-[100px]">
                         <span className="truncate block">{translateSetName(r.set_name) || '—'}</span>
@@ -932,17 +935,14 @@ export default function Stock() {
                       <td className="px-3 py-2 text-gray-500">{r.numero || '—'}</td>
                       <td className="px-3 py-2 text-center">{IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}</td>
                       <td className="px-3 py-2 text-center">
-                        <select
-                          value={r.finish || 'normal'}
-                          onChange={e => saveTipo(r.inventory_id, e.target.value)}
-                          onClick={e => e.stopPropagation()}
-                          className="text-xs bg-transparent border border-gray-200 rounded-lg px-1.5 py-0.5
-                                     focus:outline-none focus:ring-1 focus:ring-blue-300 cursor-pointer"
-                        >
-                          <option value="normal">Normal</option>
-                          <option value="holofoil">✨ Holo</option>
-                          <option value="reverse">🔄 Reverse</option>
-                        </select>
+                        <div onClick={e => e.stopPropagation()}>
+                          <FinishSelect
+                            value={r.finish || 'normal'}
+                            onChange={v => saveTipo(r.inventory_id, v)}
+                            size="sm"
+                            className="w-full"
+                          />
+                        </div>
                       </td>
                       <td className="px-3 py-2"><Badge label={r.condicion} /></td>
                       <td className="px-3 py-2">

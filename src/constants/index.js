@@ -87,6 +87,26 @@ export const CANALES_VENTA = [
   { value: 'charly',          label: '👤 Charly'          },
 ]
 
+// ── Variantes / Finish ────────────────────────────────────────────────────────
+export const FINISH_OPTIONS = [
+  { value: 'normal',        label: 'Normal',        icon: null,  color: 'gray'   },
+  { value: 'holofoil',      label: 'Holofoil',      icon: '✨',  color: 'yellow' },
+  { value: 'reverse_holo',  label: 'Reverse Holo',  icon: '🔄',  color: 'blue'   },
+  { value: 'first_edition', label: '1st Edition',   icon: '①',  color: 'red'    },
+  { value: 'shadowless',    label: 'Shadowless',    icon: '👤',  color: 'purple' },
+  { value: 'gold_star',     label: 'Gold Star',     icon: '⭐',  color: 'amber'  },
+  { value: 'prerelease',    label: 'Prerelease',    icon: '🎯',  color: 'green'  },
+  { value: 'stamped',       label: 'Stamped',       icon: '🔖',  color: 'teal'   },
+  { value: 'no_symbol',     label: 'No Symbol',     icon: '⊘',   color: 'gray'   },
+  { value: 'no_rarity',     label: 'No Rarity',     icon: '◇',   color: 'gray'   },
+  { value: 'gold_border',   label: 'Gold Border',   icon: '🟡',  color: 'amber'  },
+  { value: 'w_stamp',       label: 'W Stamp',       icon: 'Ⓦ',   color: 'gray'   },
+  { value: 'error',         label: 'Error',         icon: '⚠️',  color: 'orange' },
+  { value: 'special',       label: 'Special',       icon: '💎',  color: 'indigo' },
+]
+
+export const FINISH_MAP = Object.fromEntries(FINISH_OPTIONS.map(f => [f.value, f]))
+
 // Sets que tuvieron impresión de 1ª edición (WotC era)
 export const FIRST_ED_SETS = [
   'Base Set', 'Jungle', 'Fossil', 'Base Set 2', 'Team Rocket',

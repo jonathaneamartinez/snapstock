@@ -8,6 +8,7 @@ import Toast                      from '../components/ui/Toast'
 import CanalReservaSelect         from '../components/deudas/CanalReservaSelect'
 import ReservaActions             from '../components/deudas/ReservaActions'
 import CartasReservadasModal      from '../components/deudas/CartasReservadasModal'
+import FinishBadge                from '../components/ui/FinishBadge'
 
 const fmtARS   = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 const fmtFecha = (s) => s ? new Date(s).toLocaleDateString('es-AR') : '—'
@@ -158,6 +159,7 @@ export default function Deudas() {
                                 <span className="text-[10px] text-gray-400 truncate max-w-[80px]">
                                   {item.nombre_base || '—'}
                                 </span>
+                                <FinishBadge finish={item.finish} />
                                 <ReservaActions
                                   inventoryId={item.inventory_id}
                                   buyerName={d.buyer}

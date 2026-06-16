@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { STORE_ID } from '../../constants'
+import FinishBadge  from '../ui/FinishBadge'
 
 /* ─── Descarga ──────────────────────────────────────────────────────── */
 function downloadDataUrl(dataUrl, filename) {
@@ -69,6 +70,7 @@ export default function ClaimViewer({ images, cards, style, dark, cardCount, tit
         num:          c.numero       || '',
         cond:         c.condicion    || '',
         holo:         c.holo         || false,
+        finish:       c.finish       || 'normal',
         usd:          c.price_usd    ?? null,
         ars:          c.price_ars_blue ?? c._ars_blue ?? null,
         sale:         c.sale_price_ars ?? null,

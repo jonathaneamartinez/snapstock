@@ -5,7 +5,8 @@ import { supabase }  from '../lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer } from 'recharts'
 import Spinner    from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
-import { useI18n } from '../lib/i18n'
+import { useI18n }   from '../lib/i18n'
+import FinishBadge  from '../components/ui/FinishBadge'
 
 const fmtARS = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 
@@ -365,7 +366,10 @@ export default function Ventas() {
                         : '—'}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">
-                      {v.card_name || '—'}
+                      <div className="flex flex-col gap-0.5">
+                        <span>{v.card_name || '—'}</span>
+                        <FinishBadge finish={v.finish} size="xs" />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
                       {canalLabel(v.channel)}

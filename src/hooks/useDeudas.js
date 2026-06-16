@@ -13,7 +13,7 @@ export function useDeudas() {
           buyer_name, buyer_contact,
           status, estado,
           canal_reserva, reserved_at,
-          condition,
+          condition, finish,
           cards(name, image_url)
         `)
         .eq('store_id', STORE_ID)
@@ -43,6 +43,7 @@ export function useDeudas() {
           sale_price_ars: r.sale_price_ars,
           quantity:       r.quantity,
           condition:      r.condition,
+          finish:         r.finish || 'normal',
           canal_reserva:  r.canal_reserva,
           reserved_at:    r.reserved_at,
         })
