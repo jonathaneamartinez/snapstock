@@ -85,15 +85,13 @@ function LangBadge({ lang }) {
 
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
 function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNext }) {
-  const [src,   setSrc]   = useState(card.image || CARD_BACK)
+  const [modalImgSrc, onModalImgError] = useCardImage(card.image, { name: card.name, number: card.number, lang: card._lang })
   // Mostrar precio cacheado inmediatamente mientras llega el fetch de PC
   const [price, setPrice] = useState(
     cachedPrice != null
       ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: card.variant || 'normal' }
       : 'loading'
   )
-
-  const handleError = () => setSrc(CARD_BACK)
 
   useEffect(() => {
     const handler = (e) => {
@@ -164,11 +162,11 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
         )}
 
         <img
-          src={src}
+          src={modalImgSrc || CARD_BACK}
           alt={card.name}
           className="w-full rounded-2xl shadow-2xl"
           style={{ maxHeight: '70vh', objectFit: 'contain' }}
-          onError={handleError}
+          onError={onModalImgError}
         />
 
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-5 py-3

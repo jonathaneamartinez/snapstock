@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useCardImage } from '../../hooks/useCardImage'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AreaChart, Area,
@@ -47,6 +48,7 @@ export default function CardPriceModal({ card, onClose }) {
   const { t } = useI18n()
   const [days,  setDays]  = useState(30)
   const [grade, setGrade] = useState(card?.grade || 'ungraded')
+  const [imgSrc, onImgError] = useCardImage(card?.image_url, { name: card?.nombre, number: card?.numero, lang: card?.idioma })
 
   const showMarket   = isFeatureEnabled('marketIntel')
   const marketCardId = card?.card_id ?? card?.inventory_id
@@ -132,10 +134,11 @@ export default function CardPriceModal({ card, onClose }) {
 
                 {/* Imagen — el doble que antes */}
                 <div className="flex-shrink-0 self-start">
-                  {card.image_url ? (
+                  {imgSrc ? (
                     <img
-                      src={card.image_url}
+                      src={imgSrc}
                       alt={card.nombre}
+                      onError={onImgError}
                       className="w-[160px] rounded-xl shadow-2xl object-contain"
                       style={{ aspectRatio: '5/7' }}
                     />

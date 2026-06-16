@@ -2,10 +2,38 @@ import { Link } from 'react-router-dom'
 import { useMarketOpportunities } from '../../hooks/useMarketSignals'
 import MarketKpiBadge from './MarketKpiBadge'
 import Spinner from '../ui/Spinner'
+import { useCardImage } from '../../hooks/useCardImage'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtPct = (n) =>
   n != null ? `${n >= 0 ? '+' : ''}${Number(n).toFixed(1)}%` : null
+
+function OpportunityRow({ item }) {
+  const [imgSrc, onImgError] = useCardImage(item.image_url, { name: item.card_name, number: item.card_number, lang: item.language })
+  const pctStr      = fmtPct(item.price_change_7d)
+  const pctPositive = item.price_change_7d >= 0
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
+      {imgSrc ? (
+        <img src={imgSrc} alt={item.card_name} onError={onImgError}
+          className="w-8 h-11 object-contain rounded shadow-sm flex-shrink-0" />
+      ) : (
+        <div className="w-8 h-11 rounded bg-gray-100 flex-shrink-0 flex items-center justify-center text-gray-300 text-xs">🃏</div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-800 truncate">{item.card_name}</p>
+        <p className="text-xs text-gray-400 truncate">{item.set_name}</p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-sm font-bold text-gray-800">{fmtUSD(item.price_usd)}</p>
+        {pctStr && (
+          <p className={`text-xs font-medium ${pctPositive ? 'text-emerald-500' : 'text-red-400'}`}>{pctStr}</p>
+        )}
+      </div>
+      <MarketKpiBadge kpi={item.market_kpi} size="sm" />
+    </div>
+  )
+}
 
 /**
  * OpportunitiesWidget
@@ -74,64 +102,9 @@ export default function OpportunitiesWidget({ limit = 5, minKpi = 60 }) {
 
       {/* Lista */}
       <div className="divide-y divide-gray-50">
-        {data.map((item) => {
-          const pctStr = fmtPct(item.price_change_7d)
-          const pctPositive = item.price_change_7d >= 0
-
-          return (
-            <div
-              key={item.inventory_id}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition"
-            >
-              {/* Imagen */}
-              {item.image_url ? (
-                <img
-                  src={item.image_url}
-                  alt={item.card_name}
-                  className="w-8 h-11 object-contain rounded shadow-sm flex-shrink-0"
-                />
-              ) : (
-                <div className="w-8 h-11 rounded bg-gray-100 flex-shrink-0 flex items-center justify-center text-gray-300 text-xs">
-                  🃏
-                </div>
-              )}
-
-              {/* Info carta */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate leading-tight">
-                  {item.card_name}
-                </p>
-                <p className="text-xs text-gray-400 truncate mt-0.5">
-                  {item.set_name}
-                  {item.quantity > 1 && (
-                    <span className="ml-1.5 text-blue-500 font-medium">×{item.quantity}</span>
-                  )}
-                </p>
-              </div>
-
-              {/* Precio + trend */}
-              <div className="text-right flex-shrink-0">
-                <p className="text-sm font-bold text-emerald-600">
-                  {fmtUSD(item.price_usd)}
-                </p>
-                {pctStr && (
-                  <p className={`text-xs font-semibold ${pctPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-                    {pctStr}
-                  </p>
-                )}
-              </div>
-
-              {/* KPI Badge */}
-              <div className="flex-shrink-0">
-                <MarketKpiBadge
-                  kpiScore={item.kpi_score}
-                  kpiState={item.kpi_state}
-                  size="sm"
-                />
-              </div>
-            </div>
-          )
-        })}
+        {data.map((item) => (
+          <OpportunityRow key={item.inventory_id} item={item} />
+        ))}
       </div>
 
       {/* Footer */}

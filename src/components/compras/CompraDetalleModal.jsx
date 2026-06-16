@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import Spinner from '../ui/Spinner'
+import { useCardImage } from '../../hooks/useCardImage'
+
+function ItemThumb({ card }) {
+  const [imgSrc, onImgError] = useCardImage(card?.image_url, { name: card?.name, number: card?.card_number, lang: card?.language })
+  if (!card?.name) return null
+  return (
+    <img src={imgSrc} alt={card.name} onError={onImgError}
+      className="w-7 h-9 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
+  )
+}
 
 const fmtARS = (n) =>
   n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -47,7 +57,7 @@ export default function CompraDetalleModal({ purchaseId, onClose }) {
         if (cardIds.length > 0) {
           const { data: cardsData } = await supabase
             .from('cards')
-            .select('id, name, image_url')
+            .select('id, name, image_url, card_number, language')
             .in('id', cardIds)
           ;(cardsData ?? []).forEach(c => { cardsMap[c.id] = c })
         }
@@ -146,13 +156,7 @@ export default function CompraDetalleModal({ purchaseId, onClose }) {
                       <tr key={item.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
-                            {item.cards?.image_url && (
-                              <img
-                                src={item.cards.image_url}
-                                alt={item.cards?.name}
-                                className="w-7 h-9 object-cover rounded shadow-sm bg-gray-100 shrink-0"
-                              />
-                            )}
+                            <ItemThumb card={item.cards} />
                             <span className="font-medium text-gray-800 leading-tight">
                               {item.cards?.name || '—'}
                             </span>

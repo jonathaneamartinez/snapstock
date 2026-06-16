@@ -2,9 +2,28 @@ import { useState, useEffect } from 'react'
 import { supabase }   from '../../lib/supabase'
 import { STORE_ID }   from '../../constants'
 import Spinner        from '../ui/Spinner'
+import { useCardImage } from '../../hooks/useCardImage'
 
 const fmtARS = (n) =>
   n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
+
+function ReservaCard({ c }) {
+  const [imgSrc, onImgError] = useCardImage(c.cards?.image_url, { name: c.cards?.name, number: c.cards?.card_number, lang: c.cards?.language })
+  return (
+    <div className="flex flex-col items-center text-center gap-1.5">
+      {imgSrc
+        ? <img src={imgSrc} alt={c.cards?.name} onError={onImgError}
+            className="w-full aspect-[2.5/3.5] object-cover rounded-lg bg-gray-100 shadow-sm" />
+        : <div className="w-full aspect-[2.5/3.5] bg-gray-100 rounded-lg flex items-center justify-center text-3xl">🃏</div>
+      }
+      <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{c.cards?.name || '—'}</p>
+      <p className="text-xs text-blue-600 font-bold">{fmtARS(c.sale_price_ars)}</p>
+      {c.condition && (
+        <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">{c.condition}</span>
+      )}
+    </div>
+  )
+}
 
 export default function CartasReservadasModal({ buyer, onClose, onDone }) {
   const [cartas,      setCartas]      = useState([])
@@ -17,7 +36,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
     ;(async () => {
       const { data } = await supabase
         .from('inventory')
-        .select(`id, sale_price_ars, condition, cards(name, image_url)`)
+        .select(`id, sale_price_ars, condition, cards(name, image_url, card_number, language)`)
         .eq('store_id', STORE_ID)
         .eq('buyer_name', buyer)
         .or('status.eq.reservada,estado.eq.reservada')
@@ -71,31 +90,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
           {!loading && cartas.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {cartas.map(c => (
-                <div key={c.id} className="flex flex-col items-center text-center gap-1.5">
-                  {c.cards?.image_url
-                    ? (
-                      <img
-                        src={c.cards.image_url}
-                        alt={c.cards?.name}
-                        className="w-full aspect-[2.5/3.5] object-cover rounded-lg bg-gray-100 shadow-sm"
-                      />
-                    ) : (
-                      <div className="w-full aspect-[2.5/3.5] bg-gray-100 rounded-lg
-                                      flex items-center justify-center text-3xl">
-                        🃏
-                      </div>
-                    )
-                  }
-                  <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">
-                    {c.cards?.name || '—'}
-                  </p>
-                  <p className="text-xs text-blue-600 font-bold">{fmtARS(c.sale_price_ars)}</p>
-                  {c.condition && (
-                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
-                      {c.condition}
-                    </span>
-                  )}
-                </div>
+                <ReservaCard key={c.id} c={c} />
               ))}
             </div>
           )}

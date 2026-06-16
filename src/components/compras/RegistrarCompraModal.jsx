@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useCardImage } from '../../hooks/useCardImage'
 import { supabase }           from '../../lib/supabase'
 import {
   searchCardsByName,
@@ -21,6 +22,15 @@ const GRADE_OPTIONS = [
   { value: 'psa10',    label: 'PSA 10'      },
   { value: 'bgs10',    label: 'BGS 10'      },
 ]
+
+const CARD_BACK_URL = 'https://images.pokemontcg.io/back.png'
+
+function SuggestionThumb({ card }) {
+  const [imgSrc, onImgError] = useCardImage(card.image_url, { name: card.name, number: card.card_number, lang: card.language })
+  return imgSrc
+    ? <img src={imgSrc} alt={card.name} onError={onImgError} className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
+    : <img src={CARD_BACK_URL} alt="" className="w-6 h-8 object-cover rounded shrink-0 opacity-50 bg-gray-100" />
+}
 
 const normLang = (idioma) => {
   if (['ja', 'jp', 'japanese'].includes(idioma)) return 'jp'
@@ -728,10 +738,7 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
                   <button key={`${card.id || card.name}|${idx}`}
                     onClick={() => { onSelect(card, row.language, row.grade); onChange({ suggestions: [] }) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
-                    {card.image_url
-                      ? <img src={card.image_url} alt={card.name} className="w-6 h-8 object-cover rounded shadow-sm bg-gray-100 shrink-0" />
-                      : <img src="https://images.pokemontcg.io/back.png" alt="" className="w-6 h-8 object-cover rounded shrink-0 opacity-50 bg-gray-100" />
-                    }
+                    <SuggestionThumb card={card} />
                     <div className="flex-1 min-w-0">
                       <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
                       <span className="block text-gray-400 leading-tight truncate">

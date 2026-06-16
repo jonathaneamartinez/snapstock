@@ -1,7 +1,17 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import FinishBadge from '../ui/FinishBadge'
+import { useCardImage } from '../../hooks/useCardImage'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
+
+function CartThumbnail({ card }) {
+  const [imgSrc, onImgError] = useCardImage(card.image_url, { name: card.nombre, number: card.numero, lang: card.idioma })
+  return (
+    <div className="w-8 h-11 rounded-lg bg-gray-100 overflow-hidden shrink-0 shadow-sm">
+      <img src={imgSrc || CARD_BACK} alt="" onError={onImgError} className="w-full h-full object-cover" />
+    </div>
+  )
+}
 
 const fmtARS = (n) =>
   n != null ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -67,17 +77,7 @@ export default function ClaimCartModal({ cart, onClose, onContinue, onRemove, on
                   className="flex items-center gap-3 px-2.5 py-2 rounded-xl hover:bg-gray-50 group"
                 >
                   {/* Thumbnail */}
-                  <div className="w-8 h-11 rounded-lg bg-gray-100 overflow-hidden shrink-0 shadow-sm">
-                    {card.image_url ? (
-                      <img
-                        src={card.image_url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <img src={CARD_BACK} alt="" className="w-full h-full object-cover opacity-60" />
-                    )}
-                  </div>
+                  <CartThumbnail card={card} />
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useCardImage } from '../hooks/useCardImage'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -13,6 +14,13 @@ import { AnimatePresence, motion } from 'framer-motion'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
+
+function ClaimAddThumb({ row }) {
+  const [imgSrc, onImgError] = useCardImage(row.cards?.image_url, { name: row.cards?.name, number: row.cards?.card_number, lang: row.cards?.language })
+  return imgSrc
+    ? <img src={imgSrc} alt="" onError={onImgError} className="w-7 h-10 object-cover rounded shrink-0" />
+    : <div className="w-7 h-10 bg-gray-100 rounded shrink-0" />
+}
 const BACKEND   = 'https://stock-tcg-production.up.railway.app'
 
 /* ── Enriquecer cartas del claim con precio PC si falta ──────────────── */
@@ -960,10 +968,7 @@ function ClaimRow({ claim }) {
                                              hover:bg-violet-50 text-left border-b border-gray-100
                                              last:border-0 transition"
                                 >
-                                  {row.cards?.image_url
-                                    ? <img src={row.cards.image_url} alt="" className="w-7 h-10 object-cover rounded shrink-0" />
-                                    : <div className="w-7 h-10 bg-gray-100 rounded shrink-0" />
-                                  }
+                                  <ClaimAddThumb row={row} />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-gray-800 truncate">{row.cards?.name}</p>
                                     <p className="text-[10px] text-gray-400 truncate">

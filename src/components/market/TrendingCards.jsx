@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTrendingCards } from '../../hooks/useTrendingCards'
 import { useI18n } from '../../lib/i18n'
 import CardPriceModal from './CardPriceModal'
+import { useCardImage } from '../../hooks/useCardImage'
 
 const C = {
   card:    '#FFFFFF',
@@ -21,6 +22,41 @@ const fmtUSD  = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 const fmtDelta = (n) => {
   const abs = Math.abs(n).toFixed(1)
   return n >= 0 ? `+${abs}%` : `-${abs}%`
+}
+
+function TrendingRow({ card, i, onOpen }) {
+  const [imgSrc, onImgError] = useCardImage(card.image_url, { name: card.nombre, number: card.numero, lang: card.language })
+  const up = card.delta_pct >= 0
+  return (
+    <button
+      onClick={() => onOpen(card)}
+      style={{
+        display: 'flex', alignItems: 'center',
+        gap: 10, padding: '8px 10px',
+        borderRadius: 8, border: 'none',
+        background: i % 2 === 0 ? C.inner : C.card,
+        cursor: 'pointer', textAlign: 'left',
+        transition: 'background 0.12s', width: '100%',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = C.blueBg}
+      onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? C.inner : C.card}
+    >
+      <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, minWidth: 16, textAlign: 'center' }}>{i + 1}</span>
+      {imgSrc
+        ? <img src={imgSrc} alt={card.nombre} onError={onImgError} style={{ width: 24, height: 34, objectFit: 'contain', borderRadius: 3, flexShrink: 0 }} />
+        : <div style={{ width: 24, height: 34, background: C.border, borderRadius: 3, flexShrink: 0 }} />
+      }
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.nombre || '—'}</div>
+        <div style={{ fontSize: 11, color: C.sub }}>{card.set_name} {card.numero ? `· #${card.numero}` : ''}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{fmtUSD(card.price_last)}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: up ? C.green : C.red }}>{fmtDelta(card.delta_pct)}</span>
+      </div>
+      <span style={{ fontSize: 14, color: up ? C.green : C.red, flexShrink: 0 }}>{up ? '▲' : '▼'}</span>
+    </button>
+  )
 }
 
 /**
@@ -115,79 +151,9 @@ export default function TrendingCards() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {data.map((card, i) => {
-              const up = card.delta_pct >= 0
-              return (
-                <button
-                  key={card.card_id}
-                  onClick={() => setPriceCard(card)}
-                  style={{
-                    display: 'flex', alignItems: 'center',
-                    gap: 10, padding: '8px 10px',
-                    borderRadius: 8, border: 'none',
-                    background: i % 2 === 0 ? C.inner : C.card,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'background 0.12s',
-                    width: '100%',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.blueBg}
-                  onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? C.inner : C.card}
-                >
-                  {/* Rank */}
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: C.sub,
-                    minWidth: 16, textAlign: 'center',
-                  }}>
-                    {i + 1}
-                  </span>
-
-                  {/* Imagen miniatura */}
-                  {card.image_url ? (
-                    <img
-                      src={card.image_url}
-                      alt={card.nombre}
-                      style={{ width: 24, height: 34, objectFit: 'contain', borderRadius: 3, flexShrink: 0 }}
-                    />
-                  ) : (
-                    <div style={{ width: 24, height: 34, background: C.border, borderRadius: 3, flexShrink: 0 }} />
-                  )}
-
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 600, color: C.text,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {card.nombre || '—'}
-                    </div>
-                    <div style={{ fontSize: 11, color: C.sub }}>
-                      {card.set_name} {card.numero ? `· #${card.numero}` : ''}
-                    </div>
-                  </div>
-
-                  {/* Precios */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                      {fmtUSD(card.price_last)}
-                    </span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700,
-                      color: up ? C.green : C.red,
-                    }}>
-                      {fmtDelta(card.delta_pct)}
-                    </span>
-                  </div>
-
-                  {/* Flecha */}
-                  <span style={{
-                    fontSize: 14, color: up ? C.green : C.red, flexShrink: 0,
-                  }}>
-                    {up ? '▲' : '▼'}
-                  </span>
-                </button>
-              )
-            })}
+            {data.map((card, i) => (
+              <TrendingRow key={card.card_id} card={card} i={i} onOpen={setPriceCard} />
+            ))}
           </div>
         )}
 
