@@ -66,7 +66,7 @@ export default function Settings() {
     showToast(t('settings_toast_margin_saved'))
   }
 
-  const handleRevalidar = async () => {
+  const runRevalidar = async (onlyMissing = false) => {
     if (!blue) { showToast(t('settings_toast_wait_blue')); return }
     setRevalState('running')
     setRevalLog([])
@@ -77,12 +77,13 @@ export default function Settings() {
     const { updated, noPrice, total } = await revalidarPrecios({
       blue,
       oficial,
+      onlyMissing,
       onProgress: ({ current, total, updated, noPrice, entry }) => {
         setRevalProgress({ current, total, updated, noPrice })
-        if (entry && (entry.ok || !entry.ok)) {
+        if (entry) {
           const prev = entry.before
           const changed = entry.ok && (prev == null || Math.abs(prev - entry.after) > 0.01)
-          if (changed || (!entry.ok)) {
+          if (changed || !entry.ok) {
             logLines.unshift(entry)
             setRevalLog([...logLines.slice(0, 6)])
           }
@@ -91,11 +92,15 @@ export default function Settings() {
     })
 
     setRevalState('done')
-    localStorage.setItem(LS_KEY, String(Date.now()))
+    if (!onlyMissing) localStorage.setItem(LS_KEY, String(Date.now()))
     queryClient.invalidateQueries({ queryKey: ['stock'] })
     queryClient.invalidateQueries({ queryKey: ['metricas'] })
-    showToast(`✅ ${updated} ${t('settings_cards_updated')} · ${noPrice} ${t('settings_no_price_inline')}`)
+    const label = onlyMissing ? '(solo faltantes)' : ''
+    showToast(`✅ ${updated} ${t('settings_cards_updated')} · ${noPrice} ${t('settings_no_price_inline')} ${label}`)
   }
+
+  const handleRevalidar         = () => runRevalidar(false)
+  const handleRevalidarFaltantes = () => runRevalidar(true)
 
   return (
     <>
@@ -256,15 +261,27 @@ export default function Settings() {
             )}
           </div>
           {revalState !== 'running' && (
-            <button
-              onClick={revalState === 'done' ? () => { setRevalState('idle'); setRevalLog([]) } : handleRevalidar}
-              className={`shrink-0 px-4 py-2 text-sm font-semibold rounded-xl transition
-                ${revalState === 'done'
-                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  : 'bg-blue-600 text-white hover:bg-blue-500'}`}
-            >
-              {revalState === 'done' ? t('settings_reset') : t('settings_revalidate_btn')}
-            </button>
+            <div className="flex flex-col gap-2 shrink-0">
+              <button
+                onClick={revalState === 'done' ? () => { setRevalState('idle'); setRevalLog([]) } : handleRevalidar}
+                className={`px-4 py-2 text-sm font-semibold rounded-xl transition
+                  ${revalState === 'done'
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-500'}`}
+              >
+                {revalState === 'done' ? t('settings_reset') : t('settings_revalidate_btn')}
+              </button>
+              {revalState === 'idle' && (
+                <button
+                  onClick={handleRevalidarFaltantes}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-amber-300
+                             bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
+                  title="Solo actualiza cartas que tienen precio vacío (más rápido)"
+                >
+                  Reintentar faltantes
+                </button>
+              )}
+            </div>
           )}
         </div>
 
