@@ -188,6 +188,43 @@ export default function Ingresos() {
   const [preview,     setPreview]     = useState(null)   // { imagen, precio_usd, precio_buy_usd, precio_sell_usd, grade }
   const [previewLoad, setPreviewLoad] = useState(false)
 
+  // PC URL resolver
+  const [pcUrl,     setPcUrl]     = useState('')
+  const [pcLoading, setPcLoading] = useState(false)
+
+  const handlePcUrl = async (url) => {
+    setPcUrl(url)
+    if (!url.includes('pricecharting.com/game/')) return
+    setPcLoading(true)
+    try {
+      const result = await scannerApi.resolvePcUrl(url)
+      if (!result || result.error) return
+      setForm(f => ({
+        ...f,
+        nombre:  result.name        || f.nombre,
+        set:     result.set_name    || f.set,
+        set_id:  null,
+        numero:  result.card_number || f.numero,
+        idioma:  result.lang        || f.idioma,
+      }))
+      setPreview({
+        imagen:          result.image_url      ?? null,
+        precio_usd:      result.price_usd      ?? null,
+        precio_buy_usd:  result.price_buy_usd  ?? null,
+        precio_sell_usd: result.price_sell_usd ?? null,
+        precio_source:   'pc',
+      })
+      if (result.price_usd && blue) {
+        const m = margen ?? 0
+        const autoARS = Math.round(result.price_usd * blue * (1 + m / 100) / 500) * 500
+        setForm(f => ({ ...f, precioVenta: String(autoARS) }))
+      }
+      setPcUrl('')
+    } finally {
+      setPcLoading(false)
+    }
+  }
+
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   // ── Normaliza "078/217" → "78", "TG30" → "TG30" ──────────────────────
@@ -778,6 +815,24 @@ export default function Ingresos() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+
+              {/* URL de PriceCharting — auto-fill rápido */}
+              <div>
+                <label className={labelCls}>URL de PriceCharting <span className="text-gray-400 font-normal">(pegá el link y se completa solo)</span></label>
+                <div className="relative">
+                  <input
+                    value={pcUrl}
+                    onChange={e => handlePcUrl(e.target.value)}
+                    placeholder="https://www.pricecharting.com/game/pokemon-.../..."
+                    className={`${inputCls} pr-8 text-xs`}
+                  />
+                  {pcLoading && (
+                    <div className="absolute right-3 top-2.5">
+                      <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Nombre con autocomplete */}
               <div ref={wrapRef} className="relative">

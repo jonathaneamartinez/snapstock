@@ -78,6 +78,11 @@ export const scannerApi = {
       .catch(() => ({ url: null, set_name: null, number: null }))
   },
 
+  resolvePcUrl: (url) =>
+    fetch(`${BASE}/resolve-pc-url?${new URLSearchParams({ url })}`)
+      .then(r => r.json())
+      .catch(() => null),
+
   cardPrice: (name, number = '', lang = 'en', finish = 'normal') => {
     const numNorm = number ? (String(number).split('/')[0].replace(/^0+/, '') || '') : ''
     const params = new URLSearchParams({ name, lang, finish, ...(numNorm ? { number: numNorm } : {}) })

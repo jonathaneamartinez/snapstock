@@ -624,7 +624,36 @@ const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫�
 function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreload, onGradeChange }) {
   const wrapRef    = useRef(null)
   const numTimer   = useRef(null)
-  const [numInput, setNumInput] = useState(row.card_number || '')
+  const [numInput,   setNumInput]   = useState(row.card_number || '')
+  const [pcUrl,      setPcUrl]      = useState('')
+  const [pcLoading,  setPcLoading]  = useState(false)
+
+  const handlePcUrl = async (url) => {
+    setPcUrl(url)
+    if (!url.includes('pricecharting.com/game/')) return
+    setPcLoading(true)
+    try {
+      const result = await scannerApi.resolvePcUrl(url)
+      if (!result || result.error) return
+      onChange({
+        card_name:        result.name        || row.card_name,
+        set_name:         result.set_name    || row.set_name,
+        set_id:           null,
+        card_number:      result.card_number || row.card_number,
+        language:         result.lang        || row.language,
+        price_market_usd: result.price_usd   ?? row.price_market_usd,
+        price_usd:        result.price_buy_usd != null
+                            ? String(result.price_buy_usd)
+                            : (result.price_usd != null ? String(result.price_usd) : row.price_usd),
+        suggestions:      [],
+        _setCards:        [],
+      })
+      if (result.card_number) setNumInput(result.card_number)
+      setPcUrl('')
+    } finally {
+      setPcLoading(false)
+    }
+  }
 
   // Cerrar sugerencias al click fuera
   useEffect(() => {
@@ -709,6 +738,22 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
 
   return (
     <div className="px-3 py-2.5 space-y-2">
+
+      {/* ── PC URL ──────────────────────────────────────────────────────── */}
+      <div className="relative">
+        <input
+          value={pcUrl}
+          onChange={e => handlePcUrl(e.target.value)}
+          placeholder="Pegá URL de PriceCharting para autocompletar…"
+          className="w-full border border-gray-100 bg-gray-50 rounded-lg px-2.5 py-1.5 text-[11px] text-gray-500
+                     focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition pr-7"
+        />
+        {pcLoading && (
+          <div className="absolute right-2.5 top-2">
+            <div className="w-3.5 h-3.5 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
 
       {/* ── Fila 1: Carta | Cond | Qty | USD | ARS | × ─────────────────── */}
       <div className="grid grid-cols-[2fr_72px_64px_88px_88px_28px] gap-2 items-center">
