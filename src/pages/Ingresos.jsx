@@ -199,14 +199,16 @@ export default function Ingresos() {
     try {
       const result = await scannerApi.resolvePcUrl(url)
       if (!result || result.error) return
-      const lang = result.lang || 'en'
+      const langRaw = result.lang || 'en'
+      // Mapear jp→ja y cn→zh para que coincida con los códigos del selector IDIOMAS
+      const langForm = langRaw === 'jp' ? 'ja' : langRaw === 'cn' ? 'zh' : langRaw
       setForm(f => ({
         ...f,
         nombre:  result.name        || f.nombre,
         set:     result.set_name    || f.set,
         set_id:  null,
         numero:  result.card_number || f.numero,
-        idioma:  lang,
+        idioma:  langForm,
       }))
       setPreview({
         imagen:          result.image_url      ?? null,
