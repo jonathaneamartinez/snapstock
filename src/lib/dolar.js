@@ -5,13 +5,13 @@ export const getDolar = async () => {
   try {
     const { data } = await supabase
       .from('usd_rates')
-      .select('rate_blue, rate_oficial, created_at')
-      .order('created_at', { ascending: false })
+      .select('rate_blue, rate_oficial, recorded_at')
+      .order('recorded_at', { ascending: false })
       .limit(1)
       .single()
 
     if (data) {
-      const age = Date.now() - new Date(data.created_at).getTime()
+      const age = Date.now() - new Date(data.recorded_at).getTime()
       if (age < 3_600_000) {
         return { blue: data.rate_blue, oficial: data.rate_oficial }
       }
