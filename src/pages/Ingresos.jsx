@@ -737,8 +737,8 @@ export default function Ingresos() {
     prevGradeRef.current  = form.grade
     if (!selectedCardId || (!finishChanged && !gradeChanged)) return
 
-    fetchPrecioPC(selectedCardId, form.finish, form.grade).then(pcResult => {
-      if (!pcResult?.price_usd) return
+    const applyPrice = (pcResult) => {
+      if (!pcResult?.price_usd) return false
       setPreview(prev => ({
         ...prev,
         precio_usd:      pcResult.price_usd,
@@ -751,6 +751,17 @@ export default function Ingresos() {
         const m = margen ?? 0
         const autoARS = Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500
         setForm(f => ({ ...f, precioVenta: String(autoARS) }))
+      }
+      return true
+    }
+
+    fetchPrecioPC(selectedCardId, form.finish, form.grade).then(async pcResult => {
+      if (applyPrice(pcResult)) return
+      // Fallback: consulta en vivo a PriceCharting si price_history no tiene el finish
+      if (form.nombre) {
+        const lang = normLang(form.idioma)
+        const live = await scannerApi.cardPrice(form.nombre, form.numero, lang, form.finish)
+        if (live?.price_usd) applyPrice({ price_usd: live.price_usd, price_buy_usd: live.price_buy_usd ?? null, price_sell_usd: live.price_sell_usd ?? null })
       }
     })
   }, [form.finish, form.grade]) // eslint-disable-line react-hooks/exhaustive-deps
