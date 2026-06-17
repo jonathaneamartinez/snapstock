@@ -698,23 +698,15 @@ export default function Ingresos() {
 
     const lang = normLang(form.idioma)
 
-    // Para todos los idiomas: buscar primero en nuestro índice R2
-    // (tenemos EN + JP + CN descargados). Fallback a pokemontcg.io solo para EN.
+    // Al cambiar idioma: solo actualizar la imagen, nunca tocar set/número
     fetchImageFromBackend(form.nombre, lang === 'en' ? form.numero : '', form.idioma)
       .then(res => {
         if (res?.url) {
           setPreview(prev => ({ ...prev, imagen: res.url }))
-          setForm(f => ({
-            ...f,
-            set:    res.set_name || f.set,
-            numero: res.number   || (lang === 'en' ? f.numero : ''),
-            set_id: lang === 'en' ? f.set_id : null,
-          }))
           return
         }
-        // Sin resultado en R2 → fallback a pokemontcg.io (solo EN tiene precios)
         if (lang === 'en') {
-          fetchPreviewImage(form.nombre, form.numero, form.set)
+          fetchPreviewImage(form.nombre, form.numero, form.idioma, form.set_id)
         }
       })
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
