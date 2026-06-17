@@ -735,7 +735,8 @@ export default function Ingresos() {
     const gradeChanged  = form.grade  !== prevGradeRef.current
     prevFinishRef.current = form.finish
     prevGradeRef.current  = form.grade
-    if (!selectedCardId || (!finishChanged && !gradeChanged)) return
+    if (!finishChanged && !gradeChanged) return
+    if (!form.nombre) return
 
     const applyPrice = (pcResult) => {
       if (!pcResult?.price_usd) return false
@@ -755,15 +756,17 @@ export default function Ingresos() {
       return true
     }
 
-    fetchPrecioPC(selectedCardId, form.finish, form.grade).then(async pcResult => {
-      if (applyPrice(pcResult)) return
-      // Fallback: consulta en vivo a PriceCharting si price_history no tiene el finish
-      if (form.nombre) {
-        const lang = normLang(form.idioma)
-        const live = await scannerApi.cardPrice(form.nombre, form.numero, lang, form.finish)
-        if (live?.price_usd) applyPrice({ price_usd: live.price_usd, price_buy_usd: live.price_buy_usd ?? null, price_sell_usd: live.price_sell_usd ?? null })
+    const lang = normLang(form.idioma)
+    ;(async () => {
+      // 1. Intentar price_history local (rápido, gratis)
+      if (selectedCardId) {
+        const pcResult = await fetchPrecioPC(selectedCardId, form.finish, form.grade)
+        if (applyPrice(pcResult)) return
       }
-    })
+      // 2. Fallback: consulta en vivo a PriceCharting
+      const live = await scannerApi.cardPrice(form.nombre, form.numero, lang, form.finish)
+      applyPrice(live)
+    })()
   }, [form.finish, form.grade]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cerrar dropdown al hacer click afuera ──────────────────────────────
