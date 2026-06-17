@@ -118,6 +118,23 @@ async function fetchPrecioPC(cardId, finish = 'normal', grade = 'ungraded') {
   }
 }
 
+// ── Precio con fallback: price_history → PC en vivo ──────────────────────────
+// Usar siempre este helper en lugar de fetchPrecioPC directo.
+async function fetchPrecioConFallback(cardId, nombre, numero, idioma, finish = 'normal', grade = 'ungraded') {
+  // 1. Intentar cache local
+  if (cardId) {
+    const cached = await fetchPrecioPC(cardId, finish, grade)
+    if (cached?.price_usd) return cached
+  }
+  // 2. Consulta en vivo a PriceCharting
+  if (!nombre) return null
+  const langNorm = ['ja','jp'].includes(idioma) ? 'jp' : ['zh','cn'].includes(idioma) ? 'cn' : 'en'
+  const numNorm  = numero ? String(numero).split('/')[0].replace(/^0+/, '') : ''
+  const live = await scannerApi.cardPrice(nombre, numNorm, langNorm, finish)
+  if (live?.price_usd) return { price_usd: live.price_usd, price_buy_usd: live.price_buy_usd ?? null, price_sell_usd: live.price_sell_usd ?? null }
+  return null
+}
+
 // ── Normaliza número de carta (strip ceros leading, quita /total) ─────────────
 function normalizeCardNum(raw) {
   if (!raw) return ''
@@ -555,7 +572,7 @@ export default function Ingresos() {
 
     if (cardResult) {
       setSelectedCardId(cardResult.id)
-      const pcResult = await fetchPrecioPC(cardResult.id, form.finish, form.grade)
+      const pcResult = await fetchPrecioConFallback(cardResult.id, sug.nombre, sug.numero, normLangLocal(idioma), form.finish, form.grade)
       if (pcResult?.price_usd) {
         precioBase = pcResult.price_usd
         setPreview(prev => ({
@@ -630,7 +647,7 @@ export default function Ingresos() {
             const cidResult = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set, form.finish)
             if (cidResult) {
               if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
-              const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
+              const pcResult = await fetchPrecioConFallback(cidResult.id, form.nombre, res.number || numNorm, form.idioma, form.finish, form.grade)
               if (pcResult?.price_usd) {
                 const m = margen ?? 0
                 setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
@@ -666,7 +683,7 @@ export default function Ingresos() {
           const cidResult = await fetchCardId(form.nombre, numNorm, lang, form.set, form.finish)
           if (cidResult) {
             if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
-            const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
+            const pcResult = await fetchPrecioConFallback(cidResult.id, form.nombre, numNorm, form.idioma, form.finish, form.grade)
             if (pcResult?.price_usd) {
               const m = margen ?? 0
               const autoPrice = String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500)
@@ -738,8 +755,9 @@ export default function Ingresos() {
     if (!finishChanged && !gradeChanged) return
     if (!form.nombre) return
 
-    const applyPrice = (pcResult) => {
-      if (!pcResult?.price_usd) return false
+    ;(async () => {
+      const pcResult = await fetchPrecioConFallback(selectedCardId, form.nombre, form.numero, form.idioma, form.finish, form.grade)
+      if (!pcResult?.price_usd) return
       setPreview(prev => ({
         ...prev,
         precio_usd:      pcResult.price_usd,
@@ -750,22 +768,8 @@ export default function Ingresos() {
       }))
       if (pcResult.price_usd && blue) {
         const m = margen ?? 0
-        const autoARS = Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500
-        setForm(f => ({ ...f, precioVenta: String(autoARS) }))
+        setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
       }
-      return true
-    }
-
-    const lang = normLang(form.idioma)
-    ;(async () => {
-      // 1. Intentar price_history local (rápido, gratis)
-      if (selectedCardId) {
-        const pcResult = await fetchPrecioPC(selectedCardId, form.finish, form.grade)
-        if (applyPrice(pcResult)) return
-      }
-      // 2. Fallback: consulta en vivo a PriceCharting
-      const live = await scannerApi.cardPrice(form.nombre, form.numero, lang, form.finish)
-      applyPrice(live)
     })()
   }, [form.finish, form.grade]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1088,17 +1092,15 @@ export default function Ingresos() {
                         onClick={async () => {
                           setForm(f => ({ ...f, grade: g.value }))
                           // Re-fetch precio para el nuevo grado
-                          if (preview?.precio_usd !== undefined) {
+                          if (form.nombre) {
                             const cardResult = await fetchCardId(form.nombre, form.numero, normLang(form.idioma), form.set, form.finish)
-                            if (cardResult) {
-                              const pcResult = await fetchPrecioPC(cardResult.id, form.finish, g.value)
-                              if (pcResult?.price_usd) {
-                                const m = margen ?? 0
-                                setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, grade: g.value }))
-                                setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
-                              } else {
-                                setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, grade: g.value }))
-                              }
+                            const pcResult = await fetchPrecioConFallback(cardResult?.id ?? null, form.nombre, form.numero, form.idioma, form.finish, g.value)
+                            if (pcResult?.price_usd) {
+                              const m = margen ?? 0
+                              setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: g.value }))
+                              setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
+                            } else {
+                              setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, grade: g.value }))
                             }
                           }
                         }}
