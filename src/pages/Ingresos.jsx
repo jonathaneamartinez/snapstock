@@ -199,13 +199,14 @@ export default function Ingresos() {
     try {
       const result = await scannerApi.resolvePcUrl(url)
       if (!result || result.error) return
+      const lang = result.lang || 'en'
       setForm(f => ({
         ...f,
         nombre:  result.name        || f.nombre,
         set:     result.set_name    || f.set,
         set_id:  null,
         numero:  result.card_number || f.numero,
-        idioma:  result.lang        || f.idioma,
+        idioma:  lang,
       }))
       setPreview({
         imagen:          result.image_url      ?? null,
@@ -214,6 +215,10 @@ export default function Ingresos() {
         precio_sell_usd: result.price_sell_usd ?? null,
         precio_source:   'pc',
       })
+      // Si PC no devolvió imagen, buscar por fallback según idioma
+      if (!result.image_url && result.name) {
+        fetchPreviewImage(result.name, result.card_number || '', lang, null)
+      }
       if (result.price_usd && blue) {
         const m = margen ?? 0
         const autoARS = Math.round(result.price_usd * blue * (1 + m / 100) / 500) * 500
@@ -222,6 +227,58 @@ export default function Ingresos() {
       setPcUrl('')
     } finally {
       setPcLoading(false)
+    }
+  }
+
+  /**
+   * Busca imagen por fallback según idioma cuando PC no la devuelve.
+   * EN: pokemontcg.io → TCGDex → R2
+   * JP: R2 → TCGDex ja
+   * CN: R2
+   */
+  const fetchPreviewImage = async (nombre, numero, idioma, setId) => {
+    const lang = normLang(idioma)
+    const num  = numero ? normalizeNum(numero) : ''
+    let imageUrl = null
+    try {
+      if (lang === 'en') {
+        // 1° pokemontcg.io (confiable para EN)
+        if (setId && num) {
+          const card = await fetchCardBySetAndNumber(setId, num)
+          imageUrl = card?.images?.small || card?.images?.large || null
+        }
+        if (!imageUrl && num) {
+          try {
+            const tcgdex = await fetch(`https://api.tcgdex.net/v2/en/cards/${setId || 'base1'}/${num}`)
+            const d = await tcgdex.json()
+            if (d?.image) imageUrl = d.image + '/high.webp'
+          } catch (_) {}
+        }
+        // 2° R2 vía backend con scoring nombre+número
+        if (!imageUrl) {
+          const res = await scannerApi.cardImageUrl(nombre, num, 'en', { setId: setId || '' })
+          if (res?.url) imageUrl = res.url
+        }
+      } else if (lang === 'jp') {
+        // 1° R2 vía backend
+        const res = await scannerApi.cardImageUrl(nombre, num, 'jp', { setId: setId || '' })
+        if (res?.url) imageUrl = res.url
+        // 2° TCGDex japonés
+        if (!imageUrl && setId && num) {
+          try {
+            const tcgdex = await fetch(`https://api.tcgdex.net/v2/ja/cards/${setId}/${num}`)
+            const d = await tcgdex.json()
+            if (d?.image) imageUrl = d.image + '/high.webp'
+          } catch (_) {}
+        }
+      } else {
+        // CN: solo R2
+        const res = await scannerApi.cardImageUrl(nombre, num, 'cn', { setId: setId || '' })
+        if (res?.url) imageUrl = res.url
+      }
+    } catch (_) {}
+    if (imageUrl) {
+      setPreview(prev => ({ ...prev, imagen: imageUrl }))
     }
   }
 
