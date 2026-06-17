@@ -502,12 +502,48 @@ export default function Stock() {
   }
 
   // ── Guardar tipo (Normal/Holofoil/Reverse) ───────────────────────────────
-  const saveTipo = async (inventoryId, finish) => {
-    const isHolo = finish === 'holofoil' || finish === 'reverse'
-    await supabase.from('inventory').update({
-      finish,          // texto: 'normal' | 'holofoil' | 'reverse'
-      holo: isHolo,    // boolean derivado
-    }).eq('id', inventoryId)
+  // row contiene: nombre, idioma, numero, set_name, card_id (de la card actual)
+  const saveTipo = async (inventoryId, finish, row) => {
+    const isHolo = ['holofoil', 'reverse_holo', 'gold_star'].includes(finish)
+
+    // Buscar si ya existe un registro en cards con el nuevo finish
+    let targetCardId = row?.card_id ?? null
+    if (row?.nombre && row?.idioma) {
+      let q = supabase.from('cards').select('id')
+        .ilike('name', row.nombre)
+        .eq('language', row.idioma)
+        .eq('finish', finish)
+      if (row.numero)   q = q.eq('card_number', row.numero)
+      if (row.set_name) q = q.eq('set_name', row.set_name)
+      const { data: existingCard } = await q.maybeSingle()
+
+      if (existingCard) {
+        targetCardId = existingCard.id
+      } else if (row.card_id) {
+        // Crear card hermana con el nuevo finish, copiando datos de la actual
+        const { data: srcCard } = await supabase.from('cards')
+          .select('name, language, card_number, set_name, image_url, variant, is_holo')
+          .eq('id', row.card_id).single()
+        if (srcCard) {
+          const { data: newCard } = await supabase.from('cards').insert({
+            name:        srcCard.name,
+            language:    srcCard.language,
+            card_number: srcCard.card_number,
+            set_name:    srcCard.set_name,
+            image_url:   srcCard.image_url,
+            variant:     srcCard.variant,
+            is_holo:     isHolo,
+            finish,
+          }).select('id').single()
+          if (newCard) targetCardId = newCard.id
+        }
+      }
+    }
+
+    const update = { finish, holo: isHolo }
+    if (targetCardId) update.card_id = targetCardId
+
+    await supabase.from('inventory').update(update).eq('id', inventoryId)
     queryClient.invalidateQueries({ queryKey: ['stock'] })
   }
 
@@ -938,7 +974,7 @@ export default function Stock() {
                         <div onClick={e => e.stopPropagation()}>
                           <FinishSelect
                             value={r.finish || 'normal'}
-                            onChange={v => saveTipo(r.inventory_id, v)}
+                            onChange={v => saveTipo(r.inventory_id, v, r)}
                             size="sm"
                             className="w-full"
                           />

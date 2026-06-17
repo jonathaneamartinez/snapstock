@@ -128,12 +128,14 @@ function normalizeCardNum(raw) {
 }
 
 // ── Busca card_id + set_name en Supabase por nombre+numero+idioma ─────────────
-async function fetchCardId(nombre, numero, idioma, setName) {
+async function fetchCardId(nombre, numero, idioma, setName, finish = 'normal') {
   if (!nombre) return null
-  const numNorm = normalizeCardNum(numero)
+  const numNorm  = normalizeCardNum(numero)
+  const finishQ  = finish || 'normal'
   let q = supabase.from('cards').select('id, set_name, language')
     .ilike('name', nombre.trim())
     .eq('language', idioma || 'en')
+    .eq('finish', finishQ)
   if (numNorm) q = q.eq('card_number', numNorm)
   if (setName) q = q.eq('set_name', setName.trim())
   let { data } = await q.limit(1).maybeSingle()
@@ -142,6 +144,7 @@ async function fetchCardId(nombre, numero, idioma, setName) {
     let q2 = supabase.from('cards').select('id, set_name, language')
       .ilike('name', nombre.trim())
       .eq('language', idioma || 'en')
+      .eq('finish', finishQ)
       .eq('card_number', numero.trim())
     if (setName) q2 = q2.eq('set_name', setName.trim())
     const { data: d2 } = await q2.limit(1).maybeSingle()
@@ -547,7 +550,7 @@ export default function Ingresos() {
     // 1. Buscar precio de PriceCharting primero (fuente principal)
     const idioma = sug.idioma || form.idioma || 'en'
     const normLangLocal = (l) => ['ja','jp'].includes(l) ? 'jp' : ['zh','cn'].includes(l) ? 'cn' : 'en'
-    const cardResult = await fetchCardId(sug.nombre, sug.numero, normLangLocal(idioma), sug.set)
+    const cardResult = await fetchCardId(sug.nombre, sug.numero, normLangLocal(idioma), sug.set, form.finish)
     let precioBase = sug.precio_usd ?? null
 
     if (cardResult) {
@@ -624,7 +627,7 @@ export default function Ingresos() {
             }
             // Buscar precio PC para este resultado
             const lang = normLang(form.idioma)
-            const cidResult = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set)
+            const cidResult = await fetchCardId(form.nombre, res.number || numNorm, lang, res.set_name || form.set, form.finish)
             if (cidResult) {
               if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
               const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
@@ -660,7 +663,7 @@ export default function Ingresos() {
         // 3. Si hay nombre: buscar card_id y precio PriceCharting
         if (form.nombre) {
           const lang = normLang(form.idioma)
-          const cidResult = await fetchCardId(form.nombre, numNorm, lang, form.set)
+          const cidResult = await fetchCardId(form.nombre, numNorm, lang, form.set, form.finish)
           if (cidResult) {
             if (cidResult.set_name) setForm(f => ({ ...f, set: cidResult.set_name || f.set }))
             const pcResult = await fetchPrecioPC(cidResult.id, form.finish, form.grade)
@@ -785,12 +788,14 @@ export default function Ingresos() {
       // Buscar carta existente (cards es tabla global, sin store_id)
       const langFinal = normLang(form.idioma) || 'en'
 
-      // Buscar carta existente filtrando también por idioma
+      // Buscar carta existente filtrando también por idioma y finish
+      const finishFinal = form.finish || 'normal'
       let cardQuery = supabase
         .from('cards')
         .select('id')
         .ilike('name', form.nombre.trim())
         .eq('language', langFinal)
+        .eq('finish', finishFinal)
 
       if (form.set.trim())    cardQuery = cardQuery.eq('set_name', form.set.trim())
       if (form.numero.trim()) cardQuery = cardQuery.eq('card_number', form.numero.trim())
@@ -804,7 +809,7 @@ export default function Ingresos() {
           await supabase.from('cards').update({ image_url: preview.imagen }).eq('id', cardId)
         }
       } else {
-        // Insertar nueva carta con idioma del formulario (siempre form.idioma, nunca default EN)
+        // Insertar nueva carta con idioma y finish del formulario
         const { data: newCard, error: cardErr } = await supabase
           .from('cards')
           .insert({
@@ -813,6 +818,7 @@ export default function Ingresos() {
             card_number: form.numero.trim() || null,
             language:    langFinal,
             image_url:   preview?.imagen    || null,
+            finish:      finishFinal,
           })
           .select('id')
           .single()
@@ -830,6 +836,7 @@ export default function Ingresos() {
         .eq('store_id', STORE_ID)
         .eq('card_id',  cardId)
         .eq('condition', form.condicion)
+        .eq('finish', finishFinal)
         .eq('status', 'disponible')
         .maybeSingle()
 
@@ -1068,7 +1075,7 @@ export default function Ingresos() {
                           setForm(f => ({ ...f, grade: g.value }))
                           // Re-fetch precio para el nuevo grado
                           if (preview?.precio_usd !== undefined) {
-                            const cardResult = await fetchCardId(form.nombre, form.numero, normLang(form.idioma), form.set)
+                            const cardResult = await fetchCardId(form.nombre, form.numero, normLang(form.idioma), form.set, form.finish)
                             if (cardResult) {
                               const pcResult = await fetchPrecioPC(cardResult.id, form.finish, g.value)
                               if (pcResult?.price_usd) {

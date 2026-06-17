@@ -364,11 +364,13 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
         if (!r.card_id && r._market) {
           const m = r._market
 
+          const cardFinish = r.finish || 'normal'
           const { data: existing } = await supabase
             .from('cards')
             .select('id')
             .ilike('name', m.name)
             .eq('set_name', m.set_name || '')
+            .eq('finish', cardFinish)
             .maybeSingle()
 
           if (existing) {
@@ -382,6 +384,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                 card_number: m.card_number || null,
                 image_url:   m.image_url   || null,
                 language:    r.language    || 'en',
+                finish:      cardFinish,
                 variant:     r.finish !== 'normal' ? r.finish : (r.is_first_edition ? 'first_edition' : 'normal'),
               })
               .select('id')
@@ -418,6 +421,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
             .eq('store_id', STORE_ID)
             .eq('card_id', r.card_id)
             .eq('condition', r.condition || 'NM')
+            .eq('finish', r.finish || 'normal')
             .eq('grade', grade)
             .eq('status', 'disponible')
             .maybeSingle()
