@@ -214,9 +214,14 @@ function PokedexCard({ card, price, onClick }) {
     // URLs de Supabase que pueden apuntar a la carta equivocada.
     // _imgCache evita llamadas duplicadas para la misma carta.
     setSrc(card.image || CARD_BACK)
-    fetchImgUrl(card.name, card.number, card._lang)
-      .then(url => { if (url) setSrc(url) })
-      .catch(() => {})
+    // Solo JP/CN: las imágenes EN vienen de pokemontcg.io y ya son correctas.
+    // Pasar el scanner sobre EN genera falsos positivos (el número puede coincidir
+    // con otra carta diferente en el índice local).
+    if (card._lang !== 'en') {
+      fetchImgUrl(card.name, card.number, card._lang)
+        .then(url => { if (url) setSrc(url) })
+        .catch(() => {})
+    }
   }, [card._key])
 
   const handleError = () => setSrc(CARD_BACK)
@@ -335,7 +340,7 @@ export default function Pokedex() {
       const { data, count, error } = await supabase
         .from('cards')
         .select('id, name, name_en, set_name, card_number, language, image_url, variant', { count: 'exact' })
-        .or(`name.ilike.${q}*,name_en.ilike.${q}*`)
+        .or(`name.ilike.*${q}*,name_en.ilike.*${q}*`)
         .in('language', [...langs])
         .range(from, to)
         .order('name_en', { nullsFirst: false })

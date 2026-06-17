@@ -34,7 +34,7 @@ export function useCardImage(fallbackUrl, { name, number = '', lang = 'en' } = {
 
   useEffect(() => {
     setSrc(fallbackUrl || CARD_BACK)
-    if (!name) return
+    if (!name || nLang === 'en') return
 
     if (_cache.has(cacheKey)) {
       const cached = _cache.get(cacheKey)
