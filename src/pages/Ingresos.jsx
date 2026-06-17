@@ -698,13 +698,22 @@ export default function Ingresos() {
 
     const lang = normLang(form.idioma)
 
-    // Al cambiar idioma: solo actualizar la imagen, nunca tocar set/número
+    // Al cambiar idioma: buscar la carta en el nuevo idioma y actualizar imagen + set/número
+    // Para EN se pasa el número para mayor precisión; para JP/CN no (numeración distinta)
     fetchImageFromBackend(form.nombre, lang === 'en' ? form.numero : '', form.idioma)
       .then(res => {
         if (res?.url) {
           setPreview(prev => ({ ...prev, imagen: res.url }))
+          // Actualizar set y número si el índice devolvió datos del nuevo idioma
+          setForm(f => ({
+            ...f,
+            set:    res.set_name || f.set,
+            numero: res.number   || (lang === 'en' ? f.numero : f.numero),
+            set_id: lang === 'en' ? f.set_id : null,
+          }))
           return
         }
+        // Sin resultado en el índice → para EN intentar pokemontcg.io
         if (lang === 'en') {
           fetchPreviewImage(form.nombre, form.numero, form.idioma, form.set_id)
         }
