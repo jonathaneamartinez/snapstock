@@ -97,18 +97,20 @@ async function enrichSuggestionsWithPCPrices(suggestions, lang) {
 // ── Busca precio de PriceCharting desde price_history por card_id + grade ────
 async function fetchPrecioPC(cardId, finish = 'normal', grade = 'ungraded') {
   if (!cardId) return null
-  let q = supabase
+  const { data } = await supabase
     .from('price_history')
     .select('price_usd, price_buy_usd, price_sell_usd, snapshot_date, finish')
     .eq('card_id', cardId)
     .eq('source', 'pricecharting')
     .eq('grade', grade)
     .order('snapshot_date', { ascending: false })
-  const { data } = await q.limit(5)
+    .limit(10)
   if (!data?.length) return null
-  // Preferir el finish exacto, sino el más reciente
-  const exact = data.find(r => r.finish === finish || r.finish === 'normal')
-  const row   = exact ?? data[0]
+  // Preferir finish exacto; solo caer a 'normal' si el finish pedido ES normal
+  const exact   = data.find(r => r.finish === finish)
+  const fallback = finish === 'normal' ? data[0] : null
+  const row = exact ?? fallback
+  if (!row) return null
   return {
     price_usd:      row.price_usd      ?? null,
     price_buy_usd:  row.price_buy_usd  ?? null,
@@ -185,8 +187,9 @@ export default function Ingresos() {
   const allSetCardsRef = useRef([])
 
   // Preview / precios de mercado
-  const [preview,     setPreview]     = useState(null)   // { imagen, precio_usd, precio_buy_usd, precio_sell_usd, grade }
-  const [previewLoad, setPreviewLoad] = useState(false)
+  const [preview,          setPreview]          = useState(null)
+  const [previewLoad,      setPreviewLoad]      = useState(false)
+  const [selectedCardId,   setSelectedCardId]   = useState(null)   // card_id resuelto de la carta seleccionada
 
   // PC URL resolver
   const [pcUrl,     setPcUrl]     = useState('')
@@ -548,6 +551,7 @@ export default function Ingresos() {
     let precioBase = sug.precio_usd ?? null
 
     if (cardResult) {
+      setSelectedCardId(cardResult.id)
       const pcResult = await fetchPrecioPC(cardResult.id, form.finish, form.grade)
       if (pcResult?.price_usd) {
         precioBase = pcResult.price_usd
@@ -720,6 +724,34 @@ export default function Ingresos() {
       })
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Al cambiar finish o grade → re-buscar precio PC con la variante correcta ──
+  const prevFinishRef = useRef(form.finish)
+  const prevGradeRef  = useRef(form.grade)
+  useEffect(() => {
+    const finishChanged = form.finish !== prevFinishRef.current
+    const gradeChanged  = form.grade  !== prevGradeRef.current
+    prevFinishRef.current = form.finish
+    prevGradeRef.current  = form.grade
+    if (!selectedCardId || (!finishChanged && !gradeChanged)) return
+
+    fetchPrecioPC(selectedCardId, form.finish, form.grade).then(pcResult => {
+      if (!pcResult?.price_usd) return
+      setPreview(prev => ({
+        ...prev,
+        precio_usd:      pcResult.price_usd,
+        precio_buy_usd:  pcResult.price_buy_usd  ?? null,
+        precio_sell_usd: pcResult.price_sell_usd ?? null,
+        precio_source:   'pc',
+        grade:           form.grade,
+      }))
+      if (pcResult.price_usd && blue) {
+        const m = margen ?? 0
+        const autoARS = Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500
+        setForm(f => ({ ...f, precioVenta: String(autoARS) }))
+      }
+    })
+  }, [form.finish, form.grade]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Cerrar dropdown al hacer click afuera ──────────────────────────────
   const wrapRef = useRef(null)
   useEffect(() => {
@@ -840,6 +872,7 @@ export default function Ingresos() {
       showToast(`✅ ${cantidad > 1 ? `${cantidad} ${t('ingresos_added_many')}` : t('ingresos_added_one')} al stock`)
       setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded' })
       setPreview(null)
+      setSelectedCardId(null)
     } catch (err) {
       console.error('Error al guardar carta:', err)
       showToast(err?.message || 'Error al guardar la carta', 'error')
