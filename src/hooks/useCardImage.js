@@ -34,7 +34,9 @@ export function useCardImage(fallbackUrl, { name, number = '', lang = 'en' } = {
 
   useEffect(() => {
     setSrc(fallbackUrl || CARD_BACK)
-    if (!name || nLang === 'en') return
+    // Si ya tenemos imagen guardada, usarla directamente — no buscar en el scanner
+    // (buscar por nombre sin set_id puede retornar otra carta del mismo Pokémon)
+    if (fallbackUrl || !name || nLang === 'en') return
 
     if (_cache.has(cacheKey)) {
       const cached = _cache.get(cacheKey)
