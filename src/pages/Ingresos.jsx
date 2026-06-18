@@ -755,8 +755,19 @@ export default function Ingresos() {
     if (!finishChanged && !gradeChanged) return
     if (!form.nombre) return
 
+    // Limpiar precio inmediatamente para que el usuario vea que se está actualizando
+    if (finishChanged) {
+      setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null }))
+    }
+
     ;(async () => {
-      const pcResult = await fetchPrecioConFallback(selectedCardId, form.nombre, form.numero, form.idioma, form.finish, form.grade)
+      // Buscar el card_id correcto para el nuevo finish (puede diferir del selectedCardId actual)
+      const lang = normLang(form.idioma)
+      const cidResult = await fetchCardId(form.nombre, form.numero, lang, form.set, form.finish)
+      const targetCardId = cidResult?.id ?? selectedCardId
+      if (cidResult?.id) setSelectedCardId(cidResult.id)
+
+      const pcResult = await fetchPrecioConFallback(targetCardId, form.nombre, form.numero, form.idioma, form.finish, form.grade)
       if (!pcResult?.price_usd) return
       setPreview(prev => ({
         ...prev,
