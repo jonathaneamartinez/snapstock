@@ -600,7 +600,7 @@ export default function Stock() {
       channel:      channel      || 'fuera_de_evento',
       buyer_name:   buyer        || null,
       notes:        r.nombre     || '',
-      total_ars:    r._ars_blue  ?? r._ars_ofic ?? null,
+      total_ars:    r.precio_venta ?? r._ars_blue ?? r._ars_ofic ?? null,
       sold_at:      now,
       estado:       'pendiente',
       inventory_id: r.inventory_id || null,
