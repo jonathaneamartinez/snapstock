@@ -242,7 +242,7 @@ export default function Ingresos() {
       })
       // Si PC no devolvió imagen, buscar por fallback según idioma
       if (!result.image_url && result.name) {
-        fetchPreviewImage(result.name, result.card_number || '', lang, null)
+        fetchPreviewImageByLang(result.name, result.card_number || '', lang, null)
       }
       if (result.price_usd && blue) {
         const m = margen ?? 0
@@ -261,7 +261,7 @@ export default function Ingresos() {
    * JP: R2 → TCGDex ja
    * CN: R2
    */
-  const fetchPreviewImage = async (nombre, numero, idioma, setId) => {
+  const fetchPreviewImageByLang = async (nombre, numero, idioma, setId) => {
     const lang = normLang(idioma)
     const num  = numero ? normalizeNum(numero) : ''
     let imageUrl = null
@@ -739,7 +739,7 @@ export default function Ingresos() {
         }
         // Sin resultado en el índice → para EN intentar pokemontcg.io
         if (lang === 'en') {
-          fetchPreviewImage(form.nombre, form.numero, form.idioma, form.set_id)
+          fetchPreviewImageByLang(form.nombre, form.numero, form.idioma, form.set_id)
         }
       })
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
