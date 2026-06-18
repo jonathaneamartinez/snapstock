@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useCardImage } from '../../hooks/useCardImage'
+import { scannerApi } from '../../lib/scanner'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AreaChart, Area,
@@ -56,16 +57,32 @@ export default function CardPriceModal({ card, onClose }) {
   const { data: kpi,     isLoading: kpiLoading } = useMarketKpi(marketCardId)
   const { data: signals = [] }                   = useMarketSignals(marketCardId, 30)
 
+  // Precio + liquidez en vivo según el grado seleccionado (PC)
+  const [live, setLive] = useState(null)
+  useEffect(() => {
+    if (!card?.nombre && !card?.name) return
+    let cancelled = false
+    setLive(null)
+    scannerApi
+      .cardPrice(card.nombre || card.name, card.numero || card.numero, card.idioma || card.language, card.finish || 'normal', grade)
+      .then(j => { if (!cancelled && j && !j.error) setLive(j) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [grade, card?.card_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!card) return null
 
   const state     = kpi?.kpi_state ?? 'sin_datos'
   const stateConf = KPI_STATE_CONFIG[state] ?? KPI_STATE_CONFIG.normal
   const score     = kpi?.kpi_score
 
-  // Precio según grado seleccionado (card puede traer precio del grado activo)
-  const priceCurrent = card.price_usd_efectivo ?? card.price_usd
-  const priceBuy     = grade === 'ungraded' ? (card.price_buy_usd  ?? null) : null
-  const priceSell    = grade === 'ungraded' ? (card.price_sell_usd ?? null) : null
+  // Precio según grado seleccionado — prioriza el precio en vivo de PC por grado
+  const priceCurrent = live?.price_usd ?? (grade === 'ungraded' ? (card.price_usd_efectivo ?? card.price_usd) : null)
+  const priceBuy     = live?.price_buy_usd  ?? (grade === 'ungraded' ? (card.price_buy_usd  ?? null) : null)
+  const priceSell    = live?.price_sell_usd ?? (grade === 'ungraded' ? (card.price_sell_usd ?? null) : null)
+  // Liquidez: nº de ventas registradas en PriceCharting
+  const salesVolume  = live?.sales_volume ?? null
+  const liqLabel     = salesVolume == null ? null : salesVolume >= 500 ? 'Alta' : salesVolume >= 100 ? 'Media' : 'Baja'
   const change7d     = kpi?.price_change_7d_pct
   const isPositive   = change7d != null && Number(change7d) >= 0
 
@@ -208,6 +225,17 @@ export default function CardPriceModal({ card, onClose }) {
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400">
                     PC · {GRADE_OPTIONS.find(g => g.value === grade)?.label}
                   </span>
+                  {salesVolume != null && (
+                    <span
+                      title={`${salesVolume} ventas registradas en PriceCharting`}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold
+                        ${liqLabel === 'Alta' ? 'bg-sky-500/20 text-sky-300'
+                          : liqLabel === 'Media' ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-slate-500/20 text-slate-300'}`}
+                    >
+                      💧 Liquidez {liqLabel} · {salesVolume.toLocaleString('es-AR')} ventas
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-end gap-3 flex-wrap">
                   <p className="text-white text-[30px] font-black leading-none">
