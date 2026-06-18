@@ -59,18 +59,25 @@ const dedupe = (arr) => {
 }
 
 /* ─── Normalizar fila de Supabase `cards` ────────────────────────────── */
-const normSupabase = (c) => ({
-  _lang:   c.language ?? 'en',
-  _key:    `${c.language}|${(c.name ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? ''}`,
-  id:      c.id       ?? null,
-  name:    c.name    ?? '—',
-  set:     c.set_name ?? '—',
-  set_id:  null,
-  number:  c.card_number ?? '',
-  image:   c.image_url   ?? null,
-  variant: c.variant     ?? 'normal',
-  price_usd: null,
-})
+// finish es la columna canónica (alineada con variant). Fallback a variant por robustez.
+const cardFinish = (c) => (c.finish && c.finish !== 'normal') ? c.finish : (c.variant || 'normal')
+const normSupabase = (c) => {
+  const finish = cardFinish(c)
+  return {
+    _lang:   c.language ?? 'en',
+    // _key incluye finish: cada variante es una carta distinta (no deduplicar normal+reverse)
+    _key:    `${c.language}|${(c.name ?? '').toLowerCase()}|${c.set_name ?? ''}|${c.card_number ?? ''}|${finish}`,
+    id:      c.id       ?? null,
+    name:    c.name    ?? '—',
+    set:     c.set_name ?? '—',
+    set_id:  null,
+    number:  c.card_number ?? '',
+    image:   c.image_url   ?? null,
+    finish,
+    variant: finish,   // alias legacy para componentes que aún leen variant
+    price_usd: null,
+  }
+}
 
 /* ─── Badge de idioma ────────────────────────────────────────────────── */
 function LangBadge({ lang }) {
@@ -86,11 +93,13 @@ function LangBadge({ lang }) {
 
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
 function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNext }) {
+  const cardFin = card.finish || card.variant || 'normal'
   const [modalImgSrc, onModalImgError] = useCardImage(card.image, { name: card.name, number: card.number, lang: card._lang })
+  const [pcImage, setPcImage] = useState(null)   // imagen por variante traída de PC (fallback)
   // Mostrar precio cacheado inmediatamente mientras llega el fetch de PC
   const [price, setPrice] = useState(
     cachedPrice != null
-      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: card.variant || 'normal' }
+      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: cardFin }
       : 'loading'
   )
 
@@ -106,12 +115,18 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
 
   useEffect(() => {
     setPrice(cachedPrice != null
-      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: card.variant || 'normal' }
+      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: cardFin }
       : 'loading')
+    setPcImage(null)
     if (!card.name) return
     let cancelled = false
-    scannerApi.cardPrice(card.name, card.number, card._lang, card.variant || 'normal')
-      .then(r => { if (!cancelled) setPrice(r) })
+    // image=1: trae también la imagen de la variante desde PC (para las que no tenemos)
+    scannerApi.cardPrice(card.name, card.number, card._lang, cardFin, 'ungraded', !card.image)
+      .then(r => {
+        if (cancelled) return
+        setPrice(r)
+        if (r?.image_url && !card.image) setPcImage(r.image_url)
+      })
       .catch(() => { if (!cancelled) setPrice(null) })
     return () => { cancelled = true }
   }, [card])
@@ -162,7 +177,7 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
         )}
 
         <img
-          src={modalImgSrc || CARD_BACK}
+          src={pcImage || modalImgSrc || CARD_BACK}
           alt={card.name}
           className="w-full rounded-2xl shadow-2xl"
           style={{ maxHeight: '70vh', objectFit: 'contain' }}
@@ -184,7 +199,7 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
 
           {/* Variant + precio */}
           <div className="flex items-center justify-between border-t border-gray-100 pt-2 gap-2">
-            <FinishBadge finish={card.variant || 'normal'} size="sm" />
+            <FinishBadge finish={cardFin} size="sm" />
             <div className="text-right">
               {price === 'loading' && (
                 <span className="text-xs text-gray-300">Cargando precio…</span>
@@ -267,9 +282,9 @@ function PokedexCard({ card, price, onClick }) {
             <span className="text-[9px] text-gray-300 shrink-0">#{card.number}</span>
           )}
         </div>
-        {card.variant && card.variant !== 'normal' && (
+        {(card.finish || card.variant) && (card.finish || card.variant) !== 'normal' && (
           <div className="mt-0.5">
-            <FinishBadge finish={card.variant} size="xs" />
+            <FinishBadge finish={card.finish || card.variant} size="xs" />
           </div>
         )}
       </div>
@@ -313,6 +328,7 @@ export default function Pokedex() {
       .select('card_id, price_usd, snapshot_date')
       .in('card_id', cardIds)
       .eq('source', 'pricecharting')
+      .eq('grade', 'ungraded')
       .order('snapshot_date', { ascending: false })
       .limit(cardIds.length * 5)
     const map = {}
@@ -339,7 +355,7 @@ export default function Pokedex() {
 
       const { data, count, error } = await supabase
         .from('cards')
-        .select('id, name, name_en, set_name, card_number, language, image_url, variant', { count: 'exact' })
+        .select('id, name, name_en, set_name, card_number, language, image_url, finish, variant', { count: 'exact' })
         .or(`name.ilike.*${q}*,name_en.ilike.*${q}*`)
         .in('language', [...langs])
         .range(from, to)
