@@ -38,6 +38,9 @@ const fmtDate = (str) => {
  *               price_usd_efectivo, price_usd, _ars_blue, _ars_ofic, image_url }
  *   onClose — () => void
  */
+// Cache de sesión de resultados /card-price del modal: card_id|grade → result
+const _modalPriceCache = new Map()
+
 const GRADE_OPTIONS = [
   { value: 'ungraded', label: 'Sin graduar' },
   { value: 'psa9',     label: 'PSA 9'       },
@@ -57,15 +60,20 @@ export default function CardPriceModal({ card, onClose }) {
   const { data: kpi,     isLoading: kpiLoading } = useMarketKpi(marketCardId)
   const { data: signals = [] }                   = useMarketSignals(marketCardId, 30)
 
-  // Precio + liquidez en vivo según el grado seleccionado (PC)
-  const [live, setLive] = useState(null)
+  // Precio + liquidez en vivo según el grado seleccionado (PC).
+  // Cache de sesión: reabrir la misma carta/grado NO vuelve a llamar.
+  const [live, setLive] = useState(() => _modalPriceCache.get(`${card?.card_id}|${card?.grade || 'ungraded'}`) ?? null)
   useEffect(() => {
     if (!card?.nombre && !card?.name) return
+    const ck = `${card?.card_id}|${grade}`
+    if (_modalPriceCache.has(ck)) { setLive(_modalPriceCache.get(ck)); return }
     let cancelled = false
     setLive(null)
     scannerApi
-      .cardPrice(card.nombre || card.name, card.numero || card.numero, card.idioma || card.language, card.finish || 'normal', grade)
-      .then(j => { if (!cancelled && j && !j.error) setLive(j) })
+      .cardPrice(card.nombre || card.name, card.numero, card.idioma || card.language, card.finish || 'normal', grade)
+      .then(j => {
+        if (j && !j.error) { _modalPriceCache.set(ck, j); if (!cancelled) setLive(j) }
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [grade, card?.card_id]) // eslint-disable-line react-hooks/exhaustive-deps
