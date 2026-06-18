@@ -945,8 +945,9 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
               onChange({ grade: g.value })
               // Re-fetch precio PC referencia para el nuevo grado
               if (row.card_name) {
-                const params = new URLSearchParams({ name: row.card_name, lang: normLang(row.language), grade: g.value })
-                if (row.set_name) params.set('set_name', row.set_name)
+                const params = new URLSearchParams({ name: row.card_name, lang: normLang(row.language), finish: row.finish || 'normal', grade: g.value })
+                if (row.set_name)    params.set('set_name', row.set_name)
+                if (row.card_number) params.set('number', row.card_number)
                 fetch(`${BACKEND}/card-price?${params}`)
                   .then(r => r.ok ? r.json() : null)
                   .then(json => {
