@@ -378,11 +378,14 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   /* ── Reservar: actualiza inventory ─────────────────────────────── */
   const handleReserve = async (buyerName) => {
     const ids = selectedCards.map(c => c.inventory_id)
+    const now = new Date().toISOString()
     await supabase.from('inventory')
       .update({
-        status:     'reservada',
-        estado:     'reservada',
-        buyer_name: buyerName || null,
+        status:       'reservada',
+        estado:       'reservada',
+        buyer_name:   buyerName || null,
+        reserved_at:  now,          // fecha de reserva → la usa Deudas Activas
+        fecha_reserva: now,         // alias legacy
       })
       .in('id', ids)
     refreshAll()
@@ -397,6 +400,9 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
         estado:        'disponible',
         buyer_name:    null,
         buyer_contact: null,
+        reserved_at:   null,        // limpiar fechas al volver al stock
+        fecha_reserva: null,
+        sold_at_date:  null,
       })
       .in('id', ids)
     refreshAll()

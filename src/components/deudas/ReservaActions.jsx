@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal }   from 'react-dom'
 import { supabase }       from '../../lib/supabase'
+import { STORE_ID }       from '../../constants'
 
 /**
  * Botones "✓ Cobrar" y "✕ Liberar" con confirmación via portal
@@ -36,10 +37,30 @@ export default function ReservaActions({ inventoryId, buyerName, onDone }) {
     setLoading(true)
     try {
       if (confirm === 'cobrar') {
+        const now = new Date().toISOString()
+        // Traer datos de la fila para armar el registro de venta
+        const { data: inv } = await supabase
+          .from('inventory')
+          .select('store_id, sale_price_ars, price_ars_blue, buyer_name, cards(name)')
+          .eq('id', inventoryId)
+          .maybeSingle()
+
         await supabase
           .from('inventory')
-          .update({ status: 'vendida', estado: 'vendida', sold_at_date: new Date().toISOString() })
+          .update({ status: 'vendida', estado: 'vendida', sold_at_date: now })
           .eq('id', inventoryId)
+
+        // Registrar en sales para que aparezca en Ventas del Mes
+        await supabase.from('sales').insert({
+          store_id:     inv?.store_id || STORE_ID,
+          channel:      'claims',   // venía de una reserva (deuda)
+          buyer_name:   inv?.buyer_name || buyerName || null,
+          notes:        inv?.cards?.name || '',
+          total_ars:    inv?.sale_price_ars ?? inv?.price_ars_blue ?? null,
+          sold_at:      now,
+          estado:       'pendiente',
+          inventory_id: inventoryId,
+        })
       } else if (confirm === 'liberar') {
         await supabase
           .from('inventory')

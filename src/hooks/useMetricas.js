@@ -33,7 +33,7 @@ export function useMetricas() {
       while (true) {
         const { data, error } = await supabase
           .from('inventory')
-          .select('quantity, price_usd, price_ars_blue, price_ars_oficial, status, estado')
+          .select('quantity, price_usd, price_ars_blue, price_ars_oficial, sale_price_ars, status, estado')
           .eq('store_id', STORE_ID)
           .or('status.eq.disponible,status.eq.reservada,estado.eq.disponible,estado.eq.reservada')
           .not('price_usd', 'is', null)
@@ -52,7 +52,8 @@ export function useMetricas() {
       const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd         || 0) * (r.quantity || 1), 0)
       const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue    || 0) * (r.quantity || 1), 0)
       const valorARSOficial = disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 1), 0)
-      const deudasActivas   = reservadasRows.reduce((s, r)  => s + (r.price_ars_blue   || 0) * (r.quantity || 1), 0)
+      // Deudas: usar precio de venta real (igual que la página Deudas), fallback a blue
+      const deudasActivas   = reservadasRows.reduce((s, r)  => s + ((r.sale_price_ars ?? r.price_ars_blue) || 0) * (r.quantity || 1), 0)
 
       return {
         totalCartas,          // SUM de quantity (unidades físicas totales)

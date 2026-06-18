@@ -36,7 +36,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
     ;(async () => {
       const { data } = await supabase
         .from('inventory')
-        .select(`id, sale_price_ars, condition, cards(name, image_url, card_number, language)`)
+        .select(`id, sale_price_ars, price_ars_blue, condition, cards(name, image_url, card_number, language)`)
         .eq('store_id', STORE_ID)
         .eq('buyer_name', buyer)
         .or('status.eq.reservada,estado.eq.reservada')
@@ -55,10 +55,22 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
     setConfirming(true)
     try {
       const ids = cartas.map(c => c.id)
+      const now = new Date().toISOString()
       await supabase
         .from('inventory')
-        .update({ status: 'vendida', estado: 'vendida', sold_at_date: new Date().toISOString() })
+        .update({ status: 'vendida', estado: 'vendida', sold_at_date: now })
         .in('id', ids)
+      // Registrar en sales para que aparezcan en Ventas del Mes
+      await supabase.from('sales').insert(cartas.map(c => ({
+        store_id:     STORE_ID,
+        channel:      'claims',
+        buyer_name:   buyer || null,
+        notes:        c.cards?.name || '',
+        total_ars:    c.sale_price_ars ?? c.price_ars_blue ?? null,
+        sold_at:      now,
+        estado:       'pendiente',
+        inventory_id: c.id,
+      })))
       onDone?.()
       onClose()
     } finally {

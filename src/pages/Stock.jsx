@@ -587,9 +587,10 @@ export default function Stock() {
     await supabase
       .from('inventory')
       .update({
-        status:     'vendida',
-        estado:     'vendida',
-        buyer_name: buyer || null,
+        status:       'vendida',
+        estado:       'vendida',
+        buyer_name:   buyer || null,
+        sold_at_date: now,          // registrar fecha de venta (consistente con Claims)
       })
       .in('id', ids)
 
