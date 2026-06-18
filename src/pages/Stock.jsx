@@ -408,7 +408,10 @@ export default function Stock() {
     setRefreshingId(r.inventory_id)
     try {
       // PriceCharting como primario (EN+JP+CN), TCGPlayer como fallback EN
-      const params = new URLSearchParams({ name: r.nombre, lang: r.idioma || 'en' })
+      const params = new URLSearchParams({
+        name: r.nombre, lang: r.idioma || 'en',
+        finish: r.finish || 'normal', grade: r.grade || 'ungraded',
+      })
       if (r.numero)   params.set('number', r.numero)
       if (r.set_name) params.set('set_name', r.set_name)
       if (r.card_id)  params.set('card_id', r.card_id)   // para guardar en price_history

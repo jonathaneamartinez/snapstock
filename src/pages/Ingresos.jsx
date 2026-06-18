@@ -130,7 +130,7 @@ async function fetchPrecioConFallback(cardId, nombre, numero, idioma, finish = '
   if (!nombre) return null
   const langNorm = ['ja','jp'].includes(idioma) ? 'jp' : ['zh','cn'].includes(idioma) ? 'cn' : 'en'
   const numNorm  = numero ? String(numero).split('/')[0].replace(/^0+/, '') : ''
-  const live = await scannerApi.cardPrice(nombre, numNorm, langNorm, finish)
+  const live = await scannerApi.cardPrice(nombre, numNorm, langNorm, finish, grade)
   if (live?.price_usd) return { price_usd: live.price_usd, price_buy_usd: live.price_buy_usd ?? null, price_sell_usd: live.price_sell_usd ?? null }
   return null
 }

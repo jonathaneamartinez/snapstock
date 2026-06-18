@@ -83,9 +83,9 @@ export const scannerApi = {
       .then(r => r.json())
       .catch(() => null),
 
-  cardPrice: (name, number = '', lang = 'en', finish = 'normal') => {
+  cardPrice: (name, number = '', lang = 'en', finish = 'normal', grade = 'ungraded') => {
     const numNorm = number ? (String(number).split('/')[0].replace(/^0+/, '') || '') : ''
-    const params = new URLSearchParams({ name, lang, finish, ...(numNorm ? { number: numNorm } : {}) })
+    const params = new URLSearchParams({ name, lang, finish, grade, ...(numNorm ? { number: numNorm } : {}) })
     return fetch(`${BASE}/card-price?${params}`)
       .then(r => r.json())
       .catch(() => null)

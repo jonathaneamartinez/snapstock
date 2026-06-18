@@ -47,7 +47,7 @@ async function enrichClaimCardsWithPC(cards) {
   const stillMissing = missing.filter(c => !priceMap[c.id]).slice(0, 5)
   for (const c of stillMissing) {
     try {
-      const params = new URLSearchParams({ name: c.name || c.nombre || '', grade: 'ungraded' })
+      const params = new URLSearchParams({ name: c.name || c.nombre || '', finish: c.finish || 'normal', grade: c.grade || 'ungraded' })
       if (c.lang) params.set('lang', c.lang)
       if (c.id)   params.set('card_id', c.id)
       const res = await fetch(`${BACKEND}/card-price?${params}`)
@@ -655,7 +655,7 @@ function ClaimRow({ claim }) {
     const trimmed = term.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')
     const { data } = await supabase
       .from('inventory')
-      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, finish, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
+      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, finish, grade, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
       .eq('store_id', STORE_ID)
       .neq('status', 'vendida')
       .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { referencedTable: 'cards' })
@@ -717,7 +717,7 @@ function ClaimRow({ claim }) {
         .select('price_usd')
         .eq('card_id', c.id)
         .eq('source', 'pricecharting')
-        .eq('grade', 'ungraded')
+        .eq('grade', invRow.grade || 'ungraded')
         .order('snapshot_date', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -726,7 +726,7 @@ function ClaimRow({ claim }) {
         usd = ph.price_usd
       } else if (c.name) {
         try {
-          const params = new URLSearchParams({ name: c.name, grade: 'ungraded', card_id: c.id })
+          const params = new URLSearchParams({ name: c.name, finish: invRow.finish || 'normal', grade: invRow.grade || 'ungraded', card_id: c.id })
           if (c.language) params.set('lang', c.language)
           const res = await fetch(`${BACKEND}/card-price?${params}`)
           if (res.ok) {

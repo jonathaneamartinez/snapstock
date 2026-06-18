@@ -99,6 +99,7 @@ export function useStock(filters = {}) {
         tags,
         holo,
         finish,
+        grade,
         ${cardJoin} (
           id,
           name,
@@ -166,6 +167,7 @@ export function useStock(filters = {}) {
         idioma:            r.cards?.language || 'en',
         holo:              r.holo   || false,
         finish:            r.finish || 'normal',   // 'normal' | 'holofoil' | 'reverse'
+        grade:             r.grade  || 'ungraded', // 'ungraded' | 'psa9' | 'psa10' | 'bgs10'
         image_url:         r.cards?.image_url || '',
         // Inventario
         condicion:          r.condition || r.condicion || '',
