@@ -120,18 +120,19 @@ async function fetchPrecioPC(cardId, finish = 'normal', grade = 'ungraded') {
 
 // ── Precio con fallback: price_history → PC en vivo ──────────────────────────
 // Usar siempre este helper en lugar de fetchPrecioPC directo.
-async function fetchPrecioConFallback(cardId, nombre, numero, idioma, finish = 'normal', grade = 'ungraded') {
-  // 1. Intentar cache local
-  if (cardId) {
+async function fetchPrecioConFallback(cardId, nombre, numero, idioma, finish = 'normal', grade = 'ungraded', wantImage = false) {
+  // 1. Intentar cache local (no trae imagen)
+  if (cardId && !wantImage) {
     const cached = await fetchPrecioPC(cardId, finish, grade)
     if (cached?.price_usd) return cached
   }
-  // 2. Consulta en vivo a PriceCharting
+  // 2. Consulta en vivo a PriceCharting (trae precio + imagen de la variante si wantImage)
   if (!nombre) return null
   const langNorm = ['ja','jp'].includes(idioma) ? 'jp' : ['zh','cn'].includes(idioma) ? 'cn' : 'en'
   const numNorm  = numero ? String(numero).split('/')[0].replace(/^0+/, '') : ''
-  const live = await scannerApi.cardPrice(nombre, numNorm, langNorm, finish, grade)
-  if (live?.price_usd) return { price_usd: live.price_usd, price_buy_usd: live.price_buy_usd ?? null, price_sell_usd: live.price_sell_usd ?? null }
+  const live = await scannerApi.cardPrice(nombre, numNorm, langNorm, finish, grade, wantImage)
+  if (live?.price_usd) return { price_usd: live.price_usd, price_buy_usd: live.price_buy_usd ?? null, price_sell_usd: live.price_sell_usd ?? null, image_url: live.image_url ?? null }
+  if (live?.image_url) return { price_usd: null, image_url: live.image_url }
   return null
 }
 
@@ -149,7 +150,7 @@ async function fetchCardId(nombre, numero, idioma, setName, finish = 'normal') {
   if (!nombre) return null
   const numNorm  = normalizeCardNum(numero)
   const finishQ  = finish || 'normal'
-  let q = supabase.from('cards').select('id, set_name, language')
+  let q = supabase.from('cards').select('id, set_name, language, image_url')
     .ilike('name', nombre.trim())
     .eq('language', idioma || 'en')
     .eq('finish', finishQ)
@@ -158,7 +159,7 @@ async function fetchCardId(nombre, numero, idioma, setName, finish = 'normal') {
   let { data } = await q.limit(1).maybeSingle()
   // Fallback: si no matchea con número normalizado, probar con el raw
   if (!data && numero && numNorm !== numero.trim()) {
-    let q2 = supabase.from('cards').select('id, set_name, language')
+    let q2 = supabase.from('cards').select('id, set_name, language, image_url')
       .ilike('name', nombre.trim())
       .eq('language', idioma || 'en')
       .eq('finish', finishQ)
@@ -167,7 +168,7 @@ async function fetchCardId(nombre, numero, idioma, setName, finish = 'normal') {
     const { data: d2 } = await q2.limit(1).maybeSingle()
     data = d2
   }
-  return data ? { id: data.id, set_name: data.set_name } : null
+  return data ? { id: data.id, set_name: data.set_name, image_url: data.image_url ?? null } : null
 }
 import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
@@ -755,9 +756,10 @@ export default function Ingresos() {
     if (!finishChanged && !gradeChanged) return
     if (!form.nombre) return
 
-    // Limpiar precio inmediatamente para que el usuario vea que se está actualizando
+    // Limpiar precio inmediatamente para que el usuario vea que se está actualizando.
+    // Al cambiar el finish (otra variante = otra carta) también limpiamos la imagen.
     if (finishChanged) {
-      setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null }))
+      setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null, imagen: null }))
     }
 
     ;(async () => {
@@ -767,7 +769,17 @@ export default function Ingresos() {
       const targetCardId = cidResult?.id ?? selectedCardId
       if (cidResult?.id) setSelectedCardId(cidResult.id)
 
-      const pcResult = await fetchPrecioConFallback(targetCardId, form.nombre, form.numero, form.idioma, form.finish, form.grade)
+      // Imagen guardada de la variante (si existe) → mostrar ya
+      if (finishChanged && cidResult?.image_url) {
+        setPreview(prev => ({ ...prev, imagen: cidResult.image_url }))
+      }
+
+      // Si no tenemos imagen de la variante, pedirla en vivo a PriceCharting (image=1)
+      const wantImage = finishChanged && !cidResult?.image_url
+      const pcResult = await fetchPrecioConFallback(targetCardId, form.nombre, form.numero, form.idioma, form.finish, form.grade, wantImage)
+      if (pcResult?.image_url) {
+        setPreview(prev => ({ ...prev, imagen: pcResult.image_url }))
+      }
       if (!pcResult?.price_usd) return
       setPreview(prev => ({
         ...prev,
