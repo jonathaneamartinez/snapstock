@@ -650,12 +650,12 @@ export default function Stock() {
 
     // Pre-calentar blobs en background (fire-and-forget, 6 a la vez)
     // Así cuando el usuario configure y genere el claim, muchos/todos ya están en cache
-    const urlsToWarm = toAdd
+    const urlsToWarm = allSelected
       .map(r => getCardImageUrl(r.card_id) || r.image_url || imageMap[r.card_id] || '')
       .filter(Boolean)
     warmBlobUrls(urlsToWarm)   // sin await, corre en background
 
-    showToast(`${toAdd.length} ${toAdd.length === 1 ? t('stock_card_singular') : t('stock_card_plural')} ${toAdd.length === 1 ? t('stock_claim_added') : t('stock_claim_added_plural')}`)
+    showToast(`${allSelected.length} ${allSelected.length === 1 ? t('stock_card_singular') : t('stock_card_plural')} ${allSelected.length === 1 ? t('stock_claim_added') : t('stock_claim_added_plural')}`)
   }
 
   // ── Abrir carrito review → luego el usuario puede continuar al generador ─

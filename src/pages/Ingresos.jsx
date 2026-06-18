@@ -242,7 +242,7 @@ export default function Ingresos() {
       })
       // Si PC no devolvió imagen, buscar por fallback según idioma
       if (!result.image_url && result.name) {
-        fetchPreviewImageByLang(result.name, result.card_number || '', lang, null)
+        fetchPreviewImageByLang(result.name, result.card_number || '', langForm, null)
       }
       if (result.price_usd && blue) {
         const m = margen ?? 0

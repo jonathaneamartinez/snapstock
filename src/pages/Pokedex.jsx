@@ -7,6 +7,7 @@ import { supabase }         from '../lib/supabase'
 import SetSelect      from '../components/ui/SetSelect'
 import Spinner        from '../components/ui/Spinner'
 import FinishBadge   from '../components/ui/FinishBadge'
+import { useCardImage } from '../hooks/useCardImage'
 
 /* ─── Constantes ─────────────────────────────────────────────────────── */
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
@@ -104,7 +105,6 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
   useEffect(() => {
-    setSrc(card.image || CARD_BACK)
     setPrice(cachedPrice != null
       ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: card.variant || 'normal' }
       : 'loading')
