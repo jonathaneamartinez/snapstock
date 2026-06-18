@@ -719,26 +719,41 @@ export default function Ingresos() {
 
     const lang = normLang(form.idioma)
 
-    // Al cambiar idioma: buscar la carta en el nuevo idioma y actualizar imagen + set/número
-    // Para EN se pasa el número para mayor precisión; para JP/CN no (numeración distinta)
-    fetchImageFromBackend(form.nombre, lang === 'en' ? form.numero : '', form.idioma)
-      .then(res => {
+    // Al cambiar idioma: limpiar precio/imagen y re-llamar a la API (precio + imagen)
+    // para el idioma nuevo — la carta "es otra" según el idioma.
+    setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null, imagen: null }))
+
+    ;(async () => {
+      // 1) imagen + set/número del nuevo idioma desde el índice
+      let imgUrl = null
+      try {
+        const res = await fetchImageFromBackend(form.nombre, lang === 'en' ? form.numero : '', form.idioma)
         if (res?.url) {
-          setPreview(prev => ({ ...prev, imagen: res.url }))
-          // Actualizar set y número si el índice devolvió datos del nuevo idioma
+          imgUrl = res.url
           setForm(f => ({
             ...f,
             set:    res.set_name || f.set,
-            numero: res.number   || (lang === 'en' ? f.numero : f.numero),
+            numero: res.number   || f.numero,
             set_id: lang === 'en' ? f.set_id : null,
           }))
-          return
         }
-        // Sin resultado en el índice → para EN intentar pokemontcg.io
-        if (lang === 'en') {
-          fetchPreviewImageByLang(form.nombre, form.numero, form.idioma, form.set_id)
+      } catch (_) {}
+      if (imgUrl) setPreview(prev => ({ ...prev, imagen: imgUrl }))
+
+      // 2) precio + imagen de la variante en el nuevo idioma (cache → PC en vivo)
+      const numForPrice = lang === 'en' ? form.numero : ''
+      const cidResult = await fetchCardId(form.nombre, numForPrice, lang, form.set, form.finish)
+      if (cidResult?.id) setSelectedCardId(cidResult.id)
+      const pcResult = await fetchPrecioConFallback(cidResult?.id ?? null, form.nombre, numForPrice, form.idioma, form.finish, form.grade, !imgUrl)
+      if (pcResult?.image_url && !imgUrl) setPreview(prev => ({ ...prev, imagen: pcResult.image_url }))
+      if (pcResult?.price_usd) {
+        setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
+        if (blue) {
+          const m = margen ?? 0
+          setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
         }
-      })
+      }
+    })()
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Al cambiar finish o grade → re-buscar precio PC con la variante correcta ──
