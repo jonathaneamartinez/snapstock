@@ -267,6 +267,46 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   const [selected,    setSelected]    = useState(new Set())
   const [sellError,   setSellError]   = useState(null)
 
+  /* ── Cantidad disponible por carta (para venta/reserva parcial) ──────── */
+  const [availQty, setAvailQty] = useState({})   // inventory_id → cantidad en stock
+  const [qtyMap,   setQtyMap]   = useState({})   // inventory_id → cantidad elegida
+  useEffect(() => {
+    const ids = cards.map(c => c.inventory_id).filter(Boolean)
+    if (!ids.length) return
+    let cancelled = false
+    supabase.from('inventory').select('id, quantity').in('id', ids)
+      .then(({ data }) => {
+        if (cancelled || !data) return
+        const m = {}; data.forEach(r => { m[r.id] = r.quantity ?? 1 })
+        setAvailQty(m)
+      })
+    return () => { cancelled = true }
+  }, [cards])
+
+  const setQty = (id, v, max) => {
+    const n = Math.max(1, Math.min(max, parseInt(v, 10) || 1))
+    setQtyMap(p => ({ ...p, [id]: n }))
+  }
+
+  /**
+   * Toma `take` unidades de una fila de inventory. Si take < disponible,
+   * parte la fila: inserta una fila nueva con las unidades tomadas (sobre la
+   * que se aplica vendida/reservada) y decrementa la original. Devuelve el id
+   * a accionar. Inserta ANTES de decrementar para no perder unidades si falla.
+   */
+  const takeQuantity = async (invId, take) => {
+    const { data: row } = await supabase.from('inventory').select('*').eq('id', invId).maybeSingle()
+    if (!row) return invId
+    const avail = row.quantity ?? 1
+    if (!take || take >= avail) return invId            // toda la fila
+    const clone = { ...row, quantity: take }
+    delete clone.id; delete clone.created_at; delete clone.updated_at
+    const { data: ins, error } = await supabase.from('inventory').insert(clone).select('id').maybeSingle()
+    if (error || !ins) return invId                     // si falla el split, accionar la fila entera
+    await supabase.from('inventory').update({ quantity: avail - take }).eq('id', invId)
+    return ins.id
+  }
+
   /* ── Tags por inventory_id ──────────────────────────────────────────── */
   const [localTags,  setLocalTags]  = useState(() => {
     const map = {}
@@ -336,58 +376,55 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   /* Cartas seleccionadas con todos sus datos */
   const selectedCards = cards.filter(c => c.inventory_id && selected.has(c.inventory_id))
 
-  /* ── Vender: actualiza inventory + inserta en sales ─────────────── */
+  /* ── Vender: actualiza inventory + inserta en sales (cantidad parcial) ── */
   const handleSell = async (buyerName, channel) => {
-    const ids = selectedCards.map(c => c.inventory_id)
-
-    // 1. Marcar como vendidas en inventory (status Y estado para que el filtro funcione)
-    await supabase.from('inventory')
-      .update({
-        status:       'vendida',
-        estado:       'vendida',
-        sold_at_date: new Date().toISOString(),
-        buyer_name:   buyerName || null,
-      })
-      .in('id', ids)
-
-    // 2. Insertar una fila en sales por cada carta vendida
-    const salesRows = selectedCards.map(c => ({
-      store_id:     STORE_ID,
-      channel:      channel      || 'claims',
-      buyer_name:   buyerName    || null,
-      notes:        c.name       || '',
-      total_ars:    c.sale       ?? c.ars ?? null,
-      sold_at:      new Date().toISOString(),
-      estado:       'pendiente',
-      inventory_id: c.inventory_id || null,
-    }))
-
-    if (salesRows.length > 0) {
-      const { error } = await supabase.from('sales').insert(salesRows)
-      if (error) {
-        setSellError(`Error al registrar en ventas: ${error.message}`)
-        console.error('[Claims] sales insert error:', error.message, error)
-      } else {
-        setSellError(null)
+    const now = new Date().toISOString()
+    const salesRows = []
+    try {
+      for (const c of selectedCards) {
+        const take     = qtyMap[c.inventory_id] ?? availQty[c.inventory_id] ?? 1
+        const targetId = await takeQuantity(c.inventory_id, take)   // parte la fila si es parcial
+        await supabase.from('inventory')
+          .update({ status: 'vendida', estado: 'vendida', sold_at_date: now, buyer_name: buyerName || null })
+          .eq('id', targetId)
+        const unit = c.sale ?? c.ars ?? null
+        salesRows.push({
+          store_id:     STORE_ID,
+          channel:      channel   || 'claims',
+          buyer_name:   buyerName || null,
+          notes:        c.name    || '',
+          total_ars:    unit != null ? unit * take : null,   // precio unitario × cantidad
+          sold_at:      now,
+          estado:       'pendiente',
+          inventory_id: targetId,
+        })
       }
+      if (salesRows.length) {
+        const { error } = await supabase.from('sales').insert(salesRows)
+        if (error) { setSellError(`Error al registrar en ventas: ${error.message}`); console.error('[Claims] sales insert error:', error) }
+        else setSellError(null)
+      }
+    } finally {
+      setQtyMap({})
+      refreshAll()
     }
-
-    refreshAll()
   }
 
-  /* ── Reservar: actualiza inventory ─────────────────────────────── */
+  /* ── Reservar: actualiza inventory (cantidad parcial) ──────────── */
   const handleReserve = async (buyerName) => {
-    const ids = selectedCards.map(c => c.inventory_id)
     const now = new Date().toISOString()
-    await supabase.from('inventory')
-      .update({
-        status:       'reservada',
-        estado:       'reservada',
-        buyer_name:   buyerName || null,
-        reserved_at:  now,          // fecha de reserva → la usa Deudas Activas
-        fecha_reserva: now,         // alias legacy
-      })
-      .in('id', ids)
+    for (const c of selectedCards) {
+      const take     = qtyMap[c.inventory_id] ?? availQty[c.inventory_id] ?? 1
+      const targetId = await takeQuantity(c.inventory_id, take)
+      await supabase.from('inventory')
+        .update({
+          status: 'reservada', estado: 'reservada',
+          buyer_name: buyerName || null,
+          reserved_at: now, fecha_reserva: now,
+        })
+        .eq('id', targetId)
+    }
+    setQtyMap({})
     refreshAll()
   }
 
@@ -487,6 +524,25 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
                       <span className="truncate">{c.name || '—'}</span>
                       <FinishBadge finish={c.finish} />
                     </div>
+                    {/* Cantidad parcial: solo si hay más de 1 en stock */}
+                    {c.inventory_id && (availQty[c.inventory_id] ?? 1) > 1 && (
+                      <div
+                        className="mt-1 flex items-center gap-1"
+                        onClick={e => e.stopPropagation()}
+                        title="Cantidad a vender/reservar (parcial)"
+                      >
+                        <span className="text-[10px] text-gray-400">Cant.</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={availQty[c.inventory_id]}
+                          value={qtyMap[c.inventory_id] ?? availQty[c.inventory_id]}
+                          onChange={e => setQty(c.inventory_id, e.target.value, availQty[c.inventory_id])}
+                          className="w-12 border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center"
+                        />
+                        <span className="text-[10px] text-gray-400">/ {availQty[c.inventory_id]}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-1.5 text-gray-500 max-w-[90px]">
                     <span className="truncate block">{c.set || '—'}</span>
