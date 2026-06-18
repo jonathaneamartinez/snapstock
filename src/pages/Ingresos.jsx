@@ -8,6 +8,7 @@ import {
   searchCardsByName,
 } from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
+import { searchCatalogByName } from '../lib/catalogSearch'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
@@ -482,22 +483,8 @@ export default function Ingresos() {
           sugPageRef.current  = 1
           sugQueryRef.current = val.trim()
 
-          // Buscar en Supabase cartas custom (renombradas/agregadas manualmente)
-          const { data: supaCards } = await supabase
-            .from('cards')
-            .select('name, set_name, card_number, image_url, language')
-            .ilike('name', `${val.trim()}%`)
-            .eq('language', 'en')
-            .limit(5)
-          const supaMatched = (supaCards ?? []).map(c => ({
-            nombre:     c.name,
-            set:        c.set_name,
-            set_id:     null,
-            numero:     c.card_number,
-            imagen:     c.image_url,
-            precio_usd: null,
-            source:     'stock',   // indica que viene de nuestro catálogo
-          }))
+          // Buscar en NUESTRO catálogo (name + name_en, substring) → todas las variantes
+          const supaMatched = await searchCatalogByName(val.trim(), 'en', 25)
 
           const { results, totalCount } = await searchCardsByName(val.trim(), 20, 1)
           const mapped = results.map(c => ({
@@ -522,17 +509,26 @@ export default function Ingresos() {
           setHasMore(mapped.length < totalCount)
           setShowSug(enriched.length > 0)
         } else {
-          const res = await scannerApi.buscar(val.trim(), lang, '', 20)
-          const mapped = (res?.results ?? res?.opciones ?? []).map(c => ({
-            nombre:     c.nombre || c.name,
-            set:        c.set_name || c.set,
-            set_id:     c.set_code || null,
-            numero:     c.numero || c.number,
-            imagen:     c.imagen || c.image_url,
-            precio_usd: null,
-            source:     'phash',
-          }))
-          const enriched = await enrichSuggestionsWithPCPrices(mapped, lang)
+          // 1° NUESTRO catálogo (name + name_en, substring) → trae variantes JP/CN
+          //    incluso buscando en inglés (gracias a name_en)
+          const catalog = await searchCatalogByName(val.trim(), lang, 25)
+          // 2° backend scanner como complemento (cartas que el catálogo no tenga)
+          let backend = []
+          try {
+            const res = await scannerApi.buscar(val.trim(), lang, '', 20)
+            backend = (res?.results ?? res?.opciones ?? []).map(c => ({
+              nombre:     c.nombre || c.name,
+              set:        c.set_name || c.set,
+              set_id:     c.set_code || null,
+              numero:     c.numero || c.number,
+              imagen:     c.imagen || c.image_url,
+              precio_usd: null,
+              source:     'phash',
+            }))
+          } catch (_) {}
+          const seen = new Set(catalog.map(c => `${(c.nombre||'').toLowerCase()}|${c.set}|${c.numero}`))
+          const extra = backend.filter(c => !seen.has(`${(c.nombre||'').toLowerCase()}|${c.set}|${c.numero}`))
+          const enriched = await enrichSuggestionsWithPCPrices([...catalog, ...extra], lang)
           setSuggestions(enriched)
           setShowSug(enriched.length > 0)
         }
