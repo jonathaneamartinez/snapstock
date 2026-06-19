@@ -9,6 +9,7 @@ import {
 } from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
 import { searchCatalogByName } from '../lib/catalogSearch'
+import { jpSetsForEnSet } from '../lib/setLangMap'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
@@ -170,6 +171,30 @@ async function fetchCardId(nombre, numero, idioma, setName, finish = 'normal') {
     data = d2
   }
   return data ? { id: data.id, set_name: data.set_name, image_url: data.image_url ?? null } : null
+}
+
+// Busca la carta equivalente en otro idioma, SCOPEADA al set correspondiente.
+// Varios sets JP componen 1 set EN (setLangMap) → evita matchear cualquier carta
+// del mismo pokémon de otro set/época (ej. Dragonair Delta → no agarrar Mega Dream Ex).
+async function findEquivalentCard(enName, enSet, targetLang, finish = 'normal') {
+  if (!enName || (targetLang !== 'jp' && targetLang !== 'cn')) return null
+  const base = enName.replace(/[δΔ]/g, '').replace(/\b(ex|gx|v|vmax|vstar|tag team)\b/gi, '').replace(/\s+/g, ' ').trim()
+  if (!base) return null
+  const targetSets = targetLang === 'jp' ? jpSetsForEnSet(enSet) : []
+  if (!targetSets.length) return null   // sin correspondencia conocida → fallback al flujo normal
+  const b = base.replace(/[%_]/g, '')
+  const sel = 'id, name, name_en, set_name, card_number, image_url, finish'
+  let { data } = await supabase.from('cards').select(sel)
+    .eq('language', targetLang).in('set_name', targetSets)
+    .or(`name_en.ilike.*${b}*,name.ilike.*${b}*`)
+    .eq('finish', finish || 'normal').limit(1).maybeSingle()
+  if (!data) {
+    const r = await supabase.from('cards').select(sel)
+      .eq('language', targetLang).in('set_name', targetSets)
+      .or(`name_en.ilike.*${b}*,name.ilike.*${b}*`).limit(1).maybeSingle()
+    data = r.data
+  }
+  return data || null
 }
 import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
@@ -719,12 +744,45 @@ export default function Ingresos() {
 
     const lang = normLang(form.idioma)
 
-    // Al cambiar idioma: limpiar precio/imagen y re-llamar a la API (precio + imagen)
-    // para el idioma nuevo — la carta "es otra" según el idioma.
-    setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null, imagen: null }))
+    // Al cambiar idioma: limpiar precio y re-llamar a la API. NO limpiamos la imagen
+    // upfront: si no hay equivalente en el idioma nuevo, mejor mantener la imagen
+    // actual que mostrar una carta de otra época equivocada.
+    setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null }))
+
+    const prevSet = form.set   // set del idioma anterior (para mapear al set correspondiente)
 
     ;(async () => {
-      // 1) imagen + set/número del nuevo idioma desde el índice
+      // 0) MATCH POR SET CORRESPONDIENTE: si voy a JP/CN, buscar la carta en el set
+      //    JP/CN que corresponde al set EN (varios JP = 1 EN). Evita agarrar otra carta
+      //    del mismo pokémon de otro set/época.
+      if (lang === 'jp' || lang === 'cn') {
+        const knownSets = lang === 'jp' ? jpSetsForEnSet(prevSet) : []
+        try {
+          const eq = await findEquivalentCard(form.nombre, prevSet, lang, form.finish)
+          if (eq) {
+            setForm(f => ({ ...f, set: eq.set_name || f.set, numero: eq.card_number || f.numero, set_id: null }))
+            if (eq.id) setSelectedCardId(eq.id)
+            const nameForPrice = eq.name_en || eq.name || form.nombre
+            const pc = await fetchPrecioConFallback(eq.id, nameForPrice, eq.card_number, form.idioma, form.finish, form.grade, !eq.image_url)
+            const img = eq.image_url || pc?.image_url
+            if (img) setPreview(prev => ({ ...prev, imagen: img }))
+            if (pc?.price_usd) {
+              setPreview(prev => ({ ...prev, precio_usd: pc.price_usd, precio_buy_usd: pc.price_buy_usd ?? null, precio_sell_usd: pc.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
+              if (blue) { const m = margen ?? 0; setForm(f => ({ ...f, precioVenta: String(Math.round(pc.price_usd * blue * (1 + m / 100) / 500) * 500) })) }
+            }
+            return   // match por set correspondiente OK → listo
+          }
+          // Hay correspondencia de set conocida pero NO existe la carta en ese set JP →
+          // NO hacer búsqueda salvaje (evita traer una carta de otra época). Dejar la
+          // imagen actual y avisar que no hay versión en ese idioma.
+          if (knownSets.length) {
+            setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
+            return
+          }
+        } catch (_) {}
+      }
+
+      // 1) imagen + set/número del nuevo idioma desde el índice (flujo fallback)
       let imgUrl = null
       try {
         const res = await fetchImageFromBackend(form.nombre, lang === 'en' ? form.numero : '', form.idioma)
