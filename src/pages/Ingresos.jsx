@@ -182,19 +182,24 @@ async function findEquivalentCard(enName, enSet, targetLang, finish = 'normal') 
   if (!base) return null
   const targetSets = targetLang === 'jp' ? jpSetsForEnSet(enSet) : []
   if (!targetSets.length) return null   // sin correspondencia conocida → fallback al flujo normal
-  const b = base.replace(/[%_]/g, '')
   const sel = 'id, name, name_en, set_name, card_number, image_url, finish'
-  let { data } = await supabase.from('cards').select(sel)
+  const full = enName.replace(/[%_]/g, '').trim()   // nombre completo (ej. "Charizard ex")
+  const b = base.replace(/[%_]/g, '')               // base pokémon (ej. "Charizard")
+  const q = (extra) => supabase.from('cards').select(sel)
     .eq('language', targetLang).in('set_name', targetSets)
-    .or(`name_en.ilike.*${b}*,name.ilike.*${b}*`)
-    .eq('finish', finish || 'normal').limit(1).maybeSingle()
-  if (!data) {
-    const r = await supabase.from('cards').select(sel)
-      .eq('language', targetLang).in('set_name', targetSets)
-      .or(`name_en.ilike.*${b}*,name.ilike.*${b}*`).limit(1).maybeSingle()
-    data = r.data
+  // Prioridad: 1) name_en exacto al nombre completo  2) exacto a la base
+  //            3) substring de la base. Y dentro, preferir el finish pedido.
+  for (const filt of [
+    (r) => r.ilike('name_en', full),
+    (r) => r.ilike('name_en', b),
+    (r) => r.or(`name_en.ilike.*${b}*,name.ilike.*${b}*`),
+  ]) {
+    let { data } = await filt(q()).eq('finish', finish || 'normal').limit(1).maybeSingle()
+    if (data) return data
+    const r2 = await filt(q()).limit(1).maybeSingle()
+    if (r2.data) return r2.data
   }
-  return data || null
+  return null
 }
 import Toast      from '../components/ui/Toast'
 import Spinner    from '../components/ui/Spinner'
