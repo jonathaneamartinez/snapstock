@@ -46,6 +46,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
+      workbox: {
+        cleanupOutdatedCaches: true,   // borra cachés de deploys viejos
+        clientsClaim: true,
+        skipWaiting: true,
+      },
       manifest: {
         name: 'Snap Stock',
         short_name: 'SnapStock',
