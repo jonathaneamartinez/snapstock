@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, BookOpen, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, BookOpen, X, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { useI18n }          from '../lib/i18n'
 import { fetchCardsBySet }  from '../lib/pokemonTcg'
 import { scannerApi }       from '../lib/scanner'
@@ -92,11 +92,19 @@ function LangBadge({ lang }) {
 }
 
 /* ─── Modal de carta ampliada ────────────────────────────────────────── */
+const POKEDEX_GRADES = [
+  { value: 'ungraded', label: 'Sin graduar' },
+  { value: 'psa9',     label: 'PSA 9'       },
+  { value: 'psa10',    label: 'PSA 10'      },
+  { value: 'bgs10',    label: 'BGS 10'      },
+]
+
 function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const cardFin = card.finish || card.variant || 'normal'
   const [modalImgSrc, onModalImgError] = useCardImage(card.image, { name: card.name, number: card.number, lang: card._lang })
   const [pcImage, setPcImage] = useState(null)   // imagen por variante traída de PC (fallback)
-  // Mostrar precio cacheado inmediatamente mientras llega el fetch de PC
+  const [grade, setGrade] = useState('ungraded')
+  // Mostrar precio cacheado inmediatamente (solo aplica al grado ungraded)
   const [price, setPrice] = useState(
     cachedPrice != null
       ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: cardFin }
@@ -113,24 +121,29 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, onPrev, onNext, hasPrev, hasNext])
 
-  useEffect(() => {
-    setPrice(cachedPrice != null
-      ? { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: cardFin }
-      : 'loading')
-    setPcImage(null)
+  // Pega directo a la API de PriceCharting vía /card-price. force=true ignora el caché visual.
+  const fetchPrice = (g = grade, { force = false } = {}) => {
     if (!card.name) return
-    let cancelled = false
-    // image=1: trae también la imagen de la variante desde PC (para las que no tenemos)
-    scannerApi.cardPrice(card.name, card.number, card._lang, cardFin, 'ungraded', !card.image)
+    setPrice(force || g !== 'ungraded' || cachedPrice == null
+      ? 'loading'
+      : { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: cardFin })
+    scannerApi.cardPrice(card.name, card.number, card._lang, cardFin, g, !card.image)
       .then(r => {
-        if (cancelled) return
         setPrice(r)
         if (r?.image_url && !card.image) setPcImage(r.image_url)
       })
-      .catch(() => { if (!cancelled) setPrice(null) })
-    return () => { cancelled = true }
-  }, [card])
+      .catch(() => setPrice(null))
+  }
 
+  // Al abrir/cambiar de carta: resetear a ungraded y traer precio de PC
+  useEffect(() => {
+    setPcImage(null)
+    setGrade('ungraded')
+    fetchPrice('ungraded')
+    return () => {}
+  }, [card]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loading = price === 'loading'
   const fmtUSD = (n) => n != null ? `U$D ${Number(n).toFixed(2)}` : null
 
   return (
@@ -197,21 +210,47 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
             )}
           </div>
 
-          {/* Variant + precio */}
-          <div className="flex items-center justify-between border-t border-gray-100 pt-2 gap-2">
+          {/* Selector de grado */}
+          <div className="flex flex-wrap gap-1.5 border-t border-gray-100 pt-2">
+            {POKEDEX_GRADES.map(g => (
+              <button
+                key={g.value}
+                onClick={() => { setGrade(g.value); fetchPrice(g.value, { force: true }) }}
+                className={`text-[11px] px-2 py-1 rounded-full font-medium transition
+                  ${grade === g.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Variant + precio + refrescar */}
+          <div className="flex items-center justify-between gap-2">
             <FinishBadge finish={cardFin} size="sm" />
-            <div className="text-right">
-              {price === 'loading' && (
-                <span className="text-xs text-gray-300">Cargando precio…</span>
-              )}
-              {price && price !== 'loading' && price.price_usd != null && (
-                <span className="text-sm font-bold text-emerald-600">
-                  {fmtUSD(price.price_usd)}
-                </span>
-              )}
-              {price && price !== 'loading' && price.price_usd == null && (
-                <span className="text-xs text-gray-300">Sin precio</span>
-              )}
+            <div className="flex items-center gap-2">
+              <div className="text-right min-w-[80px]">
+                {loading && <span className="text-xs text-gray-300">Buscando…</span>}
+                {!loading && price && price.price_usd != null && (
+                  <div className="leading-tight">
+                    <span className="text-sm font-bold text-emerald-600">{fmtUSD(price.price_usd)}</span>
+                    <span className="block text-[10px] text-gray-400">PriceCharting</span>
+                  </div>
+                )}
+                {!loading && (!price || price.price_usd == null) && (
+                  <span className="text-xs text-gray-300">Sin precio</span>
+                )}
+              </div>
+              <button
+                onClick={() => fetchPrice(grade, { force: true })}
+                disabled={loading}
+                title="Refrescar precio desde PriceCharting"
+                className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100
+                           flex items-center justify-center shrink-0 disabled:opacity-50 transition"
+              >
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+              </button>
             </div>
           </div>
         </div>
