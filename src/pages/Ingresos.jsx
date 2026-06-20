@@ -9,7 +9,7 @@ import {
 } from '../lib/pokemonTcg'
 import { supabase } from '../lib/supabase'
 import { searchCatalogByName } from '../lib/catalogSearch'
-import { jpSetsForEnSet } from '../lib/setLangMap'
+import { setsForLang } from '../lib/setLangMap'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
@@ -173,19 +173,18 @@ async function fetchCardId(nombre, numero, idioma, setName, finish = 'normal') {
   return data ? { id: data.id, set_name: data.set_name, image_url: data.image_url ?? null } : null
 }
 
-// Busca la carta equivalente en otro idioma, SCOPEADA al set correspondiente.
-// Varios sets JP componen 1 set EN (setLangMap) → evita matchear cualquier carta
-// del mismo pokémon de otro set/época (ej. Dragonair Delta → no agarrar Mega Dream Ex).
-async function findEquivalentCard(enName, enSet, targetLang, finish = 'normal') {
-  if (!enName || (targetLang !== 'jp' && targetLang !== 'cn')) return null
-  const base = enName.replace(/[δΔ]/g, '').replace(/\b(ex|gx|v|vmax|vstar|tag team)\b/gi, '').replace(/\s+/g, ' ').trim()
+// Busca la carta equivalente en otro idioma, SCOPEADA a los sets correspondientes.
+// Es direction-agnóstica: targetSets viene de setsForLang() (EN↔JP↔CN, "varios JP = 1 EN").
+// El puente cross-idioma es name_en → evita matchear otra carta del mismo pokémon de
+// otro set/época (ej. Dragonair Delta → no agarrar Mega Dream Ex de 2024).
+async function findEquivalentCard(bridgeEnName, targetSets, targetLang, finish = 'normal') {
+  if (!bridgeEnName || !targetSets?.length) return null
+  const base = bridgeEnName.replace(/[δΔ]/g, '').replace(/\b(ex|gx|v|vmax|vstar|tag team)\b/gi, '').replace(/\s+/g, ' ').trim()
   if (!base) return null
-  const targetSets = targetLang === 'jp' ? jpSetsForEnSet(enSet) : []
-  if (!targetSets.length) return null   // sin correspondencia conocida → fallback al flujo normal
   const sel = 'id, name, name_en, set_name, card_number, image_url, finish'
-  const full = enName.replace(/[%_]/g, '').trim()   // nombre completo (ej. "Charizard ex")
-  const b = base.replace(/[%_]/g, '')               // base pokémon (ej. "Charizard")
-  const q = (extra) => supabase.from('cards').select(sel)
+  const full = bridgeEnName.replace(/[%_]/g, '').trim()   // nombre completo (ej. "Charizard ex")
+  const b = base.replace(/[%_]/g, '')                      // base pokémon (ej. "Charizard")
+  const q = () => supabase.from('cards').select(sel)
     .eq('language', targetLang).in('set_name', targetSets)
   // Prioridad: 1) name_en exacto al nombre completo  2) exacto a la base
   //            3) substring de la base. Y dentro, preferir el finish pedido.
@@ -754,67 +753,61 @@ export default function Ingresos() {
     // actual que mostrar una carta de otra época equivocada.
     setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, precio_source: null }))
 
-    const prevSet = form.set   // set del idioma anterior (para mapear al set correspondiente)
+    const prevSet  = form.set            // set del idioma anterior
+    const prevLang = normLang(prev)      // idioma anterior (origen del cambio)
 
     ;(async () => {
-      // 0) MATCH POR SET CORRESPONDIENTE: si voy a JP/CN, buscar la carta en el set
-      //    JP/CN que corresponde al set EN (varios JP = 1 EN). Evita agarrar otra carta
-      //    del mismo pokémon de otro set/época.
-      if (lang === 'jp' || lang === 'cn') {
-        const knownSets = lang === 'jp' ? jpSetsForEnSet(prevSet) : []
-        try {
-          const eq = await findEquivalentCard(form.nombre, prevSet, lang, form.finish)
-          if (eq) {
-            setForm(f => ({ ...f, set: eq.set_name || f.set, numero: eq.card_number || f.numero, set_id: null }))
-            if (eq.id) setSelectedCardId(eq.id)
-            const nameForPrice = eq.name_en || eq.name || form.nombre
-            const pc = await fetchPrecioConFallback(eq.id, nameForPrice, eq.card_number, form.idioma, form.finish, form.grade, !eq.image_url)
-            const img = eq.image_url || pc?.image_url
-            if (img) setPreview(prev => ({ ...prev, imagen: img }))
-            if (pc?.price_usd) {
-              setPreview(prev => ({ ...prev, precio_usd: pc.price_usd, precio_buy_usd: pc.price_buy_usd ?? null, precio_sell_usd: pc.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
-              if (blue) { const m = margen ?? 0; setForm(f => ({ ...f, precioVenta: String(Math.round(pc.price_usd * blue * (1 + m / 100) / 500) * 500) })) }
-            }
-            return   // match por set correspondiente OK → listo
-          }
-          // Hay correspondencia de set conocida pero NO existe la carta en ese set JP →
-          // NO hacer búsqueda salvaje (evita traer una carta de otra época). Dejar la
-          // imagen actual y avisar que no hay versión en ese idioma.
-          if (knownSets.length) {
-            setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
-            return
-          }
-        } catch (_) {}
+      // ── Aplica una carta equivalente encontrada (precio + imagen + set/número) ──
+      const applyEq = async (eq) => {
+        // Al ir a EN mostramos el nombre en inglés; a JP/CN dejamos el término escrito.
+        setForm(f => ({
+          ...f,
+          nombre: lang === 'en' ? (eq.name_en || eq.name || f.nombre) : f.nombre,
+          set:    eq.set_name || f.set,
+          numero: eq.card_number || f.numero,
+          set_id: null,
+        }))
+        if (eq.id) setSelectedCardId(eq.id)
+        const nameForPrice = eq.name_en || eq.name || form.nombre
+        const pc = await fetchPrecioConFallback(eq.id, nameForPrice, eq.card_number, lang, form.finish, form.grade, !eq.image_url)
+        const img = eq.image_url || pc?.image_url
+        if (img) setPreview(prev => ({ ...prev, imagen: img, sinVersionIdioma: false }))
+        if (pc?.price_usd) {
+          setPreview(prev => ({ ...prev, precio_usd: pc.price_usd, precio_buy_usd: pc.price_buy_usd ?? null, precio_sell_usd: pc.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
+          if (blue) { const m = margen ?? 0; setForm(f => ({ ...f, precioVenta: String(Math.round(pc.price_usd * blue * (1 + m / 100) / 500) * 500) })) }
+        }
       }
 
-      // 1) imagen + set/número del nuevo idioma desde el índice (flujo fallback)
-      let imgUrl = null
       try {
-        const res = await fetchImageFromBackend(form.nombre, lang === 'en' ? form.numero : '', form.idioma)
-        if (res?.url) {
-          imgUrl = res.url
-          setForm(f => ({
-            ...f,
-            set:    res.set_name || f.set,
-            numero: res.number   || f.numero,
-            set_id: lang === 'en' ? f.set_id : null,
-          }))
+        // 0) Puente cross-idioma vía name_en. Si vengo de EN, el nombre ya es inglés;
+        //    si vengo de JP/CN, busco el name_en de la carta origen (selectedCardId o
+        //    por nombre+set+idioma) para usarlo como puente.
+        let bridgeEn = prevLang === 'en' ? form.nombre : null
+        if (!bridgeEn && form.nombre) {
+          const src = await supabase.from('cards')
+            .select('name_en').eq('language', prevLang).eq('name', form.nombre)
+            .ilike('set_name', prevSet || '%').limit(1).maybeSingle()
+          bridgeEn = src?.data?.name_en || null
         }
-      } catch (_) {}
-      if (imgUrl) setPreview(prev => ({ ...prev, imagen: imgUrl }))
 
-      // 2) precio + imagen de la variante en el nuevo idioma (cache → PC en vivo)
-      const numForPrice = lang === 'en' ? form.numero : ''
-      const cidResult = await fetchCardId(form.nombre, numForPrice, lang, form.set, form.finish)
-      if (cidResult?.id) setSelectedCardId(cidResult.id)
-      const pcResult = await fetchPrecioConFallback(cidResult?.id ?? null, form.nombre, numForPrice, form.idioma, form.finish, form.grade, !imgUrl)
-      if (pcResult?.image_url && !imgUrl) setPreview(prev => ({ ...prev, imagen: pcResult.image_url }))
-      if (pcResult?.price_usd) {
-        setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: form.grade }))
-        if (blue) {
-          const m = margen ?? 0
-          setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
+        // 1) Sets del idioma destino que corresponden al set+idioma de origen.
+        const targetSets = setsForLang(prevSet, prevLang, lang)
+
+        if (bridgeEn && targetSets.length) {
+          const eq = await findEquivalentCard(bridgeEn, targetSets, lang, form.finish)
+          if (eq) { await applyEq(eq); return }
+          // Correspondencia conocida pero la carta no existe en ese set destino →
+          // NO búsqueda salvaje (evita traer carta de otra época). Mantener imagen.
+          setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
+          return
         }
+
+        // 2) Sin correspondencia de set conocida (set exclusivo/promo). Para no arrastrar
+        //    una carta equivocada, NO buscamos a ciegas: mantenemos la imagen actual,
+        //    limpiamos precio y avisamos que no hay versión mapeada en ese idioma.
+        setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
+      } catch (_) {
+        setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
       }
     })()
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1354,6 +1347,11 @@ export default function Ingresos() {
                   <p className="text-sm font-semibold text-gray-800 leading-tight">{form.nombre}</p>
                   {form.set && <p className="text-xs text-gray-400 mt-0.5">{form.set}</p>}
                   {form.numero && <p className="text-xs text-gray-400">#{form.numero}</p>}
+                  {preview?.sinVersionIdioma && (
+                    <p className="text-[11px] text-amber-600 mt-2 max-w-[12rem]">
+                      No hay versión mapeada de esta carta en este idioma. Se mantiene la imagen anterior.
+                    </p>
+                  )}
                 </div>
               </>
             ) : (

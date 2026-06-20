@@ -1,167 +1,22 @@
-// Auto-generado desde jp_en_set_map.json (research TCGdex). EN set <-> JP set(s).
-// Para el match cross-idioma: varios sets JP componen 1 set EN.
-export const SET_LANG_MAP = {
- "enToJp": {
-  "base set": [
-   "闇からの挑戦"
-  ],
-  "neo genesis": [
-   "闇、そして光へ...",
-   "ポケモンカード★VS"
-  ],
-  "expedition base set": [
-   "基本拡張パック"
-  ],
-  "aquapolis": [
-   "海からの風"
-  ],
-  "skyridge": [
-   "裂けた大地",
-   "神秘なる山"
-  ],
-  "firered leafgreen": [
-   "伝説の飛翔"
-  ],
-  "deoxys": [
-   "蒼空の激突"
-  ],
-  "team rocket returns": [
-   "ロケット団の逆襲"
-  ],
-  "delta species": [
-   "ホロンの研究塔"
-  ],
-  "holon phantoms": [
-   "ホロンの幻影"
-  ],
-  "dragon frontiers": [
-   "さいはての攻防"
-  ],
-  "phantasmal flames": [
-   "インフェルノX"
-  ],
-  "mega evolution": [
-   "メガブレイブ",
-   "メガシンフォニア"
-  ],
-  "perfect order": [
-   "ムニキスゼロ"
-  ],
-  "crown zenith": [
-   "VSTARユニバース"
-  ],
-  "silver tempest": [
-   "パラダイムトリガー"
-  ],
-  "brilliant stars": [
-   "スターバース"
-  ],
-  "astral radiance": [
-   "バトルリージョン"
-  ],
-  "surging sparks": [
-   "スターターセット テラスタイプ：ステラ ニンフィアex",
-   "スターターセット テラスタイプ：ステラ ソウブレイズex",
-   "楽園ドラゴーナ",
-   "超電ブレイカー"
-  ],
-  "scarlet violet": [
-   "スカーレットex",
-   "バイオレットex"
-  ],
-  "black bolt": [
-   "ブラックボルト"
-  ],
-  "paradox rift": [
-   "レイジングサーフ",
-   "古代の咆哮",
-   "未来の一閃"
-  ],
-  "151": [
-   "ポケモンカード151"
-  ],
-  "stellar crown": [
-   "ステラミラクル"
-  ],
-  "paldea evolved": [
-   "クレイバースト",
-   "スノーハザード"
-  ],
-  "genetic apex": [
-   "デッキビルドBOX ステラミラクル"
-  ],
-  "twilight masquerade": [
-   "変幻の仮面",
-   "クリムゾンヘイズ"
-  ],
-  "temporal forces": [
-   "ワイルドフォース"
-  ],
-  "obsidian flames": [
-   "黒炎の支配者"
-  ],
-  "white flare": [
-   "ホワイトフレア"
-  ],
-  "paldean fates": [
-   "レイジングサーフ"
-  ],
-  "destined rivals": [
-   "ロケット団の栄光",
-   "熱風のアリーナ"
-  ],
-  "journey together": [
-   "バトルパートナーズ"
-  ]
- },
- "jaToEn": {
-  "闇からの挑戦": "Base Set",
-  "闇、そして光へ...": "Neo Genesis",
-  "ポケモンカード★VS": "Neo Genesis",
-  "基本拡張パック": "Expedition Base Set",
-  "海からの風": "Aquapolis",
-  "裂けた大地": "Skyridge",
-  "神秘なる山": "Skyridge",
-  "伝説の飛翔": "FireRed & LeafGreen",
-  "蒼空の激突": "Deoxys",
-  "ロケット団の逆襲": "Team Rocket Returns",
-  "ホロンの研究塔": "Delta Species",
-  "ホロンの幻影": "Holon Phantoms",
-  "さいはての攻防": "Dragon Frontiers",
-  "インフェルノX": "Phantasmal Flames",
-  "メガブレイブ": "Mega Evolution",
-  "ムニキスゼロ": "Perfect Order",
-  "メガシンフォニア": "Mega Evolution",
-  "VSTARユニバース": "Crown Zenith",
-  "パラダイムトリガー": "Silver Tempest",
-  "スターバース": "Brilliant Stars",
-  "バトルリージョン": "Astral Radiance",
-  "スターターセット テラスタイプ：ステラ ニンフィアex": "Surging Sparks",
-  "スカーレットex": "Scarlet & Violet",
-  "ブラックボルト": "Black Bolt",
-  "レイジングサーフ": "Paldean Fates",
-  "ポケモンカード151": "151",
-  "ステラミラクル": "Stellar Crown",
-  "スターターセット テラスタイプ：ステラ ソウブレイズex": "Surging Sparks",
-  "古代の咆哮": "Paradox Rift",
-  "クレイバースト": "Paldea Evolved",
-  "デッキビルドBOX ステラミラクル": "Genetic Apex",
-  "変幻の仮面": "Twilight Masquerade",
-  "クリムゾンヘイズ": "Twilight Masquerade",
-  "ワイルドフォース": "Temporal Forces",
-  "スノーハザード": "Paldea Evolved",
-  "バイオレットex": "Scarlet & Violet",
-  "黒炎の支配者": "Obsidian Flames",
-  "ホワイトフレア": "White Flare",
-  "未来の一閃": "Paradox Rift",
-  "楽園ドラゴーナ": "Surging Sparks",
-  "超電ブレイカー": "Surging Sparks",
-  "ロケット団の栄光": "Destined Rivals",
-  "熱風のアリーナ": "Destined Rivals",
-  "バトルパートナーズ": "Journey Together"
- }
-}
+// Auto-generado (build_full_set_map.py): correspondencia COMPLETA de sets EN<->JP<->CN.
+// Jaccard de cartas + boost por número + merge TCGdex + suplemento curado. Sin atractores.
+export const SET_LANG_MAP = {"enToJp": {"evolutions": ["20Th Anniversary Set", "ポケットモンスターカードゲーム 拡張パック 20th Anniversary"], "nihil zero": ["Nihil zero", "Nihil Zero"], "unified minds": ["Gg End", "Miracle Twins", "Sky Legend", "ミラクルツイン", "リミックスバウト"], "arceus": ["Advent Of Arceus"], "celebrations classic collection": ["25Th Anniversary Promo Jp"], "guardians rising": ["Alolan Moonlight", "Gx Battle Boost"], "cosmic eclipse": ["Alter Genesis", "Dream League", "Remix Bout", "オルタージェネシス", "ジージーエンド"], "vivid voltage": ["Amazing Volt", "Legendary Heartbeat", "仰天のボルテッカー"], "roaring skies": ["Emerald Break"], "paradox rift": ["Ancient Roar", "Future Flash", "Raging Surf", "古代の咆哮", "未来の一閃"], "fates collide": ["Awakening Psychic King"], "twilight masquerade": ["Mask Of Change", "Crimson Haze", "変幻の仮面", "クリムゾンヘイズ"], "breakthrough": ["Blue Impact Shock", "Red Flash"], "base set 2": ["Base Set Japanese"], "black bolt": ["Black Bolt", "ブラックボルト"], "rising rivals": ["Bonds To The End Of Time"], "journey together": ["Battle Partners", "バトルパートナーズ"], "destined rivals": ["ロケット団の栄光", "Glory Of Team Rocket", "Hot Air Arena", "熱風のアリーナ"], "gym challenge": ["Gym Challenge Japanese"], "ascended heroes": ["Mega Dream Ex"], "ancient origins": ["Bandit Ring"], "bw black star promos": ["Black White Promos Jp"], "astral radiance": ["Battle Region", "Space Juggler", "Time Gazer", "バトルリージョン", "タイムゲイザー", "スペースジャグラー"], "supreme victors": ["Beat Of The Frontier"], "emerging powers": ["Black Collection"], "celestial storm": ["Charisma Of The Cracked Sky Sky Splitting Charisma", "Champion Road"], "hs triumphant": ["Clash At The Summit", "Lost Link"], "paldea evolved": ["Clay Burst", "Triplet Beat", "Snow Hazard", "クレイバースト", "スノーハザード", "トリプレットビート"], "boundaries crossed": ["Cold Flare", "Freeze Bolt"], "lost thunder": ["Burst Impact", "Fairy Rise", "Thunderclap Spark"], "chaos rising": ["Ninja Spinner"], "xy": ["Collection X", "Collection Y"], "sun moon": ["Collection Moon", "Collection Sun", "サン＆ムーン", "コレクションサン", "コレクションムーン"], "steam siege": ["Cruel Traitor Ruthless Rebel", "Fever Burst Fighter Explosive Warrior"], "dark explorers": ["Dark Rush"], "detective pikachu": ["Detective Pikachu"], "great encounters": ["Dawn Dash", "Moonlit Pursuit"], "team up": ["Dark Order", "Tag Bolt", "タッグボルト"], "dragon majesty": ["Dragon Storm"], "temporal forces": ["Cyber Judge", "Wild Force", "ワイルドフォース"], "lost origin": ["Dark Phantasma", "Lost Abyss", "白熱のアルカナ", "Incandescent Arcana"], "legends awakened": ["Cry From The Mysterious"], "burning shadows": ["Darkness That Consumes Light Light Consuming Darkness"], "double crisis": ["Double Crisis"], "unbroken bonds": ["Double Blaze", "Night Unison", "Full Metal Wall", "ダブルブレイズ"], "dragons exalted": ["Dragon Blade", "Dragon Blast"], "silver tempest": ["Paradigm Trigger", "パラダイムトリガー"], "legendary treasures": ["Ex Battle Boost", "Shiny Collection"], "hidden legends": ["Ex Hidden Legends Japanese"], "pok mon go": ["Pokémon GO", "Pokemon Go Japanese"], "dragon vault": ["Dragon Selection"], "legend maker": ["Ex Legend Maker Japanese"], "151": ["Pokemon Monsters Carddass", "Pokemon 151", "Topsun", "ポケモンカード151", "Vending Series 1 Blue"], "surging sparks": ["Paradise Dragona", "Super Electric Breaker", "スターターセット テラスタイプ：ステラ ニンフィアex", "スターターセット テラスタイプ：ステラ ソウブレイズex", "楽園ドラゴーナ", "超電ブレイカー"], "paldean fates": ["レイジングサーフ", "Shiny Treasure Ex"], "obsidian flames": ["Ruler Of The Black Flame", "黒炎の支配者"], "sword shield": ["Shield", "ソード", "シールド"], "scarlet violet": ["Scarlet Ex", "スカーレットex", "バイオレットex"], "darkness ablaze": ["Infinity Zone", "Explosive Flame Walker", "ムゲンゾーン"], "expedition base set": ["Expedition Japanese", "基本拡張パック"], "next destinies": ["Hail Blizzard", "Psycho Drive"], "shining fates shiny vault": ["Shiny Star V"], "brilliant stars": ["Star Birth", "スターバース"], "fusion strike": ["Fusion Arts", "フュージョンアーツ"], "team rocket returns": ["Rocket Gang Strikes Back", "ロケット団の逆襲"], "sm black star promos": ["Sun Moon Promos Jp"], "mega evolution": ["Mega Brave", "Mega Symphonia", "メガブレイブ", "メガシンフォニア"], "chilling reign": ["Jet Black Geist", "Silver Lance", "Vmax Climax", "Matchless Fighter", "漆黒のガイスト", "白銀のランス"], "hidden fates shiny vault": ["Ultra Shiny Gx"], "gym heroes": ["Gym Heroes Japanese"], "heartgold soulsilver": ["Heartgold Collection", "Soulsilver Collection"], "jungle": ["Jungle Japanese"], "skyridge": ["Mysterious Mountains", "Split Earth", "裂けた大地", "神秘なる山"], "rebel clash": ["Rebellion Crash", "Vmax Rising", "反逆クラッシュ"], "phantasmal flames": ["Inferno X", "インフェルノX"], "battle styles": ["Rapid Strike Master", "Single Strike Master", "一撃マスター", "連撃マスター"], "shrouded fable": ["Night Wanderer"], "plasma blast": ["Megalo Cannon"], "aquapolis": ["Town On No Map", "Wind From The Sea", "地図にない町", "海からの風"], "crown zenith": ["Vstar Universe", "VSTARユニバース"], "flashfire": ["Wild Blaze"], "neo discovery": ["Neo Discovery Japanese"], "neo genesis": ["Neo Genesis Japanese", "金、銀、新世界へ...", "闇、そして光へ...", "ポケモンカード★VS"], "neo destiny": ["Neo Destiny Japanese"], "phantom forces": ["Phantom Gate"], "plasma storm": ["Plasma Gale"], "generations": ["Pokekyun"], "neo revelation": ["Neo Revelation Japanese", "めざめる伝説"], "primal clash": ["Tidal Storm", "Gaia Volcano"], "breakpoint": ["Rage Of The Broken Sky Heavens"], "xy black star promos": ["Xy Promos Jp"], "noble victories": ["Red Collection Bw2"], "celebrations": ["25th アニバーサリーコレクション"], "hs undaunted": ["Reviving Legends"], "stellar crown": ["ステラミラクル", "Stellar Miracle"], "furious fists": ["Rising Fist"], "plasma freeze": ["Spiral Force", "Thunder Knuckle"], "prismatic evolutions": ["Terastal Festival Ex", "テラスタルフェスex"], "evolving skies": ["Towering Perfection Perfect Skyscraper", "イーブイヒーローズ", "蒼空ストリーム", "摩天パーフェクト"], "fossil": ["Fossil Japanese", "Vending Series 2 Red", "リーダーズスタジアム"], "platinum": ["Galactic S Conquest"], "forbidden light": ["Forbidden Light", "Ultra Force"], "ultra prism": ["Ultra Sun", "Ultra Moon", "ウルトラサン", "ウルトラムーン"], "crimson invasion": ["Ultradimensional Transdimensional Beasts"], "black white": ["White Collection Bw1"], "team rocket": ["Team Rocket Japanese"], "white flare": ["White Flare", "ホワイトフレア"], "kalos starter set": ["Xy Beginning Set Kalos Starter Set"], "southern islands": ["Southern Islands"], "base set": ["闇からの挑戦"], "legendary collection": ["ポケモンカード★web"], "firered leafgreen": ["伝説の飛翔"], "deoxys": ["蒼空の激突"], "unseen forces": ["金の空、銀の海"], "delta species": ["ホロンの研究塔"], "holon phantoms": ["ホロンの幻影"], "crystal guardians": ["きせきの結晶"], "dragon frontiers": ["さいはての攻防"], "perfect order": ["ムニキスゼロ"], "shining fates": ["シャイニースターV"]}, "enToCn": {"151": ["151 Collect", "Collect 151 Hope", "Collect 151 Journey", "Collect 151 Surprise"], "astral radiance": ["Brave Stars Charm", "Brave Stars Courage"], "fusion strike": ["Nine Colours Gathering Origin", "Nine Colours Gathering Friend"], "unified minds": ["Shining Synergy Summon"], "vivid voltage": ["Vivid Portrayals Indigo", "Vivid Portrayals Obsidian"]}, "jaToEn": {"20Th Anniversary Set": "Evolutions", "Nihil zero": "Nihil zero", "Gg End": "Unified Minds", "Advent Of Arceus": "Arceus", "25Th Anniversary Promo Jp": "Celebrations: Classic Collection", "Alolan Moonlight": "Guardians Rising", "Alter Genesis": "Cosmic Eclipse", "Amazing Volt": "Vivid Voltage", "Emerald Break": "Roaring Skies", "Ancient Roar": "Paradox Rift", "Awakening Psychic King": "Fates Collide", "Mask Of Change": "Twilight Masquerade", "Blue Impact Shock": "BREAKthrough", "Base Set Japanese": "Base Set 2", "Black Bolt": "Black Bolt", "Bonds To The End Of Time": "Rising Rivals", "Battle Partners": "Journey Together", "ロケット団の栄光": "Destined Rivals", "Gym Challenge Japanese": "Gym Challenge", "Mega Dream Ex": "Ascended Heroes", "Bandit Ring": "Ancient Origins", "Black White Promos Jp": "BW Black Star Promos", "Battle Region": "Astral Radiance", "Beat Of The Frontier": "Supreme Victors", "Black Collection": "Emerging Powers", "Charisma Of The Cracked Sky Sky Splitting Charisma": "Celestial Storm", "Clash At The Summit": "HS—Triumphant", "Clay Burst": "Paldea Evolved", "Cold Flare": "Boundaries Crossed", "Nihil Zero": "Nihil zero", "Burst Impact": "Lost Thunder", "Ninja Spinner": "Chaos Rising", "Champion Road": "Celestial Storm", "Collection X": "XY", "Collection Y": "XY", "Collection Moon": "Sun & Moon", "Cruel Traitor Ruthless Rebel": "Steam Siege", "Crimson Haze": "Twilight Masquerade", "Collection Sun": "Sun & Moon", "Dark Rush": "Dark Explorers", "Detective Pikachu": "Detective Pikachu", "Dawn Dash": "Great Encounters", "Dark Order": "Team Up", "Dragon Storm": "Dragon Majesty", "Cyber Judge": "Temporal Forces", "Dark Phantasma": "Lost Origin", "Cry From The Mysterious": "Legends Awakened", "Darkness That Consumes Light Light Consuming Darkness": "Burning Shadows", "Double Crisis": "Double Crisis", "Glory Of Team Rocket": "Destined Rivals", "変幻の仮面": "Twilight Masquerade", "Double Blaze": "Unbroken Bonds", "Dragon Blade": "Dragons Exalted", "ポケットモンスターカードゲーム 拡張パック 20th Anniversary": "Evolutions", "Paradigm Trigger": "Silver Tempest", "Ex Battle Boost": "Legendary Treasures", "Dream League": "Cosmic Eclipse", "Ex Hidden Legends Japanese": "Hidden Legends", "Pokémon GO": "Pokémon GO", "Dragon Selection": "Dragon Vault", "Ex Legend Maker Japanese": "Legend Maker", "Pokemon Monsters Carddass": "151", "Dragon Blast": "Dragons Exalted", "Paradise Dragona": "Surging Sparks", "Pokemon Go Japanese": "Pokémon GO", "Pokemon 151": "151", "レイジングサーフ": "Paldean Fates", "Ruler Of The Black Flame": "Obsidian Flames", "Shield": "Sword & Shield", "Lost Link": "HS—Triumphant", "Scarlet Ex": "Scarlet & Violet", "Infinity Zone": "Darkness Ablaze", "Expedition Japanese": "Expedition Base Set", "Gx Battle Boost": "Guardians Rising", "Hail Blizzard": "Next Destinies", "Shiny Star V": "Shining Fates Shiny Vault", "Space Juggler": "Astral Radiance", "Star Birth": "Brilliant Stars", "Explosive Flame Walker": "Darkness Ablaze", "Fusion Arts": "Fusion Strike", "Rocket Gang Strikes Back": "Team Rocket Returns", "Sun Moon Promos Jp": "SM Black Star Promos", "Tag Bolt": "Team Up", "Mega Brave": "Mega Evolution", "Jet Black Geist": "Chilling Reign", "Ultra Shiny Gx": "Hidden Fates Shiny Vault", "Silver Lance": "Chilling Reign", "Gym Heroes Japanese": "Gym Heroes", "Future Flash": "Paradox Rift", "Heartgold Collection": "HeartGold & SoulSilver", "Hot Air Arena": "Destined Rivals", "Jungle Japanese": "Jungle", "Topsun": "151", "Psycho Drive": "Next Destinies", "Lost Abyss": "Lost Origin", "Vmax Climax": "Chilling Reign", "Miracle Twins": "Unified Minds", "Mysterious Mountains": "Skyridge", "Night Unison": "Unbroken Bonds", "Fever Burst Fighter Explosive Warrior": "Steam Siege", "Rebellion Crash": "Rebel Clash", "Inferno X": "Phantasmal Flames", "Rapid Strike Master": "Battle Styles", "Night Wanderer": "Shrouded Fable", "Legendary Heartbeat": "Vivid Voltage", "Megalo Cannon": "Plasma Blast", "Mega Symphonia": "Mega Evolution", "Matchless Fighter": "Chilling Reign", "Remix Bout": "Cosmic Eclipse", "Raging Surf": "Paradox Rift", "Shiny Treasure Ex": "Paldean Fates", "Sky Legend": "Unified Minds", "Split Earth": "Skyridge", "Time Gazer": "Astral Radiance", "Triplet Beat": "Paldea Evolved", "Town On No Map": "Aquapolis", "Vstar Universe": "Crown Zenith", "Wild Force": "Temporal Forces", "Moonlit Pursuit": "Great Encounters", "Wild Blaze": "Flashfire", "Neo Discovery Japanese": "Neo Discovery", "Neo Genesis Japanese": "Neo Genesis", "Neo Destiny Japanese": "Neo Destiny", "Phantom Gate": "Phantom Forces", "Plasma Gale": "Plasma Storm", "Pokekyun": "Generations", "Neo Revelation Japanese": "Neo Revelation", "Tidal Storm": "Primal Clash", "Wind From The Sea": "Aquapolis", "Rage Of The Broken Sky Heavens": "BREAKpoint", "Red Flash": "BREAKthrough", "Xy Promos Jp": "XY Black Star Promos", "Red Collection Bw2": "Noble Victories", "Single Strike Master": "Battle Styles", "Shiny Collection": "Legendary Treasures", "スターバース": "Brilliant Stars", "25th アニバーサリーコレクション": "Celebrations", "スカーレットex": "Scarlet & Violet", "Reviving Legends": "HS—Undaunted", "ステラミラクル": "Stellar Crown", "ポケモンカード151": "151", "Snow Hazard": "Paldea Evolved", "Rising Fist": "Furious Fists", "クリムゾンヘイズ": "Twilight Masquerade", "バイオレットex": "Scarlet & Violet", "VSTARユニバース": "Crown Zenith", "バトルパートナーズ": "Journey Together", "Spiral Force": "Plasma Freeze", "Soulsilver Collection": "HeartGold & SoulSilver", "Stellar Miracle": "Stellar Crown", "Terastal Festival Ex": "Prismatic Evolutions", "Super Electric Breaker": "Surging Sparks", "Towering Perfection Perfect Skyscraper": "Evolving Skies", "Fossil Japanese": "Fossil", "Freeze Bolt": "Boundaries Crossed", "Gaia Volcano": "Primal Clash", "Galactic S Conquest": "Platinum", "Forbidden Light": "Forbidden Light", "Fairy Rise": "Lost Thunder", "Full Metal Wall": "Unbroken Bonds", "Ultra Sun": "Ultra Prism", "Ultra Moon": "Ultra Prism", "Ultradimensional Transdimensional Beasts": "Crimson Invasion", "White Collection Bw1": "Black & White", "Thunder Knuckle": "Plasma Freeze", "Thunderclap Spark": "Lost Thunder", "Team Rocket Japanese": "Team Rocket", "Ultra Force": "Forbidden Light", "Vending Series 1 Blue": "151", "Vending Series 2 Red": "Fossil", "White Flare": "White Flare", "Xy Beginning Set Kalos Starter Set": "Kalos Starter Set", "Vmax Rising": "Rebel Clash", "Southern Islands": "Southern Islands", "リーダーズスタジアム": "Fossil", "闇からの挑戦": "Base Set", "金、銀、新世界へ...": "Neo Genesis", "めざめる伝説": "Neo Revelation", "闇、そして光へ...": "Neo Genesis", "ポケモンカード★VS": "Neo Genesis", "ポケモンカード★web": "Legendary Collection", "基本拡張パック": "Expedition Base Set", "地図にない町": "Aquapolis", "海からの風": "Aquapolis", "裂けた大地": "Skyridge", "神秘なる山": "Skyridge", "伝説の飛翔": "FireRed & LeafGreen", "蒼空の激突": "Deoxys", "ロケット団の逆襲": "Team Rocket Returns", "金の空、銀の海": "Unseen Forces", "ホロンの研究塔": "Delta Species", "ホロンの幻影": "Holon Phantoms", "きせきの結晶": "Crystal Guardians", "さいはての攻防": "Dragon Frontiers", "インフェルノX": "Phantasmal Flames", "メガブレイブ": "Mega Evolution", "ムニキスゼロ": "Perfect Order", "メガシンフォニア": "Mega Evolution", "パラダイムトリガー": "Silver Tempest", "バトルリージョン": "Astral Radiance", "スターターセット テラスタイプ：ステラ ニンフィアex": "Surging Sparks", "ブラックボルト": "Black Bolt", "スターターセット テラスタイプ：ステラ ソウブレイズex": "Surging Sparks", "古代の咆哮": "Paradox Rift", "クレイバースト": "Paldea Evolved", "ワイルドフォース": "Temporal Forces", "スノーハザード": "Paldea Evolved", "テラスタルフェスex": "Prismatic Evolutions", "黒炎の支配者": "Obsidian Flames", "ホワイトフレア": "White Flare", "未来の一閃": "Paradox Rift", "楽園ドラゴーナ": "Surging Sparks", "超電ブレイカー": "Surging Sparks", "熱風のアリーナ": "Destined Rivals", "ソード": "Sword & Shield", "シールド": "Sword & Shield", "反逆クラッシュ": "Rebel Clash", "ムゲンゾーン": "Darkness Ablaze", "仰天のボルテッカー": "Vivid Voltage", "一撃マスター": "Battle Styles", "連撃マスター": "Battle Styles", "漆黒のガイスト": "Chilling Reign", "白銀のランス": "Chilling Reign", "イーブイヒーローズ": "Evolving Skies", "蒼空ストリーム": "Evolving Skies", "摩天パーフェクト": "Evolving Skies", "フュージョンアーツ": "Fusion Strike", "タイムゲイザー": "Pokemon Astral Radiance", "スペースジャグラー": "Pokemon Astral Radiance", "白熱のアルカナ": "Lost Origin", "Incandescent Arcana": "Lost Origin", "シャイニースターV": "Pokemon Shining Fates", "サン＆ムーン": "Sun & Moon", "コレクションサン": "Sun & Moon", "コレクションムーン": "Sun & Moon", "ウルトラサン": "Ultra Prism", "ウルトラムーン": "Ultra Prism", "タッグボルト": "Pokemon Team Up", "ダブルブレイズ": "Unbroken Bonds", "ミラクルツイン": "Unified Minds", "リミックスバウト": "Unified Minds", "オルタージェネシス": "Cosmic Eclipse", "ジージーエンド": "Cosmic Eclipse", "トリプレットビート": "Pokemon Paldea Evolved"}, "cnToEn": {"151 Collect": "151", "Collect 151 Hope": "151", "Collect 151 Journey": "151", "Collect 151 Surprise": "151", "Brave Stars Charm": "Astral Radiance", "Brave Stars Courage": "Astral Radiance", "Nine Colours Gathering Origin": "Fusion Strike", "Nine Colours Gathering Friend": "Fusion Strike", "Shining Synergy Summon": "Unified Minds", "Vivid Portrayals Indigo": "Vivid Voltage", "Vivid Portrayals Obsidian": "Vivid Voltage"}, "enCanonical": {"generations": "Pokemon Generations", "call of legends": "Pokemon Call of Legends", "skyridge": "Pokemon Skyridge", "night stretcher energy 196 list": "Night Stretcher Energy 196 List", "ascended heroes": "Pokemon Ascended Heroes", "shining fates": "Pokemon Shining Fates", "legends awakened": "Legends Awakened", "destined rivals": "Pokemon Destined Rivals", "mega evolution": "Pokemon Mega Evolution", "legendary treasures": "Legendary Treasures", "paldea evolved": "Pokemon Paldea Evolved", "temporal forces": "Pokemon Temporal Forces", "mysterious treasures": "Pokemon Mysterious Treasures", "celestial storm": "Pokemon Celestial Storm", "dragon frontiers": "Dragon Frontiers", "supreme victors": "Pokemon Supreme Victors", "promo": "Pokemon Promo", "jungle": "Pokemon Jungle", "team up": "Pokemon Team Up", "gym challenge": "Pokemon Gym Challenge", "waitress ball 215 list": "Waitress Ball 215 List", "journey together": "Pokemon Journey Together", "crown zenith": "Pokemon Crown Zenith", "aquapolis": "Pokemon Aquapolis", "astral radiance": "Pokemon Astral Radiance", "dragons exalted": "Dragons Exalted", "paldean fates": "Paldean Fates", "rebel clash": "Rebel Clash", "base set 2": "Base Set 2", "japanese battle partners": "Pokemon Japanese Battle Partners", "sun moon": "Sun & Moon", "dragon": "Dragon", "plasma blast": "Plasma Blast", "unified minds": "Unified Minds", "fusion strike": "Fusion Strike", "roaring skies": "Roaring Skies", "obsidian flames": "Obsidian Flames", "canari ball 185 list": "Canari Ball 185 List", "forest of vitality energy 188 list": "Forest Of Vitality Energy 188 List", "surfer energy 200 list": "Surfer Energy 200 List", "steam siege": "Steam Siege", "breakthrough": "BREAKthrough", "paradox rift": "Paradox Rift", "secret wonders": "Secret Wonders", "glass trumpet ball 189 list": "Glass Trumpet Ball 189 List", "holon phantoms": "Holon Phantoms", "plasma freeze": "Plasma Freeze", "shining legends": "Shining Legends", "phantasmal flames": "Pokemon Phantasmal Flames", "prismatic evolutions": "Pokemon Prismatic Evolutions", "surging sparks": "Pokemon Surging Sparks", "perfect order": "Pokemon Perfect Order", "pop series 6": "POP Series 6", "poke pad ball 198 list": "Poke Pad Ball 198 List", "expedition": "Pokemon Expedition", "japanese mega dream ex": "Pokemon Japanese Mega Dream ex", "legendary collection": "Legendary Collection", "legend maker": "Legend Maker", "primal clash": "Primal Clash", "breakpoint": "BREAKpoint", "silver tempest": "Silver Tempest", "undaunted": "Pokemon Undaunted", "stormfront": "Stormfront", "platinum": "Platinum", "next destinies": "Next Destinies", "heartgold soulsilver": "HeartGold & SoulSilver", "arceus": "Arceus", "sword shield": "Sword & Shield", "japanese terastal festival": "Pokemon Japanese Terastal Festival", "rising rivals": "Rising Rivals", "japanese vs": "Pokemon Japanese VS", "japanese vending": "Pokemon Japanese Vending", "scarlet violet": "Pokemon Scarlet &amp; Violet", "scarlet violet 151": "Pokemon Scarlet &amp; Violet 151", "guardians rising": "Guardians Rising", "burning shadows": "Burning Shadows", "lost thunder": "Lost Thunder", "dragon majesty": "Dragon Majesty", "stellar crown": "Pokemon Stellar Crown", "xy": "XY", "kalos starter set": "Kalos Starter Set", "cosmic eclipse": "Cosmic Eclipse", "gym heroes": "Pokemon Gym Heroes", "hidden fates": "Hidden Fates", "team rocket returns": "Pokemon Team Rocket Returns", "delta species": "Delta Species", "evolutions": "Evolutions", "fates collide": "Fates Collide", "forbidden light": "Forbidden Light", "power keepers": "Power Keepers", "unbroken bonds": "Unbroken Bonds", "neo discovery": "Pokemon Neo Discovery", "furious fists": "Furious Fists", "brilliant stars": "Brilliant Stars", "flashfire": "Flashfire", "night stretcher ball 196 list": "Night Stretcher Ball 196 List", "white flare": "Pokemon White Flare", "neo genesis": "Pokemon Neo Genesis", "ancient origins": "Ancient Origins", "darkness ablaze": "Darkness Ablaze", "noble victories": "Noble Victories", "poke pad energy 198 list": "Poke Pad Energy 198 List", "pop series 2": "POP Series 2", "crimson invasion": "Crimson Invasion", "thick scale energy 211 list": "Thick Scale Energy 211 List", "base set": "Pokemon Base Set", "mystery garden ball 194 list": "Mystery Garden Ball 194 List", "premium power pro ball 199 list": "Premium Power Pro Ball 199 List", "battle styles": "Battle Styles", "fossil": "Fossil", "majestic dawn": "Majestic Dawn", "sandstorm": "Sandstorm", "crystal guardians": "Crystal Guardians", "mega signal ball 193 list": "Mega Signal Ball 193 List", "celebrations classic collection": "Celebrations: Classic Collection", "mcdonald s collection 2019": "McDonald's Collection 2019", "astral radiance trainer gallery": "Astral Radiance Trainer Gallery", "lost origin trainer gallery": "Lost Origin Trainer Gallery", "ex trainer kit 2 minun": "EX Trainer Kit 2 Minun", "diamond pearl": "Diamond & Pearl", "shrouded fable": "Shrouded Fable", "double crisis": "Double Crisis", "silver tempest trainer gallery": "Silver Tempest Trainer Gallery", "ex trainer kit latias": "EX Trainer Kit Latias", "brilliant stars trainer gallery": "Brilliant Stars Trainer Gallery", "lost origin": "Lost Origin", "forest of vitality ball 188 list": "Forest Of Vitality Ball 188 List", "neo revelation": "Neo Revelation", "deoxys": "Deoxys", "ex trainer kit 2 plusle": "EX Trainer Kit 2 Plusle", "great encounters": "Great Encounters", "shining fates shiny vault": "Shining Fates Shiny Vault", "black bolt": "Black Bolt", "hidden fates shiny vault": "Hidden Fates Shiny Vault", "phantom forces": "Phantom Forces", "ultra prism": "Ultra Prism", "mcdonald s collection 2012": "McDonald's Collection 2012", "sm black star promos": "SM Black Star Promos", "celebrations": "Celebrations", "crown zenith galarian gallery": "Crown Zenith Galarian Gallery", "boundaries crossed": "Boundaries Crossed", "team rocket": "Team Rocket", "unseen forces": "Unseen Forces", "plasma storm": "Plasma Storm", "detective pikachu": "Detective Pikachu", "dp black star promos": "DP Black Star Promos", "base": "Base", "evolving skies": "Evolving Skies", "chilling reign": "Chilling Reign", "ex trainer kit latios": "EX Trainer Kit Latios", "twilight masquerade": "Twilight Masquerade", "hidden legends": "Hidden Legends", "pok mon futsal collection": "Pokémon Futsal Collection", "emerging powers": "Emerging Powers", "dark explorers": "Dark Explorers", "dragon vault": "Dragon Vault", "neo destiny": "Neo Destiny", "pop series 3": "POP Series 3", "pop series 8": "POP Series 8", "pok mon rumble": "Pokémon Rumble", "pop series 4": "POP Series 4", "japanese scarlet violet 151": "Pokemon Japanese Scarlet &amp; Violet 151", "vivid voltage": "Vivid Voltage", "mcdonald s collection 2022": "McDonald's Collection 2022", "nihil zero": "Nihil zero", "mcdonald s collection 2011": "McDonald's Collection 2011", "mcdonald s collection 2014": "McDonald's Collection 2014", "mcdonald s collection 2017": "McDonald's Collection 2017", "mcdonald s collection 2016": "McDonald's Collection 2016", "mcdonald s collection 2018": "McDonald's Collection 2018", "mcdonald s collection 2015": "McDonald's Collection 2015", "mcdonald s collection 2021": "McDonald's Collection 2021", "go": "Pokemon Go", "pop series 5": "POP Series 5", "emerald": "Pokemon Emerald", "pop series 1": "POP Series 1", "japanese dark phantasma": "Pokemon Japanese Dark Phantasma", "hgss black star promos": "HGSS Black Star Promos", "hs triumphant": "HS—Triumphant", "hs undaunted": "HS—Undaunted", "team magma vs team aqua": "Team Magma vs Team Aqua", "expedition base set": "Expedition Base Set", "hs unleashed": "HS—Unleashed", "wizards black star promos": "Wizards Black Star Promos", "nintendo black star promos": "Nintendo Black Star Promos", "firered leafgreen": "FireRed & LeafGreen", "xy black star promos": "XY Black Star Promos", "pok mon go": "Pokémon GO", "black white": "Black & White", "swsh black star promos": "SWSH Black Star Promos", "chaos rising": "Chaos Rising", "scarlet violet black star promos": "Scarlet & Violet Black Star Promos", "scarlet violet energies": "Scarlet & Violet Energies", "151": "151", "ruby sapphire": "Ruby & Sapphire", "pop series 9": "POP Series 9", "champion s path": "Champion's Path", "team rocket s tarountula ball 18 list": "Team Rocket'S Tarountula Ball 18 List", "team rocket s diglett ball 100 list": "Team Rocket'S Diglett Ball 100 List", "team rocket s murkrow ball 126 list": "Team Rocket'S Murkrow Ball 126 List", "boss s orders corbeau energy 183 list": "Boss'S Orders Corbeau Energy 183 List", "air balloon energy 181 list": "Air Balloon Energy 181 List", "air balloon ball 181 list": "Air Balloon Ball 181 List", "bw black star promos": "BW Black Star Promos", "anthea amp concordia energy 182 list": "Anthea &Amp; Concordia Energy 182 List", "boss s orders corbeau ball 183 list": "Boss'S Orders Corbeau Ball 183 List", "iris s fighting spirit ball 190 list": "Iris'S Fighting Spirit Ball 190 List", "anthea amp concordia ball 182 list": "Anthea &Amp; Concordia Ball 182 List", "team rocket s ariana energy 202 list": "Team Rocket'S Ariana Energy 202 List", "canari energy 185 list": "Canari Energy 185 List", "buddy buddy poffin ball 184 list": "Buddy Buddy Poffin Ball 184 List", "counter gain ball 186 list": "Counter Gain Ball 186 List", "fighting gong energy 187 list": "Fighting Gong Energy 187 List", "buddy buddy poffin energy 184 list": "Buddy Buddy Poffin Energy 184 List", "lillie s determination energy 192 list": "Lillie'S Determination Energy 192 List", "n s pp up ball 195 list": "N'S Pp Up Ball 195 List", "n s pp up energy 195 list": "N'S Pp Up Energy 195 List", "lillie s determination ball 192 list": "Lillie'S Determination Ball 192 List", "team rocket s ariana ball 202 list": "Team Rocket'S Ariana Ball 202 List", "team rocket s archer energy 201 list": "Team Rocket'S Archer Energy 201 List", "nighttime mine ball 197 list": "Nighttime Mine Ball 197 List", "mystery garden energy 194 list": "Mystery Garden Energy 194 List", "light ball ball 191 list": "Light Ball Ball 191 List", "premium power pro energy 199 list": "Premium Power Pro Energy 199 List", "team rocket s factory energy 203 list": "Team Rocket'S Factory Energy 203 List", "team rocket s giovanni energy 204 list": "Team Rocket'S Giovanni Energy 204 List", "team rocket s petrel energy 207 list": "Team Rocket'S Petrel Energy 207 List", "team rocket s archer ball 201 list": "Team Rocket'S Archer Ball 201 List", "team rocket s factory ball 203 list": "Team Rocket'S Factory Ball 203 List", "team rocket s giovanni ball 204 list": "Team Rocket'S Giovanni Ball 204 List", "team rocket s great ball energy 205 list": "Team Rocket'S Great Ball Energy 205 List", "team rocket s hypnotizer energy 206 list": "Team Rocket'S Hypnotizer Energy 206 List", "team rocket s petrel ball 207 list": "Team Rocket'S Petrel Ball 207 List", "team rocket s proton energy 208 list": "Team Rocket'S Proton Energy 208 List", "surfer ball 200 list": "Surfer Ball 200 List", "ultra ball energy 213 list": "Ultra Ball Energy 213 List", "team rocket s watchtower energy 210 list": "Team Rocket'S Watchtower Energy 210 List", "team rocket s transceiver ball 209 list": "Team Rocket'S Transceiver Ball 209 List", "team rocket s transceiver energy 209 list": "Team Rocket'S Transceiver Energy 209 List", "team rocket s watchtower ball 210 list": "Team Rocket'S Watchtower Ball 210 List", "team rocket s proton ball 208 list": "Team Rocket'S Proton Ball 208 List", "urbain ball 214 list": "Urbain Ball 214 List", "tool scrapper ball 212 list": "Tool Scrapper Ball 212 List", "thick scale ball 211 list": "Thick Scale Ball 211 List", "prism energy ball 216 list": "Prism Energy Ball 216 List", "team rocket s energy ball 217 list": "Team Rocket'S Energy Ball 217 List", "japanese mega brave": "Pokemon Japanese Mega Brave", "japanese nihil zero": "Pokemon Japanese Nihil Zero", "japanese white flare": "Pokemon Japanese White Flare", "japanese mega symphonia": "Pokemon Japanese Mega Symphonia", "japanese ancient roar": "Pokemon Japanese Ancient Roar", "japanese violet ex": "Pokemon Japanese Violet Ex", "japanese clay burst": "Pokemon Japanese Clay Burst", "japanese scarlet ex": "Pokemon Japanese Scarlet Ex", "japanese shiny treasure ex": "Pokemon Japanese Shiny Treasure ex", "japanese svg special set": "Pokemon Japanese SVG Special Set", "japanese vstar universe": "Pokemon Japanese VSTAR Universe", "japanese rocket gang": "Pokemon Japanese Rocket Gang", "trick or trade 2024": "Pokemon Trick or Trade 2024", "japanese crimson haze": "Pokemon Japanese Crimson Haze", "japanese triplet beat": "Pokemon Japanese Triplet Beat", "latias latios 2015": "Pokemon Latias & Latios 2015", "trick or trade 2022": "Pokemon Trick or Trade 2022", "japanese single strike master": "Pokemon Japanese Single Strike Master", "japanese tag bolt": "Pokemon Japanese Tag Bolt", "fire red leaf green": "Pokemon Fire Red & Leaf Green", "team magma team aqua": "Pokemon Team Magma & Team Aqua", "test set": "Test Set", "japanese crossing the ruins": "Pokemon Japanese Crossing the Ruins", "iris s fighting spirit energy 190 list": "Iris'S Fighting Spirit Energy 190 List", "anthea amp concordia 182 list": "Anthea &Amp; Concordia 182 List", "japanese super electric breaker": "Pokemon Japanese Super Electric Breaker", "urbain energy 214 list": "Urbain Energy 214 List", "japanese challenge from the darkness": "Pokemon Japanese Challenge from the Darkness", "japanese wild force": "Pokemon Japanese Wild Force", "champion 39 s path": "Pokemon Champion&#39;s Path", "japanese paradise dragona": "Pokemon Japanese Paradise Dragona", "southern islands": "Southern Islands", "scarlet violet promos": "Scarlet & Violet Promos", "japanese heat wave arena": "Pokemon Japanese Heat Wave Arena", "best of game": "Best of Game", "pop series 7": "POP Series 7", "japanese classic blastoise": "Pokemon Japanese Classic: Blastoise", "waitress energy 215 list": "Waitress Energy 215 List", "tool scrapper energy 212 list": "Tool Scrapper Energy 212 List", "japanese double blaze": "Pokemon Japanese Double Blaze", "light ball energy 191 list": "Light Ball Energy 191 List", "mega signal energy 193 list": "Mega Signal Energy 193 List", "glass trumpet energy 189 list": "Glass Trumpet Energy 189 List", "fighting gong ball 187 list": "Fighting Gong Ball 187 List", "nighttime mine energy 197 list": "Nighttime Mine Energy 197 List", "counter gain energy 186 list": "Counter Gain Energy 186 List", "japanese stellar miracle": "Pokemon Japanese Stellar Miracle"}}
 
 const norm = (s) => (s||'').replace(/^pokemon\s+/i,'').replace(/&amp;/g,'&').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()
-export function jpSetsForEnSet(enSetName) { return SET_LANG_MAP.enToJp[norm(enSetName)] || [] }
-export function enSetForJpSet(jpSetName) { return SET_LANG_MAP.jaToEn[jpSetName] || null }
+// EN set -> sets JP/CN correspondientes
+export function jpSetsForEnSet(enSetName){ return SET_LANG_MAP.enToJp[norm(enSetName)] || [] }
+export function cnSetsForEnSet(enSetName){ return SET_LANG_MAP.enToCn[norm(enSetName)] || [] }
+// JP/CN set -> set EN correspondiente (nombre real en nuestra DB)
+export function enSetForJpSet(jpSetName){ return SET_LANG_MAP.jaToEn[jpSetName] || null }
+export function enSetForCnSet(cnSetName){ return SET_LANG_MAP.cnToEn[cnSetName] || null }
+// EN set canonico (resuelve duplicados "Pokemon X"/"X")
+export function canonicalEnSet(enSetName){ return SET_LANG_MAP.enCanonical[norm(enSetName)] || enSetName }
+// Devuelve los set(s) del idioma destino que corresponden al set+idioma origen
+export function setsForLang(fromSet, fromLang, toLang){
+  if (toLang === fromLang) return fromSet ? [fromSet] : []
+  if (fromLang === 'en') return toLang === 'jp' ? jpSetsForEnSet(fromSet) : toLang === 'cn' ? cnSetsForEnSet(fromSet) : []
+  const en = fromLang === 'jp' ? enSetForJpSet(fromSet) : fromLang === 'cn' ? enSetForCnSet(fromSet) : null
+  if (!en) return []
+  if (toLang === 'en') return [canonicalEnSet(en)]
+  return toLang === 'jp' ? jpSetsForEnSet(en) : toLang === 'cn' ? cnSetsForEnSet(en) : []
+}
