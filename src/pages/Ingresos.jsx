@@ -729,10 +729,13 @@ export default function Ingresos() {
 
   // ── Al cambiar idioma → limpiar sugerencias y re-buscar con el nuevo idioma ──
   const prevIdiomaRef = useRef(form.idioma)
+  const langSeqRef = useRef(0)   // secuencia: descarta resoluciones async viejas (race al cambiar idioma rápido)
   useEffect(() => {
     const prev = prevIdiomaRef.current
     prevIdiomaRef.current = form.idioma
     if (form.idioma === prev) return
+    const mySeq = ++langSeqRef.current
+    const alive = () => langSeqRef.current === mySeq   // false si hubo otro cambio de idioma después
 
     // Siempre limpiar sugerencias y caché de set al cambiar idioma
     setSuggestions([])
@@ -759,6 +762,7 @@ export default function Ingresos() {
     ;(async () => {
       // ── Aplica una carta equivalente encontrada (precio + imagen + set/número) ──
       const applyEq = async (eq) => {
+        if (!alive()) return
         // Al ir a EN mostramos el nombre en inglés; a JP/CN dejamos el término escrito.
         setForm(f => ({
           ...f,
@@ -770,6 +774,7 @@ export default function Ingresos() {
         if (eq.id) setSelectedCardId(eq.id)
         const nameForPrice = eq.name_en || eq.name || form.nombre
         const pc = await fetchPrecioConFallback(eq.id, nameForPrice, eq.card_number, lang, form.finish, form.grade, !eq.image_url)
+        if (!alive()) return   // hubo otro cambio de idioma mientras se buscaba → descartar
         const img = eq.image_url || pc?.image_url
         if (img) setPreview(prev => ({ ...prev, imagen: img, sinVersionIdioma: false }))
         if (pc?.price_usd) {
@@ -787,6 +792,7 @@ export default function Ingresos() {
           const src = await supabase.from('cards')
             .select('name_en').eq('language', prevLang).eq('name', form.nombre)
             .ilike('set_name', prevSet || '%').limit(1).maybeSingle()
+          if (!alive()) return
           bridgeEn = src?.data?.name_en || null
         }
 
@@ -795,6 +801,7 @@ export default function Ingresos() {
 
         if (bridgeEn && targetSets.length) {
           const eq = await findEquivalentCard(bridgeEn, targetSets, lang, form.finish)
+          if (!alive()) return
           if (eq) { await applyEq(eq); return }
           // Correspondencia conocida pero la carta no existe en ese set destino →
           // NO búsqueda salvaje (evita traer carta de otra época). Mantener imagen.
@@ -805,9 +812,9 @@ export default function Ingresos() {
         // 2) Sin correspondencia de set conocida (set exclusivo/promo). Para no arrastrar
         //    una carta equivocada, NO buscamos a ciegas: mantenemos la imagen actual,
         //    limpiamos precio y avisamos que no hay versión mapeada en ese idioma.
-        setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
+        if (alive()) setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
       } catch (_) {
-        setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
+        if (alive()) setPreview(prev => ({ ...prev, precio_source: null, sinVersionIdioma: true }))
       }
     })()
   }, [form.idioma]) // eslint-disable-line react-hooks/exhaustive-deps
