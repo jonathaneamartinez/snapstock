@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { Pencil } from 'lucide-react'
 import { useVentas } from '../hooks/useVentas'
 import { supabase }  from '../lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer } from 'recharts'
@@ -127,6 +128,8 @@ export default function Ventas() {
   const [month,    setMonth]    = useState(now.getMonth() + 1)
   const [loadingId, setLoadingId] = useState(null)
   const [toast,    setToast]    = useState(null)
+  const [editId,   setEditId]   = useState(null)   // venta en edición de importe
+  const [editVal,  setEditVal]  = useState('')
   const { t } = useI18n()
 
   const { data, isLoading } = useVentas(year, month)
@@ -199,6 +202,30 @@ export default function Ventas() {
 
     } finally {
       setLoadingId(null)
+    }
+  }
+
+  // ── Editar importe (total_ars) de una venta por fila ───────────────────────
+  const startEdit = (v) => { setEditId(v.id); setEditVal(String(Math.round(v.total_ars || 0))) }
+  const cancelEdit = () => { setEditId(null); setEditVal('') }
+  const saveEdit = async (v) => {
+    const nuevo = Math.round(Number(String(editVal).replace(/[^\d.-]/g, '')) || 0)
+    if (nuevo === Math.round(v.total_ars || 0)) { cancelEdit(); return }
+    setLoadingId(v.id)
+    try {
+      // Recalcular USD con el blue del momento de la venta (si hay) para mantener consistencia
+      const blue = (v.total_ars && v.total_usd) ? (v.total_ars / v.total_usd) : null
+      const patch = { total_ars: nuevo }
+      if (blue && blue > 0) patch.total_usd = Math.round((nuevo / blue) * 100) / 100
+      const { error } = await supabase.from('sales').update(patch).eq('id', v.id)
+      if (error) { showToast(`Error: ${error.message}`, 'error') }
+      else {
+        showToast('Importe actualizado')
+        qc.invalidateQueries({ queryKey: ['ventas'] })
+        qc.invalidateQueries({ queryKey: ['metricas'] })   // dashboard
+      }
+    } finally {
+      setLoadingId(null); cancelEdit()
     }
   }
 
@@ -377,10 +404,36 @@ export default function Ventas() {
                     <td className="px-4 py-3 text-gray-600">
                       {v.buyer_name || '—'}
                     </td>
-                    <td className={`px-4 py-3 font-semibold whitespace-nowrap ${
-                      v.estado === 'cancelada' ? 'line-through text-gray-400' : 'text-blue-600'
-                    }`}>
-                      {fmtARS(v.total_ars)}
+                    <td className="px-4 py-3 font-semibold whitespace-nowrap">
+                      {editId === v.id ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-400">$</span>
+                          <input
+                            type="number"
+                            autoFocus
+                            value={editVal}
+                            onChange={e => setEditVal(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveEdit(v); if (e.key === 'Escape') cancelEdit() }}
+                            className="w-28 px-2 py-1 border border-blue-300 rounded-lg text-sm
+                                       focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          />
+                          <button onClick={() => saveEdit(v)} disabled={loadingId === v.id}
+                            className="text-emerald-600 hover:text-emerald-700 px-1" title="Guardar">✓</button>
+                          <button onClick={cancelEdit}
+                            className="text-gray-400 hover:text-gray-600 px-1" title="Cancelar">✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startEdit(v)}
+                          title="Editar importe"
+                          className={`group inline-flex items-center gap-1.5 ${
+                            v.estado === 'cancelada' ? 'line-through text-gray-400' : 'text-blue-600 hover:text-blue-800'
+                          }`}
+                        >
+                          {fmtARS(v.total_ars)}
+                          <Pencil size={12} className="opacity-0 group-hover:opacity-60 transition" />
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <EstadoDropdown
