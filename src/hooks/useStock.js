@@ -100,6 +100,8 @@ export function useStock(filters = {}) {
         holo,
         finish,
         grade,
+        product_type,
+        sealed_product_id,
         ${cardJoin} (
           id,
           name,
@@ -110,6 +112,13 @@ export function useStock(filters = {}) {
           language,
           is_holo,
           variant
+        ),
+        sealed_products (
+          id,
+          name,
+          set_name,
+          product_type,
+          image_url
         )
       `
 
@@ -157,18 +166,23 @@ export function useStock(filters = {}) {
       const { data, error } = await q
       if (error) throw error
 
-      const rows = (data ?? []).map(r => ({
+      const rows = (data ?? []).map(r => {
+        const sealed = r.product_type === 'sealed' ? (r.sealed_products || {}) : null
+        return {
         inventory_id:      r.id,
         card_id:           r.cards?.id || null,
-        // Carta
-        nombre:            r.cards?.name || r.cards?.full_name || '',
-        set_name:          r.cards?.set_name || '',
+        // Tipo de producto
+        product_type:      r.product_type || 'single',
+        sealed_type:       sealed?.product_type || null,
+        // Carta o Sellado
+        nombre:            sealed ? (sealed.name || '') : (r.cards?.name || r.cards?.full_name || ''),
+        set_name:          sealed ? (sealed.set_name || '') : (r.cards?.set_name || ''),
         numero:            r.cards?.card_number || '',
         idioma:            r.cards?.language || 'en',
         holo:              r.holo   || false,
         finish:            r.finish || 'normal',   // 'normal' | 'holofoil' | 'reverse'
         grade:             r.grade  || 'ungraded', // 'ungraded' | 'psa9' | 'psa10' | 'bgs10'
-        image_url:         r.cards?.image_url || '',
+        image_url:         sealed ? (sealed.image_url || '') : (r.cards?.image_url || ''),
         // Inventario
         condicion:          r.condition || r.condicion || '',
         stock:              r.quantity ?? 1,
@@ -187,7 +201,7 @@ export function useStock(filters = {}) {
         reserved_at:       r.reserved_at || r.fecha_reserva || '',
         fecha_escaneada:   r.scanned_at || r.scan_date || r.updated_at || '',
         tags:              r.tags ?? [],
-      }))
+      }})
 
       return { rows, total: totalCount ?? 0, page, pageSize: PAGE_SIZE }
     },

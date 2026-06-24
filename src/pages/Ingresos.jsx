@@ -10,6 +10,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { searchCatalogByName } from '../lib/catalogSearch'
 import { setsForLang } from '../lib/setLangMap'
+import { searchSealedByName, sealedLabel } from '../lib/sealedSearch'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
@@ -219,6 +220,7 @@ export default function Ingresos() {
   const [form, setForm] = useState({
     nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
     condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded',
+    tipo: 'carta', sealedId: null, product_type: null,   // tipo 'carta' | 'sellado'
   })
   const [loading,   setLoading]   = useState(false)
   const [toast,     setToast]     = useState({ visible: false, msg: '', tipo: 'success' })
@@ -466,6 +468,16 @@ export default function Ingresos() {
     setField('nombre', val)
     clearTimeout(sugTimer.current)
 
+    // ── Modo SELLADO: autocomplete desde sealed_products (ETB, Box, Bundle…) ──
+    if (form.tipo === 'sellado') {
+      if (!val.trim() || val.length < 2) { setSuggestions([]); setShowSug(false); return }
+      sugTimer.current = setTimeout(async () => {
+        const res = await searchSealedByName(val.trim())
+        setSuggestions(res); setShowSug(res.length > 0)
+      }, 250)
+      return
+    }
+
     // ── Caso A: set precargado → filtro local + búsqueda Supabase para custom ─
     if (allSetCardsRef.current.length > 0) {
       if (!val.trim()) { setSuggestions(allSetCardsRef.current.slice(0, 60)); setShowSug(true); return }
@@ -579,6 +591,21 @@ export default function Ingresos() {
 
   // ── Seleccionar sugerencia ─────────────────────────────────────────────
   const selectSuggestion = useCallback(async (sug) => {
+    // ── SELLADO: fija el producto y trae el precio de mercado desde PC ──
+    if (sug.source === 'sealed') {
+      setForm(f => ({ ...f, nombre: sug.nombre, set: sug.set || '', sealedId: sug.sealedId,
+                      product_type: sug.product_type, finish: 'normal', grade: 'ungraded' }))
+      setShowSug(false); setSuggestions([])
+      setPreview({ imagen: sug.imagen, precio_usd: null, precio_source: null })
+      // precio de mercado del sellado: /card-price por "{set} {nombre}"
+      const q = `${(sug.set || '').replace(/^Pokemon\s+/i, '')} ${sug.nombre}`.trim()
+      const pc = await scannerApi.cardPrice(q, '', 'en', 'normal', 'ungraded', false)
+      if (pc?.price_usd) {
+        setPreview(prev => ({ ...prev, precio_usd: pc.price_usd, precio_source: 'pc' }))
+        if (blue) { const m = margen ?? 0; setField('precioVenta', String(Math.round(pc.price_usd * blue * (1 + m / 100) / 500) * 500)) }
+      }
+      return
+    }
     setForm(f => ({
       ...f,
       nombre:  sug.nombre  || '',
@@ -898,6 +925,34 @@ export default function Ingresos() {
       const precioVenta = parseFloat(form.precioVenta) ||
         (precioUsd && blue ? Math.round(precioUsd * blue * (1 + (margen ?? 0) / 100) / 500) * 500 : null)
 
+      // ── SELLADO: inserta en inventory referenciando sealed_products (sin card) ──
+      if (form.tipo === 'sellado' && form.sealedId) {
+        const { error: sErr } = await supabase.from('inventory').insert({
+          store_id:          STORE_ID,
+          sealed_product_id: form.sealedId,
+          product_type:      'sealed',
+          quantity:          cantidad,
+          condicion:         form.condicion,
+          condition:         form.condicion,
+          status:            'disponible',
+          estado:            'disponible',
+          price_usd:         precioUsd,
+          price_ars_oficial: arsOfic ?? null,
+          price_ars_blue:    arsBlue ?? null,
+          sale_price_ars:    form.precioVenta ? parseFloat(form.precioVenta) : (precioVenta || null),
+          scan_date:         new Date().toISOString(),
+          idioma:            'en',
+          grade:             'ungraded',
+        })
+        if (sErr) throw sErr
+        showToast(`✅ ${cantidad > 1 ? cantidad + ' productos' : 'Producto sellado'} al stock`)
+        setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM',
+                  idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded',
+                  tipo: 'sellado', sealedId: null, product_type: null })
+        setPreview(null); setSelectedCardId(null); setLoading(false)
+        return
+      }
+
       // 1. Buscar o crear la carta en `cards`
       let cardId = null
       // Buscar carta existente (cards es tabla global, sin store_id)
@@ -1032,6 +1087,19 @@ export default function Ingresos() {
             <form onSubmit={handleSubmit} className="space-y-4">
 
               {/* URL de PriceCharting — auto-fill rápido */}
+              {/* Toggle Carta / Sellado */}
+              <div className="flex gap-2">
+                {[['carta', '🃏 Carta'], ['sellado', '📦 Sellado']].map(([val, lbl]) => (
+                  <button key={val} type="button"
+                    onClick={() => { setForm(f => ({ ...f, tipo: val, nombre: '', set: '', set_id: null, numero: '', sealedId: null, product_type: null, precioVenta: '' })); setPreview(null); setSuggestions([]); setShowSug(false) }}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold transition border
+                      ${form.tipo === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+
+              {form.tipo !== 'sellado' && (
               <div>
                 <label className={labelCls}>URL de PriceCharting <span className="text-gray-400 font-normal">(pegá el link y se completa solo)</span></label>
                 <div className="relative">
@@ -1048,6 +1116,7 @@ export default function Ingresos() {
                   )}
                 </div>
               </div>
+              )}
 
               {/* Nombre con autocomplete */}
               <div ref={wrapRef} className="relative">
@@ -1093,14 +1162,16 @@ export default function Ingresos() {
                               ${Number(sug.precio_usd).toFixed(2)}
                             </span>
                           )}
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                            ${sug.source_price === 'pc'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : sug.source === 'market'
-                                ? 'bg-blue-100 text-blue-600'
-                                : 'bg-gray-100 text-gray-500'}`}>
-                            {sug.source_price === 'pc' ? 'PC' : sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
-                          </span>
+                          {sug.source === 'sealed'
+                            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">{sealedLabel(sug.product_type)}</span>
+                            : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
+                              ${sug.source_price === 'pc'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : sug.source === 'market'
+                                  ? 'bg-blue-100 text-blue-600'
+                                  : 'bg-gray-100 text-gray-500'}`}>
+                              {sug.source_price === 'pc' ? 'PC' : sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
+                            </span>}
                         </div>
                       </button>
                     ))}
@@ -1139,6 +1210,7 @@ export default function Ingresos() {
                     className="w-full"
                   />
                 </div>
+                {form.tipo !== 'sellado' && (
                 <div>
                   <label className={labelCls}>{t('ingresos_card_number')}</label>
                   <input
@@ -1149,6 +1221,15 @@ export default function Ingresos() {
                     className={`${inputCls} disabled:opacity-50`}
                   />
                 </div>
+                )}
+                {form.tipo === 'sellado' && form.product_type && (
+                <div>
+                  <label className={labelCls}>Categoría</label>
+                  <div className="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm font-medium border border-amber-200">
+                    {sealedLabel(form.product_type)}
+                  </div>
+                </div>
+                )}
               </div>
 
               {/* Cantidad + Condición + Idioma */}
@@ -1166,6 +1247,7 @@ export default function Ingresos() {
                     {CONDICIONES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
+                {form.tipo !== 'sellado' && (
                 <div>
                   <label className={labelCls}>Tipo</label>
                   <FinishSelect
@@ -1174,6 +1256,8 @@ export default function Ingresos() {
                     className="w-full"
                   />
                 </div>
+                )}
+                {form.tipo !== 'sellado' && (
                 <div className="col-span-3">
                   <label className={labelCls}>Grado</label>
                   <div className="flex gap-2">
@@ -1211,6 +1295,8 @@ export default function Ingresos() {
                     ))}
                   </div>
                 </div>
+                )}
+                {form.tipo !== 'sellado' && (
                 <div>
                   <label className={labelCls}>{t('ingresos_language')}</label>
                   <select value={form.idioma}
@@ -1226,6 +1312,7 @@ export default function Ingresos() {
                     {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
                   </select>
                 </div>
+                )}
               </div>
 
               {/* Precios de mercado (read-only) */}
