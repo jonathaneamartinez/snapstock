@@ -12,6 +12,7 @@ import Spinner       from '../components/ui/Spinner'
 import EmptyState    from '../components/ui/EmptyState'
 import { AnimatePresence, motion } from 'framer-motion'
 import ClaimOptionsModal from '../components/stock/ClaimOptionsModal'
+import { sealedLabel } from '../lib/sealedSearch'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 
@@ -715,15 +716,29 @@ function ClaimRow({ claim }) {
   const PAGE = 20
   const fetchInvPage = async (term, offset) => {
     const trimmed = term.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')
-    const { data } = await supabase
-      .from('inventory')
-      .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, finish, grade, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
-      .eq('store_id', STORE_ID)
-      .neq('status', 'vendida')
-      .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { referencedTable: 'cards' })
-      .order('id', { ascending: false })
-      .range(offset, offset + PAGE - 1)
-    return (data ?? []).filter(r => r.cards?.name)
+    const base = () => supabase.from('inventory')
+      .eq('store_id', STORE_ID).neq('status', 'vendida')
+      .order('id', { ascending: false }).range(offset, offset + PAGE - 1)
+    // Cartas + Sellados en paralelo (sellados se normalizan a la forma .cards)
+    const [cRes, sRes] = await Promise.all([
+      base()
+        .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, finish, grade, cards!inner(id, name, set_name, card_number, image_url, language, is_holo)')
+        .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { referencedTable: 'cards' }),
+      base()
+        .select('id, price_usd, price_ars_blue, sale_price_ars, condition, condicion, finish, grade, sealed_products!inner(id, name, set_name, image_url, product_type)')
+        .or(`name.ilike.%${trimmed}%,set_name.ilike.%${trimmed}%`, { referencedTable: 'sealed_products' }),
+    ])
+    const cards = (cRes.data ?? []).filter(r => r.cards?.name)
+    const sealed = (sRes.data ?? []).filter(r => r.sealed_products?.name).map(r => ({
+      ...r,
+      cards: {
+        id: null, name: r.sealed_products.name, set_name: r.sealed_products.set_name,
+        card_number: null, image_url: r.sealed_products.image_url, language: 'en',
+        is_holo: false, _sealed: true, product_type: r.sealed_products.product_type,
+      },
+    }))
+    // Intercalar por id desc para que aparezcan mezclados de forma estable
+    return [...cards, ...sealed].sort((a, b) => b.id - a.id)
   }
 
   const searchCards = (term) => {
@@ -772,6 +787,14 @@ function ClaimRow({ claim }) {
     let ars  = invRow.price_ars_blue ?? null
     let sale = invRow.sale_price_ars ?? invRow.price_ars_blue ?? null
 
+    // [A-sellado] Sin card_id: precio de mercado por nombre+set
+    if (!usd && c._sealed && c.name) {
+      try {
+        const q = `${(c.set_name || '').replace(/^Pokemon\s+/i, '')} ${c.name}`.trim()
+        const res = await fetch(`${BACKEND}/card-price?${new URLSearchParams({ name: q, lang: 'en', grade: 'ungraded' })}`)
+        if (res.ok) { const json = await res.json(); if (json.price_usd) usd = json.price_usd }
+      } catch (_) {}
+    }
     // [A] Si no tiene precio, buscar en price_history o /card-price
     if (!usd && c.id) {
       const { data: ph } = await supabase
@@ -813,6 +836,8 @@ function ClaimRow({ claim }) {
       ars,
       sale,
       tags:         [],
+      sealed:       c._sealed || false,
+      product_type: c.product_type || null,
     }
     const newCards = [...(claim.cards_data ?? []), newCard]
     await supabase.from('claims')
@@ -1032,7 +1057,14 @@ function ClaimRow({ claim }) {
                                 >
                                   <ClaimAddThumb row={row} />
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium text-gray-800 truncate">{row.cards?.name}</p>
+                                    <p className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+                                      {row.cards?.name}
+                                      {row.cards?._sealed && (
+                                        <span className="text-[8px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">
+                                          {sealedLabel(row.cards.product_type)}
+                                        </span>
+                                      )}
+                                    </p>
                                     <p className="text-[10px] text-gray-400 truncate">
                                       {row.cards?.set_name}{row.cards?.card_number ? ` · #${row.cards.card_number}` : ''}
                                     </p>
