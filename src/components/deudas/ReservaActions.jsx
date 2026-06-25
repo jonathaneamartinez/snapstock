@@ -12,7 +12,7 @@ import { STORE_ID }       from '../../constants'
  *   buyerName    – nombre del comprador (para el mensaje)
  *   onDone       – callback después de ejecutar la acción
  */
-export default function ReservaActions({ inventoryId, buyerName, onDone }) {
+export default function ReservaActions({ inventoryId, buyerName, onDone, source = 'reserva', saleId = null }) {
   const [confirm,  setConfirm]  = useState(null)  // 'cobrar' | 'liberar' | null
   const [loading,  setLoading]  = useState(false)
   const [pos,      setPos]      = useState({ top: 0, left: 0 })
@@ -36,6 +36,21 @@ export default function ReservaActions({ inventoryId, buyerName, onDone }) {
   const execute = async () => {
     setLoading(true)
     try {
+      // ── Venta en deuda (sales.estado='deuda') ──────────────────────────
+      if (source === 'venta') {
+        if (confirm === 'cobrar') {
+          // Cobrar la deuda → la venta queda pagada
+          if (saleId) await supabase.from('sales').update({ estado: 'pagada' }).eq('id', saleId)
+        } else if (confirm === 'liberar') {
+          // Liberar → se anula la venta y la carta vuelve al stock
+          if (saleId) await supabase.from('sales').update({ estado: 'cancelada' }).eq('id', saleId)
+          if (inventoryId) await supabase.from('inventory')
+            .update({ status: 'disponible', estado: 'disponible', buyer_name: null, buyer_contact: null })
+            .eq('id', inventoryId)
+        }
+        return
+      }
+
       if (confirm === 'cobrar') {
         const now = new Date().toISOString()
         // Traer datos de la fila para armar el registro de venta
@@ -129,8 +144,12 @@ export default function ReservaActions({ inventoryId, buyerName, onDone }) {
         >
           <p className="text-gray-700 font-medium mb-2.5 leading-snug">
             {confirm === 'cobrar'
-              ? `¿Marcar como vendida${buyerName ? ` a ${buyerName}` : ''}?`
-              : `¿Liberar reserva${buyerName ? ` de ${buyerName}` : ''}? Vuelve al stock.`}
+              ? (source === 'venta'
+                  ? `¿Marcar deuda${buyerName ? ` de ${buyerName}` : ''} como pagada?`
+                  : `¿Marcar como vendida${buyerName ? ` a ${buyerName}` : ''}?`)
+              : (source === 'venta'
+                  ? `¿Anular venta${buyerName ? ` de ${buyerName}` : ''}? La carta vuelve al stock.`
+                  : `¿Liberar reserva${buyerName ? ` de ${buyerName}` : ''}? Vuelve al stock.`)}
           </p>
           <div className="flex gap-2">
             <button

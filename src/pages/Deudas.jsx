@@ -30,6 +30,7 @@ export default function Deudas() {
     qc.invalidateQueries({ queryKey: ['deudas'] })
     qc.invalidateQueries({ queryKey: ['stock'] })
     qc.invalidateQueries({ queryKey: ['metricas'] })
+    qc.invalidateQueries({ queryKey: ['ventas'] })
   }
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ export default function Deudas() {
 
                       {/* Canal (Feature 4) — selector sobre la primera carta de este comprador */}
                       <td className="px-4 py-3">
-                        {d.items.length === 1
+                        {d.items.length === 1 && d.items[0]._source === 'reserva'
                           ? (
                             <CanalReservaSelect
                               inventoryId={d.items[0].inventory_id}
@@ -114,7 +115,7 @@ export default function Deudas() {
                           )
                           : (
                             <span className="text-xs text-gray-400">
-                              {canal ?? '—'}
+                              {d.items.length === 1 ? (d.items[0].canal_reserva ?? '—') : (canal ?? '—')}
                             </span>
                           )
                         }
@@ -135,6 +136,8 @@ export default function Deudas() {
                           {d.items.length === 1 && (
                             <ReservaActions
                               inventoryId={d.items[0].inventory_id}
+                              saleId={d.items[0].sale_id}
+                              source={d.items[0]._source}
                               buyerName={d.buyer}
                               onDone={() => {
                                 refresh()
@@ -162,6 +165,8 @@ export default function Deudas() {
                                 <FinishBadge finish={item.finish} />
                                 <ReservaActions
                                   inventoryId={item.inventory_id}
+                                  saleId={item.sale_id}
+                                  source={item._source}
                                   buyerName={d.buyer}
                                   onDone={() => {
                                     refresh()
