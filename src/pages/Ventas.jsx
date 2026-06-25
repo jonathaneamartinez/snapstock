@@ -223,6 +223,7 @@ export default function Ventas() {
         showToast('Importe actualizado')
         qc.invalidateQueries({ queryKey: ['ventas'] })
         qc.invalidateQueries({ queryKey: ['metricas'] })   // dashboard
+        qc.invalidateQueries({ queryKey: ['deudas'] })     // si la venta está en deuda, refresca Deudas activas
       }
     } finally {
       setLoadingId(null); cancelEdit()
