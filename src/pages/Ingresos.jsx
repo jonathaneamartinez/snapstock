@@ -10,7 +10,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { searchCatalogByName } from '../lib/catalogSearch'
 import { setsForLang } from '../lib/setLangMap'
-import { searchSealedByName, sealedLabel } from '../lib/sealedSearch'
+import { searchSealedByName, searchSealedBySet, sealedLabel } from '../lib/sealedSearch'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
@@ -1120,12 +1120,14 @@ export default function Ingresos() {
 
               {/* Nombre con autocomplete */}
               <div ref={wrapRef} className="relative">
-                <label className={labelCls}>{t('ingresos_card_name')}</label>
+                <label className={labelCls}>{form.tipo === 'sellado' ? 'Producto sellado' : t('ingresos_card_name')}</label>
                 <input
                   value={form.nombre}
                   onChange={e => handleNombreChange(e.target.value)}
                   onFocus={handleNombreFocus}
-                  placeholder={form.set_id ? t('ingresos_search_set') : t('ingresos_search_card')}
+                  placeholder={form.tipo === 'sellado'
+                    ? 'Buscar sellado o elegí un set… ej: Elite Trainer Box'
+                    : (form.set_id ? t('ingresos_search_set') : t('ingresos_search_card'))}
                   autoComplete="off"
                   className={inputCls}
                 />
@@ -1197,14 +1199,19 @@ export default function Ingresos() {
                     value={form.set}
                     setId={form.set_id}
                     lang={form.idioma}
-                    onChange={({ set_name, set_id }) => {
+                    onChange={async ({ set_name, set_id }) => {
                       setForm(f => ({ ...f, set: set_name, set_id, numero: '', nombre: '' }))
                       setSuggestions([])
                       setShowSug(false)
                       setPreview(null)
                       allSetCardsRef.current = []
+                      // SELLADO: al elegir set, listar los sellados de ese set (ETB/Box/Bundle…)
+                      if (form.tipo === 'sellado') {
+                        const res = await searchSealedBySet(set_name)
+                        setSuggestions(res); setShowSug(res.length > 0)
+                        return
+                      }
                       // ▶ Precarga las cartas del set EN BACKGROUND inmediatamente.
-                      // Cuando el usuario haga foco en el nombre, ya estarán listas.
                       if (set_id) preloadSetCards(set_id, form.idioma)
                     }}
                     className="w-full"
