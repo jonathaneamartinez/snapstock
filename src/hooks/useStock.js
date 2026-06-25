@@ -8,7 +8,7 @@ const PAGE_SIZE = 50
 // table: null → columna directa de inventory (sort server-side)
 // table: 'cards' → columna de tabla relacionada (sort server-side via foreignTable)
 const SORT_MAP = {
-  nombre:       { col: 'name',              table: 'cards',    foreignTable: true  },
+  nombre:       { col: 'name_en',           table: 'cards',    foreignTable: true  },
   set_name:     { col: 'set_name',          table: 'cards',    foreignTable: true  },
   numero:       { col: 'card_number',       table: 'cards',    foreignTable: true  },
   idioma:       { col: 'language',          table: 'cards',    foreignTable: true  },
@@ -64,8 +64,8 @@ export function useStock(filters = {}) {
             ? String(parseInt(term.split('/')[0], 10))
             : term
           const numFilter = numNorm !== term
-            ? `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%,card_number.ilike.%${numNorm}%`
-            : `name.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`
+            ? `name.ilike.%${term}%,name_en.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%,card_number.ilike.%${numNorm}%`
+            : `name.ilike.%${term}%,name_en.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`
           q = q.or(numFilter, { referencedTable: 'cards' })
         }
 
@@ -105,6 +105,7 @@ export function useStock(filters = {}) {
         ${cardJoin} (
           id,
           name,
+          name_en,
           full_name,
           set_name,
           card_number,
@@ -168,6 +169,13 @@ export function useStock(filters = {}) {
 
       const rows = (data ?? []).map(r => {
         const sealed = r.product_type === 'sealed' ? (r.sealed_products || {}) : null
+        const c = r.cards
+        // Para JP/CN mostramos el nombre en inglés (name_en) si existe; EN ya es inglés.
+        const lang = (c?.language || 'en').toLowerCase()
+        const isEn = lang === 'en'
+        const nombreCarta = isEn
+          ? (c?.name || c?.full_name || '')
+          : (c?.name_en || c?.name || c?.full_name || '')
         return {
         inventory_id:      r.id,
         card_id:           r.cards?.id || null,
@@ -175,7 +183,8 @@ export function useStock(filters = {}) {
         product_type:      r.product_type || 'single',
         sealed_type:       sealed?.product_type || null,
         // Carta o Sellado
-        nombre:            sealed ? (sealed.name || '') : (r.cards?.name || r.cards?.full_name || ''),
+        nombre:            sealed ? (sealed.name || '') : nombreCarta,
+        nombre_local:      sealed ? '' : (c?.name || ''),   // nombre original (JP/CN) por si se quiere mostrar
         set_name:          sealed ? (sealed.set_name || '') : (r.cards?.set_name || ''),
         numero:            r.cards?.card_number || '',
         idioma:            r.cards?.language || 'en',
