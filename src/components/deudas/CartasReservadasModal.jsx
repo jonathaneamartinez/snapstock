@@ -34,14 +34,33 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data } = await supabase
-        .from('inventory')
-        .select(`id, sale_price_ars, price_ars_blue, condition, cards(name, image_url, card_number, language)`)
-        .eq('store_id', STORE_ID)
-        .eq('buyer_name', buyer)
-        .or('status.eq.reservada,estado.eq.reservada')
+      const [invRes, saleRes] = await Promise.all([
+        supabase
+          .from('inventory')
+          .select(`id, sale_price_ars, price_ars_blue, condition, cards(name, image_url, card_number, language)`)
+          .eq('store_id', STORE_ID)
+          .eq('buyer_name', buyer)
+          .or('status.eq.reservada,estado.eq.reservada'),
+        supabase
+          .from('sales')
+          .select(`id, total_ars, notes, inventory_id, inventory:inventory_id(condition, cards(name, image_url, card_number, language))`)
+          .eq('store_id', STORE_ID)
+          .eq('buyer_name', buyer)
+          .eq('estado', 'deuda'),
+      ])
+      const reservas = (invRes.data ?? []).map(c => ({
+        _source: 'reserva', key: `i-${c.id}`, inventory_id: c.id, sale_id: null,
+        sale_price_ars: c.sale_price_ars ?? c.price_ars_blue ?? null,
+        condition: c.condition, cards: c.cards,
+      }))
+      const ventas = (saleRes.data ?? []).map(s => ({
+        _source: 'venta', key: `s-${s.id}`, inventory_id: s.inventory_id, sale_id: s.id,
+        sale_price_ars: s.total_ars ?? null,
+        condition: s.inventory?.condition || '',
+        cards: s.inventory?.cards || { name: s.notes },
+      }))
       if (!cancelled) {
-        setCartas(data ?? [])
+        setCartas([...reservas, ...ventas])
         setLoading(false)
       }
     })()
@@ -54,23 +73,32 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
   const markAllSold = async () => {
     setConfirming(true)
     try {
-      const ids = cartas.map(c => c.id)
       const now = new Date().toISOString()
-      await supabase
-        .from('inventory')
-        .update({ status: 'vendida', estado: 'vendida', sold_at_date: now })
-        .in('id', ids)
-      // Registrar en sales para que aparezcan en Ventas del Mes
-      await supabase.from('sales').insert(cartas.map(c => ({
-        store_id:     STORE_ID,
-        channel:      'claims',
-        buyer_name:   buyer || null,
-        notes:        c.cards?.name || '',
-        total_ars:    c.sale_price_ars ?? c.price_ars_blue ?? null,
-        sold_at:      now,
-        estado:       'pendiente',
-        inventory_id: c.id,
-      })))
+      const reservas = cartas.filter(c => c._source === 'reserva')
+      const ventas   = cartas.filter(c => c._source === 'venta')
+
+      // Reservas: inventory → vendida + registrar venta en sales
+      if (reservas.length) {
+        await supabase
+          .from('inventory')
+          .update({ status: 'vendida', estado: 'vendida', sold_at_date: now })
+          .in('id', reservas.map(c => c.inventory_id))
+        await supabase.from('sales').insert(reservas.map(c => ({
+          store_id:     STORE_ID,
+          channel:      'claims',
+          buyer_name:   buyer || null,
+          notes:        c.cards?.name || '',
+          total_ars:    c.sale_price_ars ?? null,
+          sold_at:      now,
+          estado:       'pendiente',
+          inventory_id: c.inventory_id,
+        })))
+      }
+      // Ventas en deuda: la venta queda pagada
+      if (ventas.length) {
+        await supabase.from('sales').update({ estado: 'pagada' })
+          .in('id', ventas.map(c => c.sale_id))
+      }
       onDone?.()
       onClose()
     } finally {
@@ -85,7 +113,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-          <h3 className="font-bold text-gray-800">🃏 Cartas reservadas · <span className="text-blue-600">{buyer}</span></h3>
+          <h3 className="font-bold text-gray-800">🃏 Cartas en deuda · <span className="text-blue-600">{buyer}</span></h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
         </div>
 
@@ -97,12 +125,12 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
             </div>
           )}
           {!loading && cartas.length === 0 && (
-            <p className="text-gray-400 text-sm text-center py-8">No hay cartas reservadas.</p>
+            <p className="text-gray-400 text-sm text-center py-8">No hay cartas en deuda.</p>
           )}
           {!loading && cartas.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {cartas.map(c => (
-                <ReservaCard key={c.id} c={c} />
+                <ReservaCard key={c.key} c={c} />
               ))}
             </div>
           )}
@@ -113,7 +141,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
           {showConfirm ? (
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-gray-700 font-medium">
-                ¿Marcar las {totalCartas} cartas como vendidas?
+                ¿Saldar las {totalCartas} cartas (marcarlas como cobradas)?
               </p>
               <div className="flex gap-2">
                 <button
@@ -149,7 +177,7 @@ export default function CartasReservadasModal({ buyer, onClose, onDone }) {
                   disabled={!cartas.length}
                   className="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl hover:bg-emerald-400 disabled:opacity-50 transition"
                 >
-                  ✓ Marcar todas como vendidas
+                  ✓ Saldar todas (cobradas)
                 </button>
               </div>
             </div>
