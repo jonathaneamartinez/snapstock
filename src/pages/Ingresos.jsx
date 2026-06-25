@@ -10,7 +10,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { searchCatalogByName } from '../lib/catalogSearch'
 import { setsForLang } from '../lib/setLangMap'
-import { searchSealedByName, searchSealedBySet, sealedLabel } from '../lib/sealedSearch'
+import { searchSealedByName, searchSealedBySet, upsertSealedFromUrl, sealedLabel } from '../lib/sealedSearch'
 import { useDolar } from '../hooks/useDolar'
 import { useSettings } from '../hooks/useSettings'
 import { CONDICIONES, IDIOMAS, STORE_ID } from '../constants'
@@ -255,6 +255,26 @@ export default function Ingresos() {
     try {
       const result = await scannerApi.resolvePcUrl(url)
       if (!result || result.error) return
+
+      // ── SELLADO: el link es de un producto (ETB/Box/Bundle…) → resolver/crear ──
+      if (form.tipo === 'sellado') {
+        const sp = await upsertSealedFromUrl(url, result)
+        if (sp) {
+          setForm(f => ({ ...f, nombre: sp.name, set: sp.set_name || '', set_id: null,
+                          sealedId: sp.id, product_type: sp.product_type }))
+          setPreview({ imagen: sp.image_url || result.image_url || null,
+                       precio_usd: result.price_usd ?? null,
+                       precio_buy_usd: result.price_buy_usd ?? null,
+                       precio_sell_usd: result.price_sell_usd ?? null, precio_source: 'pc' })
+          if (result.price_usd && blue) {
+            const m = margen ?? 0
+            setForm(f => ({ ...f, precioVenta: String(Math.round(result.price_usd * blue * (1 + m / 100) / 500) * 500) }))
+          }
+        }
+        setPcUrl('')
+        return
+      }
+
       const langRaw = result.lang || 'en'
       // Mapear jp→ja y cn→zh para que coincida con los códigos del selector IDIOMAS
       const langForm = langRaw === 'jp' ? 'ja' : langRaw === 'cn' ? 'zh' : langRaw
@@ -1099,14 +1119,15 @@ export default function Ingresos() {
                 ))}
               </div>
 
-              {form.tipo !== 'sellado' && (
               <div>
                 <label className={labelCls}>URL de PriceCharting <span className="text-gray-400 font-normal">(pegá el link y se completa solo)</span></label>
                 <div className="relative">
                   <input
                     value={pcUrl}
                     onChange={e => handlePcUrl(e.target.value)}
-                    placeholder="https://www.pricecharting.com/game/pokemon-.../..."
+                    placeholder={form.tipo === 'sellado'
+                      ? 'https://www.pricecharting.com/game/pokemon-.../elite-trainer-box'
+                      : 'https://www.pricecharting.com/game/pokemon-.../...'}
                     className={`${inputCls} pr-8 text-xs`}
                   />
                   {pcLoading && (
@@ -1116,7 +1137,6 @@ export default function Ingresos() {
                   )}
                 </div>
               </div>
-              )}
 
               {/* Nombre con autocomplete */}
               <div ref={wrapRef} className="relative">
