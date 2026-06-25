@@ -186,19 +186,19 @@ export default function Ventas() {
         } else {
           showToast(t('ventas_toast_returned'))
         }
-        qc.invalidateQueries({ queryKey: ['stock'] })
-        qc.invalidateQueries({ queryKey: ['metricas'] })
       } else if (nuevoEstado === 'pagada') {
         showToast(t('ventas_toast_paid'))
       } else if (nuevoEstado === 'deuda') {
         showToast(t('ventas_toast_debt'))
-        qc.invalidateQueries({ queryKey: ['deudas'] })
       } else {
         showToast(t('ventas_toast_updated'))
       }
 
-      // Refrescar ventas
+      // Cualquier cambio de estado puede afectar a las tres vistas → refrescar todo.
       qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['deudas'] })
+      qc.invalidateQueries({ queryKey: ['metricas'] })
+      qc.invalidateQueries({ queryKey: ['stock'] })
 
     } finally {
       setLoadingId(null)
