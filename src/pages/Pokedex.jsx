@@ -8,6 +8,7 @@ import SetSelect      from '../components/ui/SetSelect'
 import Spinner        from '../components/ui/Spinner'
 import FinishBadge   from '../components/ui/FinishBadge'
 import { useCardImage } from '../hooks/useCardImage'
+import { sealedLabel } from '../lib/sealedSearch'
 
 /* ─── Constantes ─────────────────────────────────────────────────────── */
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
@@ -127,7 +128,10 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
     setPrice(force || g !== 'ungraded' || cachedPrice == null
       ? 'loading'
       : { price_usd: cachedPrice, source: 'PriceCharting (cache)', finish: cardFin })
-    scannerApi.cardPrice(card.name, card.number, card._lang, cardFin, g, !card.image)
+    // Sellado: busca por "{set} {nombre}" sin número ni grado.
+    const pName = card._sealed ? card._priceQuery : card.name
+    const pNum  = card._sealed ? '' : card.number
+    scannerApi.cardPrice(pName, pNum, 'en', cardFin, card._sealed ? 'ungraded' : g, !card.image)
       .then(r => {
         setPrice(r)
         if (r?.image_url && !card.image) setPcImage(r.image_url)
@@ -210,7 +214,8 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
             )}
           </div>
 
-          {/* Selector de grado */}
+          {/* Selector de grado (no aplica a sellados) */}
+          {!card._sealed && (
           <div className="flex flex-wrap gap-1.5 border-t border-gray-100 pt-2">
             {POKEDEX_GRADES.map(g => (
               <button
@@ -225,10 +230,13 @@ function CardModal({ card, cachedPrice, onClose, onPrev, onNext, hasPrev, hasNex
               </button>
             ))}
           </div>
+          )}
 
           {/* Variant + precio + refrescar */}
           <div className="flex items-center justify-between gap-2">
-            <FinishBadge finish={cardFin} size="sm" />
+            {card._sealed
+              ? <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">{sealedLabel(card.product_type)}</span>
+              : <FinishBadge finish={cardFin} size="sm" />}
             <div className="flex items-center gap-2">
               <div className="text-right min-w-[80px]">
                 {loading && <span className="text-xs text-gray-300">Buscando…</span>}
@@ -347,6 +355,7 @@ export default function Pokedex() {
   const [hasMore,     setHasMore]    = useState(false)
   const [modalIdx,    setModalIdx]   = useState(null)  // índice de carta abierta en modal
   const [pricesMap,   setPricesMap]  = useState({})    // card_id → price_usd (desde price_history)
+  const [mode,        setMode]       = useState('cards') // 'cards' | 'sealed'
 
   // Warm-up: despertar Railway apenas el usuario entra a la página
   useEffect(() => { scannerApi.health().catch(() => {}) }, [])
@@ -435,6 +444,40 @@ export default function Pokedex() {
     }
   }
 
+  /* ── Buscar productos sellados (ETB, Box, Bundle…) ─────────────────── */
+  const runSealedSearch = async (q) => {
+    searchIdRef.current += 1
+    const myId = searchIdRef.current
+    setLoading(true); setCards([])
+    try {
+      let req = supabase
+        .from('sealed_products')
+        .select('id, name, set_name, product_type, image_url, pack_count')
+        .limit(80)
+      if (q && q.length >= 2) req = req.or(`name.ilike.*${q}*,set_name.ilike.*${q}*`)
+      const { data, error } = await req
+      if (searchIdRef.current !== myId) return
+      if (error) throw error
+      const results = (data ?? []).map(p => ({
+        _key:    `sealed|${p.id}`,
+        _sealed: true,
+        _lang:   'en',
+        id:      p.id,
+        name:    p.name,
+        set:     p.set_name || '',
+        image:   p.image_url || '',
+        number:  null,
+        product_type: p.product_type,
+        _priceQuery: `${(p.set_name || '').replace(/^Pokemon\s+/i, '')} ${p.name}`.trim(),
+      }))
+      setCards(results); setHasMore(false)
+    } catch (err) {
+      if (searchIdRef.current === myId) { console.error('Sealed search:', err); setHasMore(false) }
+    } finally {
+      if (searchIdRef.current === myId) setLoading(false)
+    }
+  }
+
   /* ── Cargar todas las cartas de un set — progresivo: EN primero ─────── */
   const loadSet = async (setId, langs) => {
     searchIdRef.current += 1
@@ -493,6 +536,11 @@ export default function Pokedex() {
   const handleQuery = (val) => {
     setQuery(val)
     clearTimeout(timerRef.current)
+
+    if (mode === 'sealed') {
+      timerRef.current = setTimeout(() => runSealedSearch(val.trim()), 350)
+      return
+    }
 
     if (setInfo.set_id) {
       // Filtro instantáneo desde caché del set
@@ -590,6 +638,21 @@ export default function Pokedex() {
           )}
         </div>
 
+        {/* Toggle Cartas / Sellados */}
+        <div className="flex gap-2 mb-3">
+          {[['cards', '🃏 Cartas'], ['sealed', '📦 Sellados']].map(([val, lbl]) => (
+            <button key={val} type="button"
+              onClick={() => {
+                setMode(val); setQuery(''); setCards([]); setSetInfo({ set_id: null, set_name: '' })
+                if (val === 'sealed') runSealedSearch('')
+              }}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition
+                ${mode === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
         {/* Búsqueda */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -598,12 +661,13 @@ export default function Pokedex() {
               type="text"
               value={query}
               onChange={e => handleQuery(e.target.value)}
-              placeholder="Buscar por nombre… ej: Gengar, Charizard, Mew"
+              placeholder={mode === 'sealed' ? 'Buscar sellado… ej: Prismatic Elite Trainer Box' : 'Buscar por nombre… ej: Gengar, Charizard, Mew'}
               className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm
                          bg-white focus:outline-none focus:ring-2 focus:ring-violet-300
                          placeholder:text-gray-300 transition"
             />
           </div>
+          {mode === 'cards' && (
           <div className="sm:w-60">
             <SetSelect
               value={setInfo.set_name}
@@ -612,9 +676,11 @@ export default function Pokedex() {
               placeholder="Filtrar por set…"
             />
           </div>
+          )}
         </div>
 
         {/* Filtros de idioma */}
+        {mode === 'cards' && (
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
             Idioma:
@@ -630,6 +696,7 @@ export default function Pokedex() {
             </button>
           ))}
         </div>
+        )}
       </div>
 
       {/* ── Grid de cartas ──────────────────────────────────────────── */}
