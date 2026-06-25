@@ -33,7 +33,12 @@ export default function Compras() {
     setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ['purchases'] })
+  const refresh = () => {
+    // Registrar una compra crea inventario (cartas y sellados) → refrescar Stock y Dashboard.
+    qc.invalidateQueries({ queryKey: ['purchases'] })
+    qc.invalidateQueries({ queryKey: ['stock'] })
+    qc.invalidateQueries({ queryKey: ['metricas'] })
+  }
 
   const compras = data ?? []
 
