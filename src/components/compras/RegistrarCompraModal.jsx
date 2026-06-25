@@ -13,6 +13,7 @@ import { STORE_ID, CONDICIONES, IDIOMAS, FIRST_ED_SETS } from '../../constants'
 import Spinner      from '../ui/Spinner'
 import SetSelect    from '../ui/SetSelect'
 import FinishSelect from '../ui/FinishSelect'
+import { searchSealedByName, sealedLabel, upsertSealedFromUrl } from '../../lib/sealedSearch'
 
 const BACKEND = 'https://stock-tcg-production.up.railway.app'
 
@@ -131,6 +132,9 @@ async function enrichSuggestionsWithPCPrices(suggestions, lang = 'en') {
 /* ─── Fila vacía ──────────────────────────────────────────────────────────── */
 const emptyRow = () => ({
   _key:             crypto.randomUUID(),
+  tipo:             'carta',   // 'carta' | 'sellado'
+  sealed_product_id: null,
+  product_type:     null,
   card_id:          null,
   card_name:        '',
   set_name:         '',
@@ -181,8 +185,8 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     const e = {}
     if (!vendor.trim()) e.vendor = 'Requerido'
     if (!fecha)         e.fecha  = 'Requerido'
-    const hasCard = rows.some(r => r.card_id || r._market)
-    if (!hasCard) e.rows = 'Agregá al menos una carta con nombre válido'
+    const hasCard = rows.some(r => r.card_id || r._market || r.sealed_product_id)
+    if (!hasCard) e.rows = 'Agregá al menos una carta o producto sellado válido'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -194,6 +198,18 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       return
     }
     updateRow(key, { searching: true })
+
+    // SELLADO: buscar productos sellados (ETB/Box/Bundle…) en vez de cartas.
+    const thisRow = rows.find(r => r._key === key)
+    if (thisRow?.tipo === 'sellado') {
+      const res = await searchSealedByName(query, 20)
+      updateRow(key, { searching: false, suggestions: res.map(p => ({
+        sealed_product_id: p.sealedId, name: p.nombre, set_name: p.set,
+        product_type: p.product_type, image_url: p.imagen, price_usd: null,
+        source: 'sealed', subtypes: [], has_first_ed_price: false,
+      })) })
+      return
+    }
 
     const lang = normLang(language)
 
@@ -294,6 +310,21 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     setRows(prev => [...prev, emptyRow()])
 
   const selectCard = async (key, card, language = 'en', grade = 'ungraded') => {
+    // SELLADO: referenciar sealed_products, sin card_id.
+    if (card.source === 'sealed') {
+      updateRow(key, {
+        sealed_product_id: card.sealed_product_id, product_type: card.product_type,
+        card_id: null, card_name: card.name, set_name: card.set_name || '',
+        _market: { image_url: card.image_url }, price_usd: '', price_ars: '',
+        price_market_usd: null, suggestions: [],
+      })
+      try {
+        const q = `${(card.set_name || '').replace(/^Pokemon\s+/i, '')} ${card.name}`.trim()
+        const res = await fetch(`${BACKEND}/card-price?${new URLSearchParams({ name: q, lang: 'en', grade: 'ungraded' })}`)
+        if (res.ok) { const j = await res.json(); if (j.price_usd) updateRow(key, { price_market_usd: j.price_usd }) }
+      } catch (_) {}
+      return
+    }
     const firstEd = detectFirstEdition(card)
     const isStockCard = card.source === 'stock' && card.id
 
@@ -359,9 +390,9 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 
       if (errP) throw errP
 
-      // 2. Resolver card_id para filas que vinieron de la API
+      // 2. Resolver card_id para filas que vinieron de la API (NO sellados)
       for (const r of rows) {
-        if (!r.card_id && r._market) {
+        if (!r.card_id && r._market && !r.sealed_product_id) {
           const m = r._market
 
           const cardFinish = r.finish || 'normal'
@@ -453,6 +484,23 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
               })
           }
         }
+      }
+
+      // 5. SELLADOS: inventory (product_type='sealed') → purchase_item por inventory_id
+      const sealedRows = rows.filter(r => r.sealed_product_id)
+      for (const r of sealedRows) {
+        const mktUsd = r.price_market_usd || null
+        const arsBlue = (mktUsd && blue) ? Math.round(mktUsd * blue) : null
+        const { data: inv } = await supabase.from('inventory').insert({
+          store_id: STORE_ID, sealed_product_id: r.sealed_product_id, product_type: 'sealed',
+          quantity: r.quantity || 1, status: 'disponible', estado: 'disponible',
+          price_usd: mktUsd, price_ars_blue: arsBlue, scan_date: new Date().toISOString(),
+        }).select('id').maybeSingle()
+        await supabase.from('purchase_items').insert({
+          purchase_id: purchase.id, inventory_id: inv?.id || null, card_id: null,
+          quantity: r.quantity || 1, price_usd: parseFloat(r.price_usd) || null,
+          price_ars: parseFloat(r.price_ars) || null, price_market_usd: mktUsd,
+        })
       }
 
       onDone?.()
@@ -567,7 +615,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
             <div className="text-center">
               <p className="text-xs text-gray-400 mb-0.5">Cartas</p>
               <p className="font-bold text-gray-800">
-                {rows.filter(r => r.card_id || r._market).reduce((s, r) => s + (r.quantity || 1), 0)}
+                {rows.filter(r => r.card_id || r._market || r.sealed_product_id).reduce((s, r) => s + (r.quantity || 1), 0)}
               </p>
             </div>
             <div className="text-center">
@@ -639,6 +687,23 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
     try {
       const result = await scannerApi.resolvePcUrl(url)
       if (!result || result.error) return
+      // SELLADO: resolver/crear sealed_product y cargar la fila como sellado
+      if (row.tipo === 'sellado') {
+        const sp = await upsertSealedFromUrl(url, result)
+        if (sp) {
+          onChange({
+            sealed_product_id: sp.id, product_type: sp.product_type,
+            card_id: null, card_name: sp.name, set_name: sp.set_name || result.set_name || '',
+            _market: { image_url: sp.image_url || result.image_url },
+            price_market_usd: result.price_usd ?? row.price_market_usd,
+            price_usd: result.price_buy_usd != null ? String(result.price_buy_usd)
+                       : (result.price_usd != null ? String(result.price_usd) : row.price_usd),
+            suggestions: [], _setCards: [],
+          })
+        }
+        setPcUrl('')
+        return
+      }
       onChange({
         card_name:        result.name        || row.card_name,
         set_name:         result.set_name    || row.set_name,
@@ -740,8 +805,30 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
     }
   }
 
+  const isSealed = row.tipo === 'sellado'
+  const setTipo = (t) => {
+    if (t === row.tipo) return
+    onChange({
+      tipo: t, card_id: null, sealed_product_id: null, product_type: null,
+      card_name: '', set_name: '', set_id: null, card_number: '', _market: null,
+      price_market_usd: null, suggestions: [], _setCards: [],
+    })
+    setNumInput('')
+  }
+
   return (
     <div className="px-3 py-2.5 space-y-2">
+
+      {/* ── Toggle Carta / Sellado ──────────────────────────────────────── */}
+      <div className="inline-flex rounded-lg bg-gray-100 p-0.5 text-[11px] font-semibold">
+        {[['carta', '🃏 Carta'], ['sellado', '📦 Sellado']].map(([t, lbl]) => (
+          <button key={t} type="button" onClick={() => setTipo(t)}
+            className={`px-3 py-1 rounded-md transition ${
+              (row.tipo || 'carta') === t ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
 
       {/* ── PC URL ──────────────────────────────────────────────────────── */}
       <div className="relative">
@@ -770,7 +857,7 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
               type="text" value={row.card_name}
               onFocus={handleNameFocus}
               onChange={e => handleNameChange(e.target.value)}
-              placeholder={row.set_id ? 'Buscar en el set…' : 'Buscar carta…'}
+              placeholder={isSealed ? 'Buscar sellado (ETB, Box, Bundle…)' : (row.set_id ? 'Buscar en el set…' : 'Buscar carta…')}
               className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
                          focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
@@ -810,8 +897,10 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
                       </div>
                     </div>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0
-                      ${card.source === 'stock' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
-                      {card.card_number ? `#${card.card_number}` : (card.source === 'stock' ? 'stock' : 'tcg')}
+                      ${card.source === 'sealed' ? 'bg-purple-100 text-purple-600'
+                        : card.source === 'stock' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
+                      {card.source === 'sealed' ? sealedLabel(card.product_type)
+                        : card.card_number ? `#${card.card_number}` : (card.source === 'stock' ? 'stock' : 'tcg')}
                     </span>
                   </button>
                 )
@@ -820,19 +909,27 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
           )}
         </div>
 
-        {/* Finish / Variante */}
-        <FinishSelect
-          value={row.finish || 'normal'}
-          onChange={v => onChange({ finish: v })}
-          size="sm"
-        />
+        {isSealed ? (
+          <div className="col-span-2 text-[11px] font-semibold text-purple-600 self-center truncate pl-0.5">
+            {row.product_type ? sealedLabel(row.product_type) : '📦 Sellado'}
+          </div>
+        ) : (
+          <>
+            {/* Finish / Variante */}
+            <FinishSelect
+              value={row.finish || 'normal'}
+              onChange={v => onChange({ finish: v })}
+              size="sm"
+            />
 
-        {/* Condición */}
-        <select value={row.condition} onChange={e => onChange({ condition: e.target.value })}
-          className="border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer">
-          {CONDICIONES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+            {/* Condición */}
+            <select value={row.condition} onChange={e => onChange({ condition: e.target.value })}
+              className="border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs bg-white
+                         focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer">
+              {CONDICIONES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </>
+        )}
 
         {/* Cantidad */}
         <input type="number" min="1" value={row.quantity}
@@ -861,7 +958,8 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
         </button>
       </div>
 
-      {/* ── Fila 2: Set | Nº | Idioma | 1ª Edición ─────────────────────── */}
+      {/* ── Fila 2: Set | Nº | Idioma | 1ª Edición (solo cartas) ────────── */}
+      {!isSealed && (
       <div className="flex flex-wrap items-center gap-2 pl-1">
 
         {/* Set — desplegable con todos los sets */}
@@ -933,11 +1031,14 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
           </button>
         )}
       </div>
+      )}
 
-      {/* ── Fila 3: Grado + Badge precio PC referencia ─────────────────── */}
+      {/* ── Fila 3: Grado (solo cartas) + Badge precio PC referencia ────── */}
       <div className="flex flex-wrap items-center gap-2 pl-1">
+        {!isSealed && (
         <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Grado</span>
-        {GRADE_OPTIONS.map(g => (
+        )}
+        {!isSealed && GRADE_OPTIONS.map(g => (
           <button
             key={g.value}
             type="button"
