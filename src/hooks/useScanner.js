@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { scannerApi } from '../lib/scanner'
 import { supabase }   from '../lib/supabase'
 import { STORE_ID }   from '../constants'
@@ -7,6 +8,7 @@ import { STORE_ID }   from '../constants'
 // idle → detecting → identified → confirming → success | error
 
 export function useScanner() {
+  const qc = useQueryClient()
   const [estado,   setEstado]   = useState('idle')
   const [opciones, setOpciones] = useState([])
   const [carta,    setCarta]    = useState(null)
@@ -105,6 +107,10 @@ export function useScanner() {
           cartas:   prev.cartas + cantidad,
           totalUSD: prev.totalUSD + (c.precio_usd || 0) * cantidad,
         }))
+        // Refrescar las vistas que leen este inventario/venta
+        qc.invalidateQueries({ queryKey: ['stock'] })
+        qc.invalidateQueries({ queryKey: ['metricas'] })
+        if (accion === 'vender') qc.invalidateQueries({ queryKey: ['ventas'] })
         setEstado('success')
       } else {
         throw new Error(res.mensaje || 'No se pudo guardar')
@@ -113,7 +119,7 @@ export function useScanner() {
       setError(e.message || 'Error al confirmar')
       setEstado('error')
     }
-  }, [])
+  }, [qc])
 
   const reset = useCallback(() => {
     setEstado('idle')

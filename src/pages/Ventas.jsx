@@ -231,14 +231,16 @@ export default function Ventas() {
   }
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
-  const totalFacturado = ventas.reduce((s, v) => s + (v.total_ars || 0), 0)
+  // Las ventas canceladas ("Volvió al stock") NO cuentan como facturación.
+  const ventasReales   = ventas.filter(v => v.estado !== 'cancelada')
+  const totalFacturado = ventasReales.reduce((s, v) => s + (v.total_ars || 0), 0)
   const cobrado        = ventas.filter(v => v.estado === 'pagada').reduce((s, v) => s + (v.total_ars || 0), 0)
   const enDeuda        = ventas.filter(v => v.estado === 'deuda').reduce((s, v) => s + (v.total_ars || 0), 0)
   const pendiente      = totalFacturado - cobrado - enDeuda
 
   // ── Por canal ──────────────────────────────────────────────────────────────
   const porCanal = {}
-  for (const v of ventas) {
+  for (const v of ventasReales) {
     const c = v.channel || 'fuera_de_evento'
     porCanal[c] = (porCanal[c] || 0) + (v.total_ars || 0)
   }

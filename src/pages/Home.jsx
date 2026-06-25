@@ -261,7 +261,9 @@ export default function Home() {
   const { chartData, semanaMap, totalPresencial, totalClaims } = useMemo(() => {
     const map = {}
     let tp = 0, tc = 0
-    for (const v of ventas) {
+    // Las ventas canceladas ("Volvió al stock") no cuentan como facturación.
+    const ventasReales = ventas.filter(v => v.estado !== 'cancelada')
+    for (const v of ventasReales) {
       const s  = semanaIdx(v.fecha_venta || v.sold_at || v.created_at)
       const ch = v.channel || ''
       if (!map[s]) map[s] = { s: semanaLabel[s], Charly: 0, Claims: 0, 'Fuera de eventos': 0 }
@@ -271,7 +273,7 @@ export default function Home() {
       else                      { map[s]['Fuera de eventos'] += monto; tp += monto }
     }
     const semanaMap = {}
-    for (const v of ventas) {
+    for (const v of ventasReales) {
       const s = semanaIdx(v.fecha_venta || v.sold_at || v.created_at)
       semanaMap[s] = (semanaMap[s] || 0) + (v.total_ars_blue || v.total_ars || 0)
     }

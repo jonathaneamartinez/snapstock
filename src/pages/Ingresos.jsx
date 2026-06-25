@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { scannerApi } from '../lib/scanner'
 import {
@@ -212,6 +213,7 @@ const fmtARS = (n) => n != null ? `$${Math.round(n).toLocaleString('es-AR')}` : 
 
 export default function Ingresos() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { blue, oficial } = useDolar()
   const { margen } = useSettings()
   const { t } = useI18n()
@@ -1067,6 +1069,8 @@ export default function Ingresos() {
       }
 
       showToast(`✅ ${cantidad > 1 ? `${cantidad} ${t('ingresos_added_many')}` : t('ingresos_added_one')} al stock`)
+      qc.invalidateQueries({ queryKey: ['stock'] })
+      qc.invalidateQueries({ queryKey: ['metricas'] })
       setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded' })
       setPreview(null)
       setSelectedCardId(null)
