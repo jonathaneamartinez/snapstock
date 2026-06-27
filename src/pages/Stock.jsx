@@ -227,7 +227,15 @@ export default function Stock() {
   }, [searchInput])
 
   const { t } = useI18n()
-  const { data, isLoading, error } = useStock(filters)
+
+  // ── Filtro por señal de mercado (KPI) — server-side, sobre TODO el stock ──
+  // (vía embed anidado en useStock; ver KPI_FILTER_STATES)
+  const effectiveFilters = useMemo(
+    () => (kpiStateFilter ? { ...filters, kpiFilter: kpiStateFilter } : filters),
+    [filters, kpiStateFilter]
+  )
+
+  const { data, isLoading, error } = useStock(effectiveFilters)
   const { data: m } = useMetricas()
   const { blue, oficial } = useDolar()
   const { precioFuente, savePrecioFuente } = useSettings()
@@ -296,15 +304,8 @@ export default function Stock() {
   const sortedRows = useMemo(() => {
     let list = [...rows]
 
-    if (kpiStateFilter) {
-      list = list.filter(r => {
-        const kpi = kpiMap[r.card_id]
-        if (kpiStateFilter === 'con_datos') return kpi?.kpi_score != null
-        if (kpiStateFilter === 'sin_datos') return !kpi || kpi.kpi_score == null
-        return kpi?.kpi_state === kpiStateFilter
-      })
-    }
-
+    // El filtro por señal (kpiStateFilter) ahora es server-side (useStock) → global.
+    // Acá solo queda el orden por KPI, que sigue siendo client-side sobre la página.
     if (kpiSort) {
       const getVal = (r) => {
         const kpi = kpiMap[r.card_id]
@@ -324,7 +325,7 @@ export default function Stock() {
     }
 
     return list
-  }, [rows, kpiMap, kpiSort, kpiStateFilter])
+  }, [rows, kpiMap, kpiSort])
 
   const currentPage = data?.page  ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
@@ -770,7 +771,7 @@ export default function Stock() {
             <div className="relative shrink-0">
               <select
                 value={kpiStateFilter}
-                onChange={e => setKpiStateFilter(e.target.value)}
+                onChange={e => { setKpiStateFilter(e.target.value); setSelectedIds(new Set()); setFilters(f => ({ ...f, page: 0 })) }}
                 className={`appearance-none rounded-xl pl-3 pr-7 py-1.5 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200 transition
                   ${kpiStateFilter
                     ? 'border border-blue-300 bg-blue-50 text-blue-700 font-semibold'
@@ -781,7 +782,6 @@ export default function Stock() {
                 <option value="buyable">{t('kpi_buyable')}</option>
                 <option value="sell_now">{t('kpi_sell_now')}</option>
                 <option value="normal">{t('kpi_normal')}</option>
-                <option value="sin_datos">{t('kpi_no_data')}</option>
               </select>
               <span className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px]
                 ${kpiStateFilter ? 'text-blue-400' : 'text-gray-400'}`}>▾</span>
@@ -850,11 +850,12 @@ export default function Stock() {
                   buyable:   t('kpi_banner_buyable'),
                   sell_now:  t('kpi_banner_sell_now'),
                   normal:    t('kpi_banner_normal'),
-                  sin_datos: t('kpi_banner_no_data'),
                 }[kpiStateFilter]}</strong>
               </span>
             )}
-            <span className="text-purple-400 ml-1">{t('stock_kpi_active_page')}</span>
+            <span className="text-purple-400 ml-1">
+              {kpiSort ? t('stock_kpi_active_page') : t('stock_kpi_all_stock')}
+            </span>
           </span>
           <button onClick={() => { setKpiSort(''); setKpiStateFilter('') }}
                   className="text-purple-400 hover:text-purple-700 font-semibold transition">

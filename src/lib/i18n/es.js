@@ -156,6 +156,7 @@ const es = {
   stock_demo_banner:       'Modo Demo KPI activo',
   stock_demo_banner_sub:   'Los datos de KPI son simulados para previsualizar filtros y orden. No representan valores reales.',
   stock_kpi_active_page:   '(página actual)',
+  stock_kpi_all_stock:     '(todo el stock)',
   stock_kpi_order:         'Orden KPI:',
   stock_kpi_signal:        'Señal:',
 

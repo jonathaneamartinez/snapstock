@@ -23,8 +23,16 @@ const SORT_MAP = {
   buyer_name:   { col: 'buyer_name',        table: null                            },
 }
 
+// Etiqueta de filtro (negocio) → estados reales de market_signals.kpi_state
+const KPI_FILTER_STATES = {
+  buyable:  ['mercado_frio', 'saturada'],   // precio bajo / cae → conviene comprar
+  sell_now: ['subida_sana', 'explotada'],   // precio alto / pico → conviene vender
+  normal:   ['normal'],
+}
+
 export function useStock(filters = {}) {
-  const { estado, busqueda, idioma, condicion, page = 0, sortCol, sortDir = 'asc' } = filters
+  const { estado, busqueda, idioma, condicion, page = 0, sortCol, sortDir = 'asc',
+          kpiFilter = null } = filters
 
   return useQuery({
     queryKey: ['stock', filters],
@@ -32,8 +40,14 @@ export function useStock(filters = {}) {
       // Usamos cards!inner cuando hay filtros sobre cards O cuando el sort
       // es por una columna de cards (foreignTable sort requiere !inner)
       const sortDef0        = sortCol ? SORT_MAP[sortCol] : null
-      const needsCardFilter = !!(busqueda || idioma || sortDef0?.foreignTable)
+      // Filtro por señal de mercado (KPI) — vía embed anidado cards→market_signals_latest.
+      const kpiStates       = kpiFilter ? (KPI_FILTER_STATES[kpiFilter] || null) : null
+      const kpiConDatos     = kpiFilter === 'con_datos'
+      const kpiActive       = !!(kpiStates || kpiConDatos)   // 'sin_datos' no soportado server-side
+      const needsCardFilter = !!(busqueda || idioma || sortDef0?.foreignTable || kpiActive)
       const cardJoin        = needsCardFilter ? 'cards!inner' : 'cards'
+      // Embed de la señal dentro de cards (solo cuando se filtra por KPI)
+      const kpiEmbed        = kpiActive ? ', market_signals_latest!inner(kpi_state)' : ''
 
       // ── Aplica todos los filtros a un query builder ────────────────────────
       const applyFilters = (q) => {
@@ -67,6 +81,14 @@ export function useStock(filters = {}) {
             ? `name.ilike.%${term}%,name_en.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%,card_number.ilike.%${numNorm}%`
             : `name.ilike.%${term}%,name_en.ilike.%${term}%,set_name.ilike.%${term}%,card_number.ilike.%${term}%`
           q = q.or(numFilter, { referencedTable: 'cards' })
+        }
+
+        // Filtro por señal de mercado (KPI) — server-side, sobre TODO el stock,
+        // vía embed anidado cards → market_signals_latest (sin listas gigantes de id).
+        if (kpiStates) {
+          q = q.in('cards.market_signals_latest.kpi_state', kpiStates)
+        } else if (kpiConDatos) {
+          q = q.neq('cards.market_signals_latest.kpi_state', 'sin_datos')
         }
 
         return q
@@ -112,7 +134,7 @@ export function useStock(filters = {}) {
           image_url,
           language,
           is_holo,
-          variant
+          variant${kpiEmbed}
         ),
         sealed_products (
           id,
@@ -127,7 +149,8 @@ export function useStock(filters = {}) {
       let countQ = supabase
         .from('inventory')
         .select(
-          needsCardFilter ? 'id, cards!inner(id)' : 'id',
+          kpiActive ? `id, cards!inner(id${kpiEmbed})`
+                    : needsCardFilter ? 'id, cards!inner(id)' : 'id',
           { count: 'exact', head: true }
         )
         .eq('store_id', STORE_ID)
