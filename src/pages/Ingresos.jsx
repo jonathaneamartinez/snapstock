@@ -1104,9 +1104,9 @@ export default function Ingresos() {
   const labelCls = "text-xs text-gray-500 font-medium mb-1 block"
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
+        <div className="flex flex-col lg:flex-row lg:items-start">
 
           {/* ── Formulario (izq) ────────────────────────────────────────── */}
           <div className="flex-1 p-6">
@@ -1459,8 +1459,8 @@ export default function Ingresos() {
           </div>
 
           {/* ── Panel preview (der) ──────────────────────────────────────── */}
-          <div className="lg:w-64 border-t lg:border-t-0 lg:border-l border-gray-100
-                          bg-gray-50 flex flex-col items-center justify-center p-6 gap-4">
+          <div className="lg:w-80 self-stretch border-t lg:border-t-0 lg:border-l border-gray-100
+                          bg-gray-50 flex flex-col items-center justify-start p-6 gap-4">
             {previewLoad ? (
               <div className="flex flex-col items-center gap-3 text-gray-400">
                 <div className="w-8 h-8 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
@@ -1472,7 +1472,7 @@ export default function Ingresos() {
                   <img
                     src={preview.imagen}
                     alt={form.nombre}
-                    className="w-40 rounded-2xl shadow-xl object-contain"
+                    className="w-64 rounded-2xl shadow-xl object-contain"
                     draggable={false}
                   />
                   {/* Badge verificado */}
@@ -1482,7 +1482,7 @@ export default function Ingresos() {
                   </div>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-800 leading-tight">{form.nombre}</p>
+                  <p className="text-base font-semibold text-gray-800 leading-tight">{form.nombre}</p>
                   {form.set && <p className="text-xs text-gray-400 mt-0.5">{form.set}</p>}
                   {form.numero && <p className="text-xs text-gray-400">#{form.numero}</p>}
                   {preview?.sinVersionIdioma && (
@@ -1494,7 +1494,7 @@ export default function Ingresos() {
               </>
             ) : (
               <div className="flex flex-col items-center gap-3 text-center">
-                <div className="w-40 h-56 bg-white border-2 border-dashed border-gray-200
+                <div className="w-64 h-80 bg-white border-2 border-dashed border-gray-200
                                 rounded-2xl flex items-center justify-center">
                   <div className="text-center">
                     <img src="https://images.pokemontcg.io/back.png" alt=""
