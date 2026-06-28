@@ -288,7 +288,12 @@ export default function Home() {
   const totalVentas = totalPresencial + totalClaims
   const pctClaims   = totalVentas > 0 ? Math.round((totalClaims / totalVentas) * 100) : 0
   const weekArr     = [1,2,3,4,5].map(i => semanaMap[i] || 0)
-  const zeroArr     = [0,0,0,0,0]
+  // Barra de "Deudas activas": monto que debe cada comprador (top 5, ya ordenado desc)
+  const deudaArr    = (() => {
+    const arr = deudas.slice(0, 5).map(d => d.total || 0)
+    while (arr.length < 5) arr.push(0)
+    return arr
+  })()
 
   const kpiUSD     = m?.valorUSD
   const kpiARSOfic = m?.valorARSOficial ?? (kpiUSD != null && oficial ? kpiUSD * oficial : null)
@@ -376,7 +381,7 @@ export default function Home() {
           label={t('dash_active_debts')}
           value={fmtARS(kpiDeudas)}
           trendColor={C.red80}
-          sparkData={zeroArr}
+          sparkData={deudaArr}
           sparkColor={C.red}
           sparkDimColor="#EE9393"
           loading={mLoad}
