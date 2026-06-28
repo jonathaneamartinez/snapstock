@@ -71,7 +71,9 @@ const fmtFecha = (s) => {
   try { return new Date(s).toLocaleDateString('es-AR') } catch { return '—' }
 }
 
-const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
+// Código de idioma como texto (las banderas emoji no se renderizan en Windows
+// → 🇬🇧 se ve como "GB"). Incluye alias jp/ja y cn/zh.
+const IDIOMA_FLAG = { en: 'EN', es: 'ES', ja: 'JP', jp: 'JP', zh: 'CN', cn: 'CN', fr: 'FR', de: 'DE', pt: 'PT' }
 
 // Columnas: i18n_key + sort key + type (labels se resuelven con t() dentro del componente)
 const COLS_DEF = [
@@ -753,7 +755,7 @@ export default function Stock() {
             <select onChange={e => set('idioma', e.target.value)}
               className="appearance-none border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
               <option value="">{t('stock_filter_language')}</option>
-              {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
+              {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.label}</option>)}
             </select>
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
           </div>
@@ -944,7 +946,11 @@ export default function Stock() {
                         <span className="truncate block">{translateSetName(r.set_name) || '—'}</span>
                       </td>
                       <td className="px-3 py-2 text-gray-500">{r.numero || '—'}</td>
-                      <td className="px-3 py-2 text-center">{IDIOMA_FLAG[r.idioma] ?? r.idioma ?? '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                          {IDIOMA_FLAG[r.idioma] ?? (r.idioma ? r.idioma.toUpperCase() : '—')}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-center">
                         <div onClick={e => e.stopPropagation()}>
                           <FinishSelect
