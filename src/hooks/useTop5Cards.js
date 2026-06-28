@@ -18,13 +18,14 @@ export function useTop5Cards(year, month) {
 
       const { data } = await supabase
         .from('sales')
-        .select('notes')
+        .select('notes, estado')
         .eq('store_id', STORE_ID)
         .gte('sold_at', from)
         .lt('sold_at', `${toY}-${String(month === 12 ? 1 : month + 1).padStart(2,'0')}-01`)
 
       const count = {}
       for (const r of data ?? []) {
+        if (r.estado === 'cancelada') continue   // "Volvió al stock" no cuenta como vendida
         const name = parseName(r.notes)
         if (name) count[name] = (count[name] || 0) + 1
       }

@@ -28,13 +28,14 @@ export function useLastClaim() {
       const fecha = last.sold_at.slice(0, 10)
       const { data } = await supabase
         .from('sales')
-        .select('id, buyer_name, total_ars, total_paid, notes, channel, sold_at')
+        .select('id, buyer_name, total_ars, total_paid, notes, channel, sold_at, estado')
         .eq('store_id', STORE_ID)
         .ilike('channel', '%claim%')
         .gte('sold_at', `${fecha}T00:00:00`)
         .lte('sold_at', `${fecha}T23:59:59`)
 
-      const rows = data ?? []
+      // "Volvió al stock" (cancelada) no cuenta como vendida
+      const rows = (data ?? []).filter(r => r.estado !== 'cancelada')
 
       const totalCartas   = rows.length
       const totalARS      = rows.reduce((s, r) => s + (r.total_ars || 0), 0)
