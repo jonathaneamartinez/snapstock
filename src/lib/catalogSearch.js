@@ -16,8 +16,11 @@ export async function searchCatalogByName(query, lang = null, limit = 25) {
   let req = supabase
     .from('cards')
     .select('id, name, name_en, set_name, card_number, image_url, language, finish')
-    .or(`name.ilike.*${q}*,name_en.ilike.*${q}*`)
     .limit(limit)
+  // En EN, name == name_en (derivado) → buscar una sola columna es más rápido.
+  // En JP/CN, buscar también name_en para poder escribir en inglés.
+  if (lang === 'en') req = req.ilike('name', `*${q}*`)
+  else               req = req.or(`name.ilike.*${q}*,name_en.ilike.*${q}*`)
   if (lang) req = req.eq('language', lang)
   const { data, error } = await req
   if (error) return []

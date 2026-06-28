@@ -542,58 +542,71 @@ export default function Ingresos() {
       try {
         const lang = normLang(form.idioma)
 
+        const q = val.trim()
+        const stillCurrent = () => sugQueryRef.current === q
+        sugQueryRef.current = q
+
         if (lang === 'en') {
-          sugPageRef.current  = 1
-          sugQueryRef.current = val.trim()
+          sugPageRef.current = 1
 
-          // Buscar en NUESTRO catálogo (name + name_en, substring) → todas las variantes
-          const supaMatched = await searchCatalogByName(val.trim(), 'en', 25)
+          // 1) NUESTRO catálogo (Supabase, local y rápido) → mostrar YA
+          const supaMatched = await searchCatalogByName(q, 'en', 25)
+          if (!stillCurrent()) return
+          setSuggestions(supaMatched)
+          setShowSug(supaMatched.length > 0)
+          setSugLoading(false)
 
-          const { results, totalCount } = await searchCardsByName(val.trim(), 20, 1)
-          const mapped = results.map(c => ({
-            nombre:     c.name,
-            set:        c.set_name,
-            set_id:     null,
-            numero:     c.card_number,
-            imagen:     c.image_url,
-            precio_usd: c.price_usd,
-            source:     'market',
-          }))
+          // 2) En segundo plano: precios PC + extras de pokemontcg.io (no bloquea el dropdown)
+          ;(async () => {
+            try {
+              const enriched = await enrichSuggestionsWithPCPrices(supaMatched, 'en')
+              if (stillCurrent()) setSuggestions(enriched)
 
-          // Mezclar: cartas de Supabase primero (si no están ya en los resultados de market)
-          const marketNames = new Set(mapped.map(c => `${c.nombre}|${c.set}|${c.numero}`))
-          const supaExtra = supaMatched.filter(c => !marketNames.has(`${c.nombre}|${c.set}|${c.numero}`))
-          const combined = [...supaExtra, ...mapped]
-
-          sugTotalRef.current = totalCount
-          // Enriquecer con precios PC (reemplaza precio TCGPlayer si PC tiene precio)
-          const enriched = await enrichSuggestionsWithPCPrices(combined, 'en')
-          setSuggestions(enriched)
-          setHasMore(mapped.length < totalCount)
-          setShowSug(enriched.length > 0)
+              const { results, totalCount } = await searchCardsByName(q, 20, 1)
+              if (!stillCurrent()) return
+              const have = new Set(enriched.map(c => `${c.nombre}|${c.set}|${c.numero}`))
+              const extra = results
+                .map(c => ({ nombre: c.name, set: c.set_name, set_id: null, numero: c.card_number, imagen: c.image_url, precio_usd: c.price_usd, source: 'market' }))
+                .filter(c => !have.has(`${c.nombre}|${c.set}|${c.numero}`))
+              sugTotalRef.current = totalCount
+              setHasMore((supaMatched.length + extra.length) < totalCount)
+              if (extra.length) {
+                const merged = await enrichSuggestionsWithPCPrices([...enriched, ...extra], 'en')
+                if (stillCurrent()) setSuggestions(merged)
+              }
+            } catch (_) {}
+          })()
         } else {
-          // 1° NUESTRO catálogo (name + name_en, substring) → trae variantes JP/CN
-          //    incluso buscando en inglés (gracias a name_en)
-          const catalog = await searchCatalogByName(val.trim(), lang, 25)
-          // 2° backend scanner como complemento (cartas que el catálogo no tenga)
-          let backend = []
-          try {
-            const res = await scannerApi.buscar(val.trim(), lang, '', 20)
-            backend = (res?.results ?? res?.opciones ?? []).map(c => ({
-              nombre:     c.nombre || c.name,
-              set:        c.set_name || c.set,
-              set_id:     c.set_code || null,
-              numero:     c.numero || c.number,
-              imagen:     c.imagen || c.image_url,
-              precio_usd: null,
-              source:     'phash',
-            }))
-          } catch (_) {}
-          const seen = new Set(catalog.map(c => `${(c.nombre||'').toLowerCase()}|${c.set}|${c.numero}`))
-          const extra = backend.filter(c => !seen.has(`${(c.nombre||'').toLowerCase()}|${c.set}|${c.numero}`))
-          const enriched = await enrichSuggestionsWithPCPrices([...catalog, ...extra], lang)
-          setSuggestions(enriched)
-          setShowSug(enriched.length > 0)
+          // 1) NUESTRO catálogo (name + name_en) → mostrar YA (trae variantes JP/CN
+          //    incluso buscando en inglés, gracias a name_en)
+          const catalog = await searchCatalogByName(q, lang, 25)
+          if (!stillCurrent()) return
+          setSuggestions(catalog)
+          setShowSug(catalog.length > 0)
+          setSugLoading(false)
+
+          // 2) En segundo plano: precios PC + complemento del scanner backend
+          ;(async () => {
+            try {
+              const enriched = await enrichSuggestionsWithPCPrices(catalog, lang)
+              if (stillCurrent()) setSuggestions(enriched)
+
+              let backend = []
+              try {
+                const res = await scannerApi.buscar(q, lang, '', 20)
+                backend = (res?.results ?? res?.opciones ?? []).map(c => ({
+                  nombre: c.nombre || c.name, set: c.set_name || c.set, set_id: c.set_code || null,
+                  numero: c.numero || c.number, imagen: c.imagen || c.image_url, precio_usd: null, source: 'phash',
+                }))
+              } catch (_) {}
+              const seen = new Set(catalog.map(c => `${(c.nombre||'').toLowerCase()}|${c.set}|${c.numero}`))
+              const extra = backend.filter(c => !seen.has(`${(c.nombre||'').toLowerCase()}|${c.set}|${c.numero}`))
+              if (extra.length) {
+                const merged = await enrichSuggestionsWithPCPrices([...enriched, ...extra], lang)
+                if (stillCurrent()) setSuggestions(merged)
+              }
+            } catch (_) {}
+          })()
         }
       } catch (_) {}
       finally { setSugLoading(false) }
