@@ -4,7 +4,7 @@
  */
 export const clientConfig = {
   name:         'Jonathan',
-  displayName:  'Kardia',
+  displayName:  'Jonathan',
   ownerNames:   [],
   accentColor:  '#4680FF',
   logo:         null,

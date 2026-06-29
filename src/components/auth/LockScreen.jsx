@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
+import { STORE_CONFIG } from '../../constants'
 
 const LOGO = '⚡'
 const APP_NAME = 'Snap Stock'
+// Nombre de la tienda según el cliente (VITE_CLIENT_ID), no hardcodeado.
+const STORE_NAME = STORE_CONFIG?.displayName || STORE_CONFIG?.name || ''
 
 export default function LockScreen({ onUnlock }) {
   const [value,   setValue]   = useState('')
@@ -62,7 +65,7 @@ export default function LockScreen({ onUnlock }) {
           </div>
           <div className="text-center">
             <h1 className="text-white text-2xl font-extrabold tracking-tight">{APP_NAME}</h1>
-            <p className="text-white/40 text-sm mt-0.5">Singles UT</p>
+            {STORE_NAME && <p className="text-white/40 text-sm mt-0.5">{STORE_NAME}</p>}
           </div>
         </div>
 

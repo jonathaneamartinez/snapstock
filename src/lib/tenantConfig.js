@@ -30,6 +30,9 @@ try {
   } else if (CLIENT_ID === 'jonat') {
     const m = await import('../clients/jonat/config.js').catch(() => null)
     _clientConfig = m?.clientConfig ?? null
+  } else if (CLIENT_ID === 'kardia') {
+    const m = await import('../clients/kardia/config.js').catch(() => null)
+    _clientConfig = m?.clientConfig ?? null
   } else if (CLIENT_ID === 'singles-ut') {
     const m = await import('../clients/singles-ut/config.js').catch(() => null)
     _clientConfig = m?.clientConfig ?? null

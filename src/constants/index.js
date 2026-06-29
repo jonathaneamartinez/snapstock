@@ -17,11 +17,13 @@ export const CLIENT_ID  = import.meta.env.VITE_CLIENT_ID ?? 'default'
 // ─────────────────────────────────────────────────────────────────────────────
 import { clientConfig as _ayrtonCfg   } from '../clients/ayrton/config'
 import { clientConfig as _jonatCfg    } from '../clients/jonat/config'
+import { clientConfig as _kardiaCfg   } from '../clients/kardia/config'
 import { clientConfig as _singlesUtCfg } from '../clients/singles-ut/config'
 
 const _CLIENT_CONFIGS = {
   'ayrton':     _ayrtonCfg,
   'jonat':      _jonatCfg,
+  'kardia':     _kardiaCfg,
   'singles-ut': _singlesUtCfg,
 }
 
