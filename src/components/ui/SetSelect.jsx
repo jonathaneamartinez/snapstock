@@ -5,11 +5,11 @@ import { translateSetName } from '../../lib/setTranslations'
 import { STORE_ID } from '../../constants'
 import { supabase } from '../../lib/supabase'
 
-async function fetchSetsJpSupabase() {
+async function fetchSetsSupabase(lang = 'jp') {
   const { data } = await supabase
     .from('sets')
     .select('id, name, series, total, year, symbol_url, logo_url')
-    .eq('language', 'jp')
+    .eq('language', lang)
     .order('year', { ascending: false })
     .limit(300)
   if (!data?.length) return []
@@ -22,6 +22,30 @@ async function fetchSetsJpSupabase() {
     logo:   s.logo_url ?? null,
     symbol: s.symbol_url ?? null,
   }))
+}
+
+// Carga los sets de UN idioma (EN via pokemontcg, JP/CN via scanner/Supabase),
+// deduplicando dentro del idioma por nombre traducido. Cada set queda con _lang.
+async function loadSetsForLang(normLang) {
+  try {
+    if (normLang === 'en') {
+      return (await fetchAllSets() ?? []).map(s => ({ ...s, _lang: 'en' }))
+    }
+    let raw = await scannerApi.availableSets(normLang)
+    if (!raw?.length) raw = await fetchSetsSupabase(normLang)
+    const seen = new Map()
+    for (const s of (raw ?? [])) {
+      const en = translateSetName(s.name, s.id)
+      if (!seen.has(en)) seen.set(en, s)
+      else {
+        const isLocal = (id) => !/^[A-Za-z]{1,3}\d/.test(id)
+        if (isLocal(s.id) && !isLocal(seen.get(en).id)) seen.set(en, s)
+      }
+    }
+    return Array.from(seen.values()).map(s => ({ ...s, _lang: normLang }))
+  } catch (_) {
+    return []
+  }
 }
 
 // ── Sets personalizados en localStorage ───────────────────────────────────────
@@ -55,6 +79,13 @@ const _normLang = (l = 'en') => {
   if (['zh', 'cn', 'chinese'].includes(l))  return 'cn'
   return 'en'
 }
+// `lang` puede ser string, array o Set → lista de idiomas normalizados, únicos.
+const _normLangList = (l) => {
+  if (l == null) return ['en']
+  const arr = Array.isArray(l) ? l : (l instanceof Set ? [...l] : [l])
+  const out = [...new Set(arr.map(_normLang))]
+  return out.length ? out : ['en']
+}
 
 export default function SetSelect({ value, setId, onChange, disabled = false, className = '', size = 'md', lang = 'en' }) {
   const [open,       setOpen]       = useState(false)
@@ -66,41 +97,33 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
   const inputRef   = useRef(null)
   const loadedLang = useRef(null)
 
-  const normalizedLang = _normLang(lang)
+  const langList    = _normLangList(lang)
+  const langKey     = langList.join(',')
 
-  // Cargar sets al abrir (o si cambió el idioma)
+  // Cargar sets al abrir (o si cambió la selección de idiomas)
   const openDropdown = async () => {
     if (disabled) return
     setOpen(true)
     setQuery('')
     setCustomSets(loadCustomSets())
-    if (sets.length === 0 || loadedLang.current !== normalizedLang) {
+    if (sets.length === 0 || loadedLang.current !== langKey) {
       setLoading(true)
-      let data = []
-      if (normalizedLang === 'en') {
-        const raw = await fetchAllSets()
-        data = raw
-      } else {
-        let raw = await scannerApi.availableSets(normalizedLang)
-        if (!raw?.length) {
-          console.warn('[SetSelect] availableSets vacío, usando Supabase')
-          raw = await fetchSetsJpSupabase()
+      // Cargar los sets de TODOS los idiomas activos y combinarlos, deduplicando
+      // por nombre traducido (un mismo set en varios idiomas aparece una vez).
+      // Se prioriza la versión EN porque su set_id sirve para el cross-idioma.
+      const perLang = await Promise.all(langList.map(loadSetsForLang))
+      const byName = new Map()
+      for (const arr of perLang) {
+        for (const s of arr) {
+          const nm = translateSetName(s.name, s.id)
+          if (!byName.has(nm)) byName.set(nm, s)
+          else if (s._lang === 'en' && byName.get(nm)._lang !== 'en') byName.set(nm, s)
         }
-        const seen = new Map()
-        for (const s of raw) {
-          const en = translateSetName(s.name, s.id)
-          if (!seen.has(en)) {
-            seen.set(en, s)
-          } else {
-            const isLocal = (id) => !/^[A-Za-z]{1,3}\d/.test(id)
-            if (isLocal(s.id) && !isLocal(seen.get(en).id)) seen.set(en, s)
-          }
-        }
-        data = Array.from(seen.values())
-          .sort((a, b) => translateSetName(a.name, a.id).localeCompare(translateSetName(b.name, b.id)))
       }
+      const data = Array.from(byName.values())
+        .sort((a, b) => translateSetName(a.name, a.id).localeCompare(translateSetName(b.name, b.id)))
       setSets(data)
-      loadedLang.current = normalizedLang
+      loadedLang.current = langKey
       setLoading(false)
     }
     setTimeout(() => inputRef.current?.focus(), 50)
@@ -122,13 +145,13 @@ export default function SetSelect({ value, setId, onChange, disabled = false, cl
     setCustomSets(updated)
   }
 
-  // Reiniciar sets cacheados cuando cambia el idioma
+  // Reiniciar sets cacheados cuando cambia la selección de idiomas
   useEffect(() => {
-    if (loadedLang.current !== null && loadedLang.current !== normalizedLang) {
+    if (loadedLang.current !== null && loadedLang.current !== langKey) {
       setSets([])
       loadedLang.current = null
     }
-  }, [normalizedLang])
+  }, [langKey])
 
   // Cerrar al click fuera
   useEffect(() => {

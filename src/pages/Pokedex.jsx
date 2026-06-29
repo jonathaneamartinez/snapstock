@@ -674,6 +674,7 @@ export default function Pokedex() {
               setId={setInfo.set_id}
               onChange={handleSetChange}
               placeholder="Filtrar por set…"
+              lang={activeLangs}
             />
           </div>
           )}
