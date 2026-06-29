@@ -393,9 +393,9 @@ const es = {
 
   // TrendingCards
   dash_trending_title:       'Tendencias del stock',
-  dash_trending_no_data:     'Acumulando datos de precios…',
-  dash_trending_no_data_pre: 'El historial se guarda diariamente. En',
-  dash_trending_no_data_post:'días vas a ver las tendencias reales de tu stock.',
+  dash_trending_no_data:     'Sin variaciones para mostrar',
+  dash_trending_no_data_pre: 'Ninguna carta de tu stock tuvo cambios de precio en los últimos',
+  dash_trending_no_data_post:'días.',
   dash_trending_click:       'Clickeá una carta para ver su historial completo',
 
   claims_history_sub:        'Historial de imágenes generadas',
