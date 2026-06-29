@@ -682,7 +682,7 @@ export default function Home() {
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 15, color: C.sub }}>{t('ventas_title')}</span>
-              <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ventas.length}</span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ventas.filter(v => v.estado !== 'cancelada').length}</span>
             </div>
             <MiniLineChart data={[1,2,3,4,5].map(s => semanaMap[s] || 0)} color={C.blue} />
           </Link>
