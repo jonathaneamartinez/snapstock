@@ -262,13 +262,20 @@ export default function Stock() {
   const rows = useMemo(() => rawRows.map(r => {
     const efectivo = getPrecioEfectivo(r, precioFuente)
     const usdEfectivo = efectivo.usd ?? r.price_usd
+    // ARS SIEMPRE derivado del USD efectivo × cotización actual (para que coincida
+    // con el USD mostrado). El valor guardado (price_ars_*) puede estar viejo —
+    // solo se usa como fallback si falta el USD o la cotización.
+    const arsOfic = (usdEfectivo != null && oficial) ? Math.round(usdEfectivo * oficial) : (r.price_ars_oficial ?? null)
+    const arsBlue = (usdEfectivo != null && blue)    ? Math.round(usdEfectivo * blue)    : (r.price_ars_blue    ?? null)
     return {
       ...r,
       price_usd_efectivo:  usdEfectivo,
       precio_fuente_label: efectivo.label,
       precio_fuente_flag:  (FUENTE_LABELS[efectivo.fuente] ?? {}).flag ?? '💲',
-      _ars_ofic: r.price_ars_oficial ?? (usdEfectivo != null && oficial ? Math.round(usdEfectivo * oficial) : null),
-      _ars_blue: r.price_ars_blue    ?? (usdEfectivo != null && blue    ? Math.round(usdEfectivo * blue)    : null),
+      _ars_ofic: arsOfic,
+      _ars_blue: arsBlue,
+      // P. Venta: precio manual del dueño si existe; sino el blue derivado del USD efectivo.
+      precio_venta: r.sale_price_ars ?? arsBlue,
     }
   }), [rawRows, blue, oficial, precioFuente])
 
