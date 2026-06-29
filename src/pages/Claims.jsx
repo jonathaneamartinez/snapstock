@@ -667,7 +667,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
 }
 
 /* ─── Fila de claim expandible ───────────────────────────────────────── */
-function ClaimRow({ claim }) {
+function ClaimRow({ claim, selected = false, onToggle = () => {} }) {
   const { t } = useI18n()
   const qc = useQueryClient()
   const [expanded,      setExpanded]      = useState(false)
@@ -873,9 +873,14 @@ function ClaimRow({ claim }) {
     <>
       <tr
         className={`hover:bg-gray-50 cursor-pointer transition
-          ${expanded ? 'bg-blue-50' : ''}`}
+          ${selected ? 'bg-red-50' : expanded ? 'bg-blue-50' : ''}`}
         onClick={() => setExpanded(e => !e)}
       >
+        <td className="pl-4 pr-1 py-3 w-8" onClick={e => e.stopPropagation()}>
+          <input type="checkbox" checked={selected} onChange={onToggle}
+            className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer
+                       focus:ring-violet-400" />
+        </td>
         <td className="px-4 py-3">
           <div>
             <p className="text-xs font-semibold text-gray-500">{fmtFecha(claim.created_at)}</p>
@@ -930,7 +935,7 @@ function ClaimRow({ claim }) {
       <AnimatePresence>
         {expanded && (
           <tr>
-            <td colSpan={6} className="px-0 py-0">
+            <td colSpan={7} className="px-0 py-0">
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
@@ -1123,8 +1128,31 @@ function ClaimRow({ claim }) {
 export default function Claims() {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const qc = useQueryClient()
   const { data, isLoading, error } = useClaims()
   const claims = data ?? []
+
+  // ── Selección múltiple + borrado de claims ─────────────────────────────
+  const [selected,  setSelected]  = useState(new Set())
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [deleting,  setDeleting]  = useState(false)
+
+  const toggle = (id) => setSelected(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const allSelected = claims.length > 0 && claims.every(c => selected.has(c.id))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(claims.map(c => c.id)))
+
+  const deleteSelected = async () => {
+    setDeleting(true)
+    try {
+      await supabase.from('claims').delete().in('id', [...selected])
+      setSelected(new Set())
+      qc.invalidateQueries({ queryKey: ['claims'] })
+    } finally {
+      setDeleting(false); setConfirmDel(false)
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -1146,6 +1174,35 @@ export default function Claims() {
         </button>
       </div>
 
+      {/* Barra de acciones cuando hay seleccionados */}
+      {selected.size > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 shadow-sm
+                        flex items-center justify-between">
+          <span className="text-sm font-semibold text-red-700">
+            {selected.size} {selected.size === 1 ? 'claim seleccionado' : 'claims seleccionados'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSelected(new Set())}
+              className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition">
+              Cancelar
+            </button>
+            {confirmDel ? (
+              <button onClick={deleteSelected} disabled={deleting}
+                className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg
+                           hover:bg-red-500 disabled:opacity-50 transition">
+                {deleting ? 'Eliminando…' : `Confirmar borrado (${selected.size})`}
+              </button>
+            ) : (
+              <button onClick={() => setConfirmDel(true)}
+                className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-lg
+                           hover:bg-red-200 transition">
+                🗑️ Eliminar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {isLoading && (
           <div className="flex justify-center py-12">
@@ -1163,13 +1220,21 @@ export default function Claims() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-400 text-xs uppercase">
               <tr>
+                <th className="pl-4 pr-1 py-3 w-8">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer
+                               focus:ring-violet-400" />
+                </th>
                 {[t('claims_col_date'), t('claims_col_title'), t('claims_col_style'), t('claims_col_cards'), t('claims_col_images'), t('claims_col_theme')].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {claims.map(c => <ClaimRow key={c.id} claim={c} />)}
+              {claims.map(c => (
+                <ClaimRow key={c.id} claim={c}
+                  selected={selected.has(c.id)} onToggle={() => toggle(c.id)} />
+              ))}
             </tbody>
           </table>
         )}
