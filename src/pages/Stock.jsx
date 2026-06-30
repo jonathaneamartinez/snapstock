@@ -78,8 +78,10 @@ const _normLangStock = (l) => {
   l = (l || '').toLowerCase()
   if (['ja', 'jp'].includes(l)) return 'jp'
   if (['zh', 'cn'].includes(l)) return 'cn'
+  if (['es', 'pt', 'fr', 'en'].includes(l)) return l
   return 'en'
 }
+const STOCK_LANGS = ['en', 'jp', 'cn', 'es', 'pt', 'fr']
 
 // Columnas: i18n_key + sort key + type (labels se resuelven con t() dentro del componente)
 const COLS_DEF = [
@@ -541,25 +543,30 @@ export default function Stock() {
   const saveIdioma = async (inventoryId, newLang, row) => {
     const lang = _normLangStock(newLang)
     if (lang === _normLangStock(row.idioma)) return
-    const nameEn = row.nombre   // = name_en (inglés) para EN/JP/CN
-    if (!nameEn) { showToast('Carta sin nombre para mapear el idioma', 'error'); return }
-    const variants = lang === 'jp' ? ['jp', 'ja'] : lang === 'cn' ? ['cn', 'zh'] : ['en']
-    const esc = nameEn.replace(/%/g, '\\%').replace(/_/g, '\\_')
-    const { data } = await supabase
-      .from('cards')
-      .select('id, language, card_number')
-      .or(`name_en.ilike.${esc},name.ilike.${esc}`)
-      .in('language', variants)
-      .limit(25)
-    if (!data?.length) {
-      showToast(`No encontramos "${nameEn}" en ${lang.toUpperCase()}`, 'error')
-      return
+    // Siempre marcamos el idioma en el inventory (override).
+    const update = { idioma: lang }
+    // Si tenemos catálogo en ese idioma, re-apuntamos a la carta equivalente
+    // (cambia imagen/nombre). EN/JP/CN tienen catálogo; ES/PT/FR casi no → solo marca.
+    const variants = lang === 'jp' ? ['jp', 'ja'] : lang === 'cn' ? ['cn', 'zh'] : [lang]
+    const nameEn = row.nombre   // = name_en (inglés)
+    if (nameEn && ['en', 'jp', 'cn', 'es', 'pt', 'fr'].includes(lang)) {
+      const esc = nameEn.replace(/%/g, '\\%').replace(/_/g, '\\_')
+      const { data } = await supabase
+        .from('cards')
+        .select('id, card_number')
+        .or(`name_en.ilike.${esc},name.ilike.${esc}`)
+        .in('language', variants)
+        .limit(25)
+      if (data?.length) {
+        const pick = data.find(c => String(c.card_number || '').toLowerCase() === String(row.numero || '').toLowerCase()) || data[0]
+        update.card_id = pick.id
+      }
     }
-    // preferir la del mismo número (la numeración cambia entre idiomas); sino la 1ª
-    const pick = data.find(c => String(c.card_number || '').toLowerCase() === String(row.numero || '').toLowerCase()) || data[0]
-    await supabase.from('inventory').update({ card_id: pick.id }).eq('id', inventoryId)
+    await supabase.from('inventory').update(update).eq('id', inventoryId)
     queryClient.invalidateQueries({ queryKey: ['stock'] })
-    showToast(`Idioma cambiado a ${lang.toUpperCase()}`)
+    showToast(update.card_id
+      ? `Idioma cambiado a ${lang.toUpperCase()}`
+      : `Marcado como ${lang.toUpperCase()} (sin versión de imagen en ese idioma)`)
   }
 
   // ── Tags en inventory ────────────────────────────────────────────────────
@@ -998,6 +1005,9 @@ export default function Stock() {
                             <option value="en">EN</option>
                             <option value="jp">JP</option>
                             <option value="cn">CN</option>
+                            <option value="es">ES</option>
+                            <option value="pt">PT</option>
+                            <option value="fr">FR</option>
                           </select>
                         </div>
                       </td>

@@ -99,6 +99,7 @@ export function useStock(filters = {}) {
         quantity,
         condition,
         condicion,
+        idioma,
         status,
         estado,
         price_usd,
@@ -210,7 +211,7 @@ export function useStock(filters = {}) {
         nombre_local:      sealed ? '' : (c?.name || ''),   // nombre original (JP/CN) por si se quiere mostrar
         set_name:          sealed ? (sealed.set_name || '') : (r.cards?.set_name || ''),
         numero:            r.cards?.card_number || '',
-        idioma:            r.cards?.language || 'en',
+        idioma:            r.idioma || r.cards?.language || 'en',   // override de inventory si existe
         holo:              r.holo   || false,
         finish:            r.finish || 'normal',   // 'normal' | 'holofoil' | 'reverse'
         grade:             r.grade  || 'ungraded', // 'ungraded' | 'psa9' | 'psa10' | 'bgs10'
