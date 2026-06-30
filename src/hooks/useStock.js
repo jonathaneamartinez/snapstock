@@ -15,10 +15,15 @@ const SORT_MAP = {
   holo:         { col: 'is_holo',           table: 'cards',    foreignTable: true  },
   condicion:    { col: 'condition',         table: null                            },
   stock:        { col: 'quantity',          table: null                            },
-  price_usd:    { col: 'price_usd',         table: null                            },
-  _ars_ofic:    { col: 'price_ars_oficial', table: null                            },
-  _ars_blue:    { col: 'price_ars_blue',    table: null                            },
-  precio_venta: { col: 'price_ars_blue',    table: null                            },
+  // USD/ARS: el server ordena por price_usd (reconciliado al USD efectivo por el
+  // job diario). ARS ofic/blue = USD × cotización (mismo factor para todas), así
+  // que ordenar por price_usd da el MISMO orden visual y nunca depende de las
+  // columnas price_ars_* que pueden quedar viejas. P.Venta → sale_price_ars (lo
+  // que realmente se muestra). Esto mantiene el orden consistente en TODAS las páginas.
+  price_usd:    { col: 'price_usd',     table: null },
+  _ars_ofic:    { col: 'price_usd',     table: null },
+  _ars_blue:    { col: 'price_usd',     table: null },
+  precio_venta: { col: 'sale_price_ars', table: null },
   status:       { col: 'status',            table: null                            },
   buyer_name:   { col: 'buyer_name',        table: null                            },
 }
