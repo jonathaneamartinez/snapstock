@@ -181,8 +181,12 @@ export function useStock(filters = {}) {
 
       if (sortDef) {
         if (sortDef.foreignTable) {
-          // Columna de tabla relacionada → usar foreignTable en .order()
-          q = q.order(sortDef.col, { referencedTable: 'cards', ascending: asc, nullsFirst: false })
+          // Ordenar las filas PADRE (inventory) por una columna de cards (relación
+          // to-one) requiere la sintaxis top-level: order=cards(col). El
+          // `referencedTable` de supabase-js genera `cards.order=col`, que solo
+          // ordena el embed y NO reordena el inventory → el sort por Set/Nombre/
+          // N°/Idioma no hacía nada. Spelling explícito = orden global real.
+          q = q.order(`cards(${sortDef.col})`, { ascending: asc, nullsFirst: false })
         } else {
           q = q.order(sortDef.col, { ascending: asc, nullsFirst: false })
         }
