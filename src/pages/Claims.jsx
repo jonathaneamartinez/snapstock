@@ -450,8 +450,9 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
     <p className="text-xs text-gray-400 text-center py-3">{t('claims_no_data_cards')}</p>
   )
 
-  const totalARS = cards.reduce((s, c) => s + (c.sale ?? c.ars ?? 0), 0)
-  const totalUSD = cards.reduce((s, c) => s + (c.usd ?? 0), 0)
+  const totalBlue = cards.reduce((s, c) => s + (c.ars  ?? 0), 0)            // suma del ARS blue real
+  const totalARS  = cards.reduce((s, c) => s + (c.sale ?? c.ars ?? 0), 0)   // suma del precio de venta
+  const totalUSD  = cards.reduce((s, c) => s + (c.usd  ?? 0), 0)
 
   return (
     <div>
@@ -618,7 +619,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
                 {fmtUSD(totalUSD)}
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-blue-600 whitespace-nowrap">
-                {fmtARS(totalARS)}
+                {fmtARS(totalBlue)}
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-800 whitespace-nowrap">
                 {fmtARS(totalARS)}

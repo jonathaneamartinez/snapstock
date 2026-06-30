@@ -55,7 +55,8 @@ export function useMetricas() {
 
       // ── 3. Deudas = reservas (inventory) + ventas impagas (sales.estado='deuda') ──
       // (mismo criterio que la página Deudas, para que los números coincidan)
-      const deudaReservas = reservadasRows.reduce((s, r) => s + ((r.sale_price_ars ?? r.price_ars_blue) || 0) * (r.quantity || 1), 0)
+      // Importe de reserva = precio de venta acordado (NO × cantidad), igual que la página Deudas.
+      const deudaReservas = reservadasRows.reduce((s, r) => s + ((r.sale_price_ars ?? r.price_ars_blue) || 0), 0)
       const { data: ventasDeuda } = await supabase
         .from('sales')
         .select('total_ars')

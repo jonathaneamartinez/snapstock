@@ -63,7 +63,9 @@ export function useDeudas() {
           canal_reserva:  r.canal_reserva,
           reserved_at:    r.reserved_at,
         })
-        g.total += (r.sale_price_ars ?? r.price_ars_blue ?? 0) * (r.quantity || 1)
+        // Importe = precio de venta acordado de esa carta (NO × cantidad): debe
+        // coincidir con el total del claim y con la venta final, que usan ese mismo valor.
+        g.total += (r.sale_price_ars ?? r.price_ars_blue ?? 0)
       }
 
       // 2) Ventas en deuda (sales)
