@@ -74,6 +74,12 @@ const fmtFecha = (s) => {
 // Código de idioma como texto (las banderas emoji no se renderizan en Windows
 // → 🇬🇧 se ve como "GB"). Incluye alias jp/ja y cn/zh.
 const IDIOMA_FLAG = { en: 'EN', es: 'ES', ja: 'JP', jp: 'JP', zh: 'CN', cn: 'CN', fr: 'FR', de: 'DE', pt: 'PT' }
+const _normLangStock = (l) => {
+  l = (l || '').toLowerCase()
+  if (['ja', 'jp'].includes(l)) return 'jp'
+  if (['zh', 'cn'].includes(l)) return 'cn'
+  return 'en'
+}
 
 // Columnas: i18n_key + sort key + type (labels se resuelven con t() dentro del componente)
 const COLS_DEF = [
@@ -530,6 +536,32 @@ export default function Stock() {
     queryClient.invalidateQueries({ queryKey: ['stock'] })
   }
 
+  // ── Cambiar idioma: re-apunta el inventory a la carta equivalente en ese
+  //    idioma (vía name_en, prefiriendo mismo número), como saveTipo con finish.
+  const saveIdioma = async (inventoryId, newLang, row) => {
+    const lang = _normLangStock(newLang)
+    if (lang === _normLangStock(row.idioma)) return
+    const nameEn = row.nombre   // = name_en (inglés) para EN/JP/CN
+    if (!nameEn) { showToast('Carta sin nombre para mapear el idioma', 'error'); return }
+    const variants = lang === 'jp' ? ['jp', 'ja'] : lang === 'cn' ? ['cn', 'zh'] : ['en']
+    const esc = nameEn.replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const { data } = await supabase
+      .from('cards')
+      .select('id, language, card_number')
+      .or(`name_en.ilike.${esc},name.ilike.${esc}`)
+      .in('language', variants)
+      .limit(25)
+    if (!data?.length) {
+      showToast(`No encontramos "${nameEn}" en ${lang.toUpperCase()}`, 'error')
+      return
+    }
+    // preferir la del mismo número (la numeración cambia entre idiomas); sino la 1ª
+    const pick = data.find(c => String(c.card_number || '').toLowerCase() === String(row.numero || '').toLowerCase()) || data[0]
+    await supabase.from('inventory').update({ card_id: pick.id }).eq('id', inventoryId)
+    queryClient.invalidateQueries({ queryKey: ['stock'] })
+    showToast(`Idioma cambiado a ${lang.toUpperCase()}`)
+  }
+
   // ── Tags en inventory ────────────────────────────────────────────────────
   const [localTags, setLocalTags] = useState({})  // inventoryId → string[]
 
@@ -954,9 +986,20 @@ export default function Stock() {
                       </td>
                       <td className="px-3 py-2 text-gray-500">{r.numero || '—'}</td>
                       <td className="px-3 py-2 text-center">
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                          {IDIOMA_FLAG[r.idioma] ?? (r.idioma ? r.idioma.toUpperCase() : '—')}
-                        </span>
+                        <div onClick={e => e.stopPropagation()} className="inline-block">
+                          <select
+                            value={_normLangStock(r.idioma)}
+                            onChange={e => saveIdioma(r.inventory_id, e.target.value, r)}
+                            title="Cambiar idioma de la carta"
+                            className="appearance-none text-[10px] font-semibold px-2 py-0.5 rounded
+                                       bg-gray-100 text-gray-600 cursor-pointer border-0 text-center
+                                       focus:outline-none focus:ring-1 focus:ring-blue-300 hover:bg-gray-200 transition"
+                          >
+                            <option value="en">EN</option>
+                            <option value="jp">JP</option>
+                            <option value="cn">CN</option>
+                          </select>
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-center">
                         <div onClick={e => e.stopPropagation()}>
