@@ -218,6 +218,9 @@ export default function Ingresos() {
   const { margen } = useSettings()
   const { t } = useI18n()
   const [showImport, setShowImport] = useState(false)
+  // Tab activo del ingreso: 'carta' | 'links' | 'sellado'. LINKS y CARTA son
+  // ambos ingreso de carta (tipo='carta'); LINKS solo cambia el modo de entrada.
+  const [tab, setTab] = useState('carta')
 
   const [form, setForm] = useState({
     nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
@@ -1100,8 +1103,135 @@ export default function Ingresos() {
     setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500)
   }
 
+  // ── Cambio de tab (CARTA | LINKS | SELLADO) — resetea el formulario ──────
+  const switchTab = (val) => {
+    const tipo = val === 'sellado' ? 'sellado' : 'carta'
+    setTab(val)
+    setForm(f => ({ ...f, tipo, nombre: '', set: '', set_id: null, numero: '',
+                    sealedId: null, product_type: null, precioVenta: '' }))
+    setPreview(null); setSuggestions([]); setShowSug(false); setPcUrl('')
+    allSetCardsRef.current = []
+  }
+
   const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
   const labelCls = "text-xs text-gray-500 font-medium mb-1 block"
+
+  // ── Piezas reutilizables del formulario (mismas en CARTA/LINKS y SELLADO) ──
+  // Se componen en distinto orden según el tab, sin duplicar la lógica.
+  const nombreField = (
+    <div ref={wrapRef} className="relative">
+      <label className={labelCls}>{form.tipo === 'sellado' ? 'Producto sellado' : t('ingresos_card_name')}</label>
+      <input
+        value={form.nombre}
+        onChange={e => handleNombreChange(e.target.value)}
+        onFocus={handleNombreFocus}
+        placeholder={form.tipo === 'sellado'
+          ? 'Buscar sellado o elegí un set… ej: Elite Trainer Box'
+          : (form.set_id ? t('ingresos_search_set') : t('ingresos_search_card'))}
+        autoComplete="off"
+        className={inputCls}
+      />
+      {sugLoading && (
+        <div className="absolute right-3 top-8">
+          <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      {showSug && suggestions.length > 0 && (
+        <div className="absolute z-30 top-full left-0 right-0 mt-1
+                        bg-white border border-gray-200 rounded-2xl shadow-xl
+                        max-h-72 overflow-y-auto">
+          {suggestions.map((sug, i) => (
+            <button key={`${sug.nombre}|${sug.set}|${sug.numero}|${i}`} type="button"
+              onMouseDown={() => selectSuggestion(sug)}
+              className="w-full flex items-center gap-3 px-4 py-2.5
+                         hover:bg-blue-50 text-left border-b border-gray-100
+                         last:border-0 transition">
+              {sug.imagen
+                ? <img src={sug.imagen} alt="" className="w-7 h-10 object-cover rounded shrink-0" />
+                : <div className="w-7 h-10 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300 text-xs">?</div>
+              }
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate">{sug.nombre}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  {sug.set}{sug.numero ? ` · #${sug.numero}` : ''}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                {sug.precio_usd && (
+                  <span className="text-xs font-bold text-emerald-600">
+                    ${Number(sug.precio_usd).toFixed(2)}
+                  </span>
+                )}
+                {sug.source === 'sealed'
+                  ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">{sealedLabel(sug.product_type)}</span>
+                  : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
+                    ${sug.source_price === 'pc'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : sug.source === 'market'
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'bg-gray-100 text-gray-500'}`}>
+                    {sug.source_price === 'pc' ? 'PC' : sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
+                  </span>}
+              </div>
+            </button>
+          ))}
+          {hasMore && (
+            <div ref={sentinelRef} className="flex items-center justify-center py-3 border-t border-gray-100">
+              {loadingMore
+                ? <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+                : <span className="text-[11px] text-gray-400">↓ más resultados</span>
+              }
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  const setEditionField = (
+    <div>
+      <label className={labelCls}>{t('ingresos_set_edition')}</label>
+      <SetSelect
+        value={form.set}
+        setId={form.set_id}
+        lang={form.idioma}
+        onChange={async ({ set_name, set_id }) => {
+          setForm(f => ({ ...f, set: set_name, set_id, numero: '', nombre: '' }))
+          setSuggestions([])
+          setShowSug(false)
+          setPreview(null)
+          allSetCardsRef.current = []
+          // SELLADO: al elegir set, listar los sellados de ese set (ETB/Box/Bundle…)
+          if (form.tipo === 'sellado') {
+            const res = await searchSealedBySet(set_name)
+            setSuggestions(res); setShowSug(res.length > 0)
+            return
+          }
+          // ▶ Precarga las cartas del set EN BACKGROUND inmediatamente.
+          if (set_id) preloadSetCards(set_id, form.idioma)
+        }}
+        className="w-full"
+      />
+    </div>
+  )
+
+  const qtyCondRow = (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div>
+        <label className={labelCls}>{t('ingresos_quantity')}</label>
+        <input type="number" min="1" value={form.cantidad}
+          onChange={e => setField('cantidad', e.target.value)}
+          className={inputCls} />
+      </div>
+      <div>
+        <label className={labelCls}>{t('ingresos_condition')}</label>
+        <select value={form.condicion} onChange={e => setField('condicion', e.target.value)}
+          className={`${inputCls} bg-white`}>
+          {CONDICIONES.map(c => <option key={c}>{c}</option>)}
+        </select>
+      </div>
+    </div>
+  )
 
   return (
     <div className="max-w-5xl">
@@ -1123,19 +1253,20 @@ export default function Ingresos() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
 
-              {/* URL de PriceCharting — auto-fill rápido */}
-              {/* Toggle Carta / Sellado */}
+              {/* Tabs: CARTA | LINKS | SELLADO */}
               <div className="flex gap-2">
-                {[['carta', '🃏 Carta'], ['sellado', '📦 Sellado']].map(([val, lbl]) => (
+                {[['carta', '🃏 Carta'], ['links', '🔗 Links'], ['sellado', '📦 Sellado']].map(([val, lbl]) => (
                   <button key={val} type="button"
-                    onClick={() => { setForm(f => ({ ...f, tipo: val, nombre: '', set: '', set_id: null, numero: '', sealedId: null, product_type: null, precioVenta: '' })); setPreview(null); setSuggestions([]); setShowSug(false) }}
+                    onClick={() => switchTab(val)}
                     className={`flex-1 py-2 rounded-xl text-sm font-semibold transition border
-                      ${form.tipo === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                      ${tab === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                     {lbl}
                   </button>
                 ))}
               </div>
 
+              {/* URL de PriceCharting — solo en LINKS y SELLADO (auto-fill) */}
+              {(tab === 'links' || tab === 'sellado') && (
               <div>
                 <label className={labelCls}>URL de PriceCharting <span className="text-gray-400 font-normal">(pegá el link y se completa solo)</span></label>
                 <div className="relative">
@@ -1154,210 +1285,103 @@ export default function Ingresos() {
                   )}
                 </div>
               </div>
+              )}
 
-              {/* Nombre con autocomplete */}
-              <div ref={wrapRef} className="relative">
-                <label className={labelCls}>{form.tipo === 'sellado' ? 'Producto sellado' : t('ingresos_card_name')}</label>
-                <input
-                  value={form.nombre}
-                  onChange={e => handleNombreChange(e.target.value)}
-                  onFocus={handleNombreFocus}
-                  placeholder={form.tipo === 'sellado'
-                    ? 'Buscar sellado o elegí un set… ej: Elite Trainer Box'
-                    : (form.set_id ? t('ingresos_search_set') : t('ingresos_search_card'))}
-                  autoComplete="off"
-                  className={inputCls}
-                />
-                {/* Spinner búsqueda */}
-                {sugLoading && (
-                  <div className="absolute right-3 top-8">
-                    <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
-                {/* Dropdown sugerencias */}
-                {showSug && suggestions.length > 0 && (
-                  <div className="absolute z-30 top-full left-0 right-0 mt-1
-                                  bg-white border border-gray-200 rounded-2xl shadow-xl
-                                  max-h-72 overflow-y-auto">
-                    {suggestions.map((sug, i) => (
-                      <button key={`${sug.nombre}|${sug.set}|${sug.numero}|${i}`} type="button"
-                        onMouseDown={() => selectSuggestion(sug)}
-                        className="w-full flex items-center gap-3 px-4 py-2.5
-                                   hover:bg-blue-50 text-left border-b border-gray-100
-                                   last:border-0 transition">
-                        {sug.imagen
-                          ? <img src={sug.imagen} alt="" className="w-7 h-10 object-cover rounded shrink-0" />
-                          : <div className="w-7 h-10 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300 text-xs">?</div>
-                        }
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">{sug.nombre}</p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {sug.set}{sug.numero ? ` · #${sug.numero}` : ''}
-                          </p>
+              {form.tipo === 'sellado' ? (
+                /* ── SELLADO: layout original (sin cambios funcionales) ── */
+                <>
+                  {nombreField}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {setEditionField}
+                    {form.product_type && (
+                      <div>
+                        <label className={labelCls}>Categoría</label>
+                        <div className="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm font-medium border border-amber-200">
+                          {sealedLabel(form.product_type)}
                         </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          {sug.precio_usd && (
-                            <span className="text-xs font-bold text-emerald-600">
-                              ${Number(sug.precio_usd).toFixed(2)}
-                            </span>
-                          )}
-                          {sug.source === 'sealed'
-                            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">{sealedLabel(sug.product_type)}</span>
-                            : <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                              ${sug.source_price === 'pc'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : sug.source === 'market'
-                                  ? 'bg-blue-100 text-blue-600'
-                                  : 'bg-gray-100 text-gray-500'}`}>
-                              {sug.source_price === 'pc' ? 'PC' : sug.source === 'market' ? t('ingresos_source_market') : t('ingresos_source_stock')}
-                            </span>}
-                        </div>
-                      </button>
-                    ))}
-
-                    {/* Sentinel de infinite scroll — cuando aparece en pantalla carga +20 */}
-                    {hasMore && (
-                      <div ref={sentinelRef} className="flex items-center justify-center py-3 border-t border-gray-100">
-                        {loadingMore
-                          ? <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
-                          : <span className="text-[11px] text-gray-400">↓ más resultados</span>
-                        }
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-
-              {/* Set + Número */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>{t('ingresos_set_edition')}</label>
-                  <SetSelect
-                    value={form.set}
-                    setId={form.set_id}
-                    lang={form.idioma}
-                    onChange={async ({ set_name, set_id }) => {
-                      setForm(f => ({ ...f, set: set_name, set_id, numero: '', nombre: '' }))
-                      setSuggestions([])
-                      setShowSug(false)
-                      setPreview(null)
-                      allSetCardsRef.current = []
-                      // SELLADO: al elegir set, listar los sellados de ese set (ETB/Box/Bundle…)
-                      if (form.tipo === 'sellado') {
-                        const res = await searchSealedBySet(set_name)
-                        setSuggestions(res); setShowSug(res.length > 0)
-                        return
-                      }
-                      // ▶ Precarga las cartas del set EN BACKGROUND inmediatamente.
-                      if (set_id) preloadSetCards(set_id, form.idioma)
-                    }}
-                    className="w-full"
-                  />
-                </div>
-                {form.tipo !== 'sellado' && (
-                <div>
-                  <label className={labelCls}>{t('ingresos_card_number')}</label>
-                  <input
-                    value={form.numero}
-                    onChange={e => handleNumeroChange(e.target.value)}
-                    placeholder={form.set_id ? '1, TG30…' : t('ingresos_card_number_ph')}
-                    disabled={!form.set_id && !form.nombre}
-                    className={`${inputCls} disabled:opacity-50`}
-                  />
-                </div>
-                )}
-                {form.tipo === 'sellado' && form.product_type && (
-                <div>
-                  <label className={labelCls}>Categoría</label>
-                  <div className="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm font-medium border border-amber-200">
-                    {sealedLabel(form.product_type)}
+                  {qtyCondRow}
+                </>
+              ) : (
+                /* ── CARTA / LINKS: idioma → nombre+set → número → cantidad+cond → tipo+grado ── */
+                <>
+                  {/* Idioma — primer campo: acota el universo de búsqueda */}
+                  <div>
+                    <label className={labelCls}>{t('ingresos_language')}</label>
+                    <select value={form.idioma}
+                      onChange={e => {
+                        const newIdioma = e.target.value
+                        setField('idioma', newIdioma)
+                        allSetCardsRef.current = []
+                        setSuggestions([])
+                        if (form.set_id) preloadSetCards(form.set_id, newIdioma)
+                      }}
+                      className={`${inputCls} bg-white`}>
+                      {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
+                    </select>
                   </div>
-                </div>
-                )}
-              </div>
 
-              {/* Cantidad + Condición + Idioma */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className={labelCls}>{t('ingresos_quantity')}</label>
-                  <input type="number" min="1" value={form.cantidad}
-                    onChange={e => setField('cantidad', e.target.value)}
-                    className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>{t('ingresos_condition')}</label>
-                  <select value={form.condicion} onChange={e => setField('condicion', e.target.value)}
-                    className={`${inputCls} bg-white`}>
-                    {CONDICIONES.map(c => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                {form.tipo !== 'sellado' && (
-                <div>
-                  <label className={labelCls}>Tipo</label>
-                  <FinishSelect
-                    value={form.finish}
-                    onChange={v => setField('finish', v)}
-                    className="w-full"
-                  />
-                </div>
-                )}
-                {form.tipo !== 'sellado' && (
-                <div className="col-span-3">
-                  <label className={labelCls}>Grado</label>
-                  <div className="flex gap-2">
-                    {[
-                      { value: 'ungraded', label: 'Sin graduar' },
-                      { value: 'psa9',     label: 'PSA 9' },
-                      { value: 'psa10',    label: 'PSA 10' },
-                      { value: 'bgs10',    label: 'BGS 10' },
-                    ].map(g => (
-                      <button
-                        key={g.value}
-                        type="button"
-                        onClick={async () => {
-                          setForm(f => ({ ...f, grade: g.value }))
-                          // Re-fetch precio para el nuevo grado
+                  {/* Nombre + Set / Edición — misma jerarquía, 50/50 */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {nombreField}
+                    {setEditionField}
+                  </div>
+
+                  {/* Número de carta */}
+                  <div>
+                    <label className={labelCls}>{t('ingresos_card_number')}</label>
+                    <input
+                      value={form.numero}
+                      onChange={e => handleNumeroChange(e.target.value)}
+                      placeholder={form.set_id ? '1, TG30…' : t('ingresos_card_number_ph')}
+                      disabled={!form.set_id && !form.nombre}
+                      className={`${inputCls} disabled:opacity-50`}
+                    />
+                  </div>
+
+                  {/* Cantidad + Condición */}
+                  {qtyCondRow}
+
+                  {/* Tipo + Grado */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Tipo</label>
+                      <FinishSelect
+                        value={form.finish}
+                        onChange={v => setField('finish', v)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Grado</label>
+                      <select value={form.grade}
+                        onChange={async e => {
+                          const val = e.target.value
+                          setForm(f => ({ ...f, grade: val }))
                           if (form.nombre) {
                             const cardResult = await fetchCardId(form.nombre, form.numero, normLang(form.idioma), form.set, form.finish)
-                            const pcResult = await fetchPrecioConFallback(cardResult?.id ?? null, form.nombre, form.numero, form.idioma, form.finish, g.value)
+                            const pcResult = await fetchPrecioConFallback(cardResult?.id ?? null, form.nombre, form.numero, form.idioma, form.finish, val)
                             if (pcResult?.price_usd) {
                               const m = margen ?? 0
-                              setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: g.value }))
+                              setPreview(prev => ({ ...prev, precio_usd: pcResult.price_usd, precio_buy_usd: pcResult.price_buy_usd ?? null, precio_sell_usd: pcResult.price_sell_usd ?? null, precio_source: 'pc', grade: val }))
                               setForm(f => ({ ...f, precioVenta: String(Math.round(pcResult.price_usd * blue * (1 + m / 100) / 500) * 500) }))
                             } else {
-                              setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, grade: g.value }))
+                              setPreview(prev => ({ ...prev, precio_usd: null, precio_buy_usd: null, precio_sell_usd: null, grade: val }))
                             }
                           }
                         }}
-                        className={`flex-1 py-1.5 text-xs font-semibold rounded-xl border transition
-                          ${form.grade === g.value
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50'}`}
-                      >
-                        {g.label}
-                      </button>
-                    ))}
+                        className={`${inputCls} bg-white`}>
+                        <option value="ungraded">Sin graduar</option>
+                        <option value="psa9">PSA 9</option>
+                        <option value="psa10">PSA 10</option>
+                        <option value="bgs10">BGS 10</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-                )}
-                {form.tipo !== 'sellado' && (
-                <div>
-                  <label className={labelCls}>{t('ingresos_language')}</label>
-                  <select value={form.idioma}
-                    onChange={e => {
-                      const newIdioma = e.target.value
-                      setField('idioma', newIdioma)
-                      allSetCardsRef.current = []
-                      setSuggestions([])
-                      // Recargar cartas del set con el nuevo idioma
-                      if (form.set_id) preloadSetCards(form.set_id, newIdioma)
-                    }}
-                    className={`${inputCls} bg-white`}>
-                    {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
-                  </select>
-                </div>
-                )}
-              </div>
+                </>
+              )}
 
               {/* Precios de mercado (read-only) */}
               <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
