@@ -226,6 +226,8 @@ export default function Ingresos() {
   const [cardSelected, setCardSelected] = useState(false)
   // Error del tab LINKS (link no-PC / sin match / timeout) — inline bajo la URL.
   const [linkError, setLinkError] = useState(null)
+  // Tab NÚMERO: la carta se identifica por idioma + set + número (nombre = resultado).
+  const numMode = tab === 'numero'
 
   const [form, setForm] = useState({
     nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
@@ -742,6 +744,32 @@ export default function Ingresos() {
   const handleNumeroChange = (val) => {
     setField('numero', val)
     clearTimeout(numTimer.current)
+
+    // ── Tab NÚMERO: la carta se resuelve por set + número (todos los idiomas) ──
+    if (numMode) {
+      if (!val.trim()) { setCardSelected(false); setPreview(null); setField('nombre', ''); return }
+      if (!form.set_id) return                       // necesita el set primero
+      numTimer.current = setTimeout(async () => {
+        const numNorm = normalizeNum(val.trim())     // "151/159"→"151", "GG13/GG70"→"GG13"
+        // 1) buscar en el caché del set precargado (EN via pokemontcg, JP/CN via índice)
+        let hit = allSetCardsRef.current.find(c => normalizeNum(c.numero || '') === numNorm)
+        // 2) si el caché aún no cargó, cargarlo y reintentar
+        if (!hit && allSetCardsRef.current.length === 0) {
+          await preloadSetCards(form.set_id, form.idioma)
+          hit = allSetCardsRef.current.find(c => normalizeNum(c.numero || '') === numNorm)
+        }
+        // 3) fallback EN: pokemontcg.io por set + número exacto
+        if (!hit && normLang(form.idioma) === 'en') {
+          const card = await fetchCardBySetAndNumber(form.set_id, val.trim())
+          if (card) hit = { nombre: card.name, set: card.set_name, set_id: card.set_id,
+                            numero: card.card_number, imagen: card.image_url,
+                            precio_usd: card.price_usd, source: 'market' }
+        }
+        if (hit) selectSuggestion({ ...hit, idioma: form.idioma })
+      }, 400)
+      return
+    }
+
     if (!val.trim()) return
 
     numTimer.current = setTimeout(async () => {
@@ -1149,12 +1177,17 @@ export default function Ingresos() {
   const disCls   = "disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
 
   // ── Progressive disclosure: flags de habilitación (solo aplican a CARTA/LINKS) ──
-  // En LINKS los campos de identidad están SIEMPRE bloqueados (solo se cargan
-  // desde la URL). En CARTA se bloquean recién al seleccionar la carta.
+  // LINKS: identidad SIEMPRE bloqueada (se carga desde la URL).
+  // CARTA: se bloquea al seleccionar la carta.
+  // NÚMERO: idioma/set/número quedan EDITABLES (para corregir); el nombre es
+  //   RESULTADO (se completa por número), por eso va deshabilitado.
   const isCard         = form.tipo !== 'sellado'
   const linkMode       = tab === 'links'
-  const identityLocked = isCard && (cardSelected || linkMode)      // idioma/nombre/set/número
-  const numeroDisabled = identityLocked || (!form.set_id && !form.nombre)
+  const identityLocked = isCard && (cardSelected || linkMode) && !numMode
+  const nombreDisabled = identityLocked || numMode
+  const numeroDisabled = numMode
+    ? !form.set_id                                                 // NÚMERO: número tras elegir set
+    : (identityLocked || (!form.set_id && !form.nombre))
   const detailsEnabled = !isCard || cardSelected                   // cantidad/cond/tipo/grado/precios/venta
 
   // Resetea la carta seleccionada para elegir otra (mantiene idioma y tab).
@@ -1179,9 +1212,10 @@ export default function Ingresos() {
         onFocus={handleNombreFocus}
         placeholder={form.tipo === 'sellado'
           ? 'Buscar sellado o elegí un set… ej: Elite Trainer Box'
+          : numMode ? 'Se completa al ingresar el número'
           : (form.set_id ? t('ingresos_search_set') : t('ingresos_search_card'))}
         autoComplete="off"
-        disabled={identityLocked}
+        disabled={nombreDisabled}
         className={`${inputCls} ${disCls}`}
       />
       {sugLoading && (
@@ -1312,7 +1346,7 @@ export default function Ingresos() {
 
               {/* Tabs: CARTA | LINKS | SELLADO */}
               <div className="flex gap-2">
-                {[['carta', '🃏 Carta'], ['links', '🔗 Links'], ['sellado', '📦 Sellado']].map(([val, lbl]) => (
+                {[['carta', '🃏 Carta'], ['numero', '🔢 Número'], ['links', '🔗 Links'], ['sellado', '📦 Sellado']].map(([val, lbl]) => (
                   <button key={val} type="button"
                     onClick={() => switchTab(val)}
                     className={`flex-1 py-2 rounded-xl text-sm font-semibold transition border
@@ -1422,7 +1456,8 @@ export default function Ingresos() {
                     <input
                       value={form.numero}
                       onChange={e => handleNumeroChange(e.target.value)}
-                      placeholder={form.set_id ? '1, TG30…' : t('ingresos_card_number_ph')}
+                      placeholder={form.set_id ? '151/159, GG13, TG30…'
+                        : (numMode ? 'Primero elegí el set' : t('ingresos_card_number_ph'))}
                       disabled={numeroDisabled}
                       className={`${inputCls} ${disCls}`}
                     />
