@@ -9,6 +9,7 @@ import Spinner        from '../components/ui/Spinner'
 import FinishBadge   from '../components/ui/FinishBadge'
 import { useCardImage } from '../hooks/useCardImage'
 import { sealedLabel } from '../lib/sealedSearch'
+import ArtistsView from '../components/pokedex/ArtistsView'
 
 /* ─── Constantes ─────────────────────────────────────────────────────── */
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
@@ -345,6 +346,7 @@ function PokedexCard({ card, price, onClick }) {
 export default function Pokedex() {
   const { t } = useI18n()
 
+  const [activeTab,   setActiveTab]  = useState('pokemon') // 'pokemon' | 'artists'
   const [query,       setQuery]      = useState('')
   const [setInfo,     setSetInfo]    = useState({ set_id: null, set_name: '' })
   const [activeLangs, setActiveLangs] = useState(new Set(['en', 'jp', 'cn']))
@@ -617,6 +619,24 @@ export default function Pokedex() {
   return (
     <div className="space-y-5">
 
+      {/* ── Botonera POKÉMON / ARTISTAS ─────────────────────────────── */}
+      <div className="flex gap-2">
+        {[['pokemon', '🎴 Pokémon'], ['artists', '🎨 Artistas']].map(([val, lbl]) => (
+          <button key={val} type="button" onClick={() => setActiveTab(val)}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition
+              ${activeTab === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'artists' ? (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 min-h-[200px]">
+          <ArtistsView />
+        </div>
+      ) : (
+       <>
+
       {/* ── Header + controles ──────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -767,6 +787,8 @@ export default function Pokedex() {
           </div>
         )}
       </div>
+       </>
+      )}
 
       {/* ── Modal de carta ampliada ──────────────────────────────────── */}
       {modalIdx !== null && cards[modalIdx] && (
