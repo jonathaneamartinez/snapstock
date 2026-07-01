@@ -221,6 +221,11 @@ export default function Ingresos() {
   // Tab activo del ingreso: 'carta' | 'links' | 'sellado'. LINKS y CARTA son
   // ambos ingreso de carta (tipo='carta'); LINKS solo cambia el modo de entrada.
   const [tab, setTab] = useState('carta')
+  // Progressive disclosure: true cuando ya se matcheó/eligió una carta.
+  // Bloquea idioma/nombre/set/número y habilita cantidad/condición/tipo/grado/precios.
+  const [cardSelected, setCardSelected] = useState(false)
+  // Error del tab LINKS (link no-PC / sin match / timeout) — inline bajo la URL.
+  const [linkError, setLinkError] = useState(null)
 
   const [form, setForm] = useState({
     nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
@@ -255,11 +260,27 @@ export default function Ingresos() {
 
   const handlePcUrl = async (url) => {
     setPcUrl(url)
-    if (!url.includes('pricecharting.com/game/')) return
+    const inLinks = tab === 'links'
+    if (inLinks) setLinkError(null)
+    const u = (url || '').trim()
+    if (!u) return
+    // Dominio incorrecto → error inline (solo en LINKS)
+    if (!u.includes('pricecharting.com')) {
+      if (inLinks) setLinkError({ msg: 'El link debe ser de pricecharting.com' })
+      return
+    }
+    if (!u.includes('pricecharting.com/game/')) return   // link parcial, esperar
     setPcLoading(true)
     try {
-      const result = await scannerApi.resolvePcUrl(url)
-      if (!result || result.error) return
+      // Timeout de 10s para no colgar la UI si PC no responde
+      const result = await Promise.race([
+        scannerApi.resolvePcUrl(u),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000)),
+      ])
+      if (!result || result.error) {
+        if (inLinks) setLinkError({ msg: 'No pudimos encontrar esta carta en nuestra base. Cargala manualmente desde el tab CARTA.', cta: true })
+        return
+      }
 
       // ── SELLADO: el link es de un producto (ETB/Box/Bundle…) → resolver/crear ──
       if (form.tipo === 'sellado') {
@@ -267,6 +288,7 @@ export default function Ingresos() {
         if (sp) {
           setForm(f => ({ ...f, nombre: sp.name, set: sp.set_name || '', set_id: null,
                           sealedId: sp.id, product_type: sp.product_type }))
+          setCardSelected(true)
           setPreview({ imagen: sp.image_url || result.image_url || null,
                        precio_usd: result.price_usd ?? null,
                        precio_buy_usd: result.price_buy_usd ?? null,
@@ -291,6 +313,7 @@ export default function Ingresos() {
         numero:  result.card_number || f.numero,
         idioma:  langForm,
       }))
+      setCardSelected(true)
       setPreview({
         imagen:          result.image_url      ?? null,
         precio_usd:      result.price_usd      ?? null,
@@ -308,6 +331,9 @@ export default function Ingresos() {
         setForm(f => ({ ...f, precioVenta: String(autoARS) }))
       }
       setPcUrl('')
+    } catch (e) {
+      // Timeout u otro fallo de red → error inline (solo en LINKS)
+      if (tab === 'links') setLinkError({ msg: 'No respondió PriceCharting. Reintentá.' })
     } finally {
       setPcLoading(false)
     }
@@ -510,12 +536,14 @@ export default function Ingresos() {
       // Filtrar del caché local
       filterFromCache(val)
 
-      // También buscar en Supabase cartas con nombre custom que el caché no tiene
+      // También buscar en Supabase cartas con nombre custom que el caché no tiene.
+      // Filtramos por idioma para no traer prints de otro idioma (coherencia idioma↔carta).
       if (val.trim().length >= 2) {
         supabase
           .from('cards')
           .select('name, set_name, card_number, image_url, language')
           .ilike('name', `${val.trim()}%`)
+          .eq('language', normLang(form.idioma))
           .limit(5)
           .then(({ data }) => {
             if (!data?.length) return
@@ -633,7 +661,7 @@ export default function Ingresos() {
     if (sug.source === 'sealed') {
       setForm(f => ({ ...f, nombre: sug.nombre, set: sug.set || '', sealedId: sug.sealedId,
                       product_type: sug.product_type, finish: 'normal', grade: 'ungraded' }))
-      setShowSug(false); setSuggestions([])
+      setShowSug(false); setSuggestions([]); setCardSelected(true)
       setPreview({ imagen: sug.imagen, precio_usd: null, precio_source: null })
       // precio de mercado del sellado: /card-price por "{set} {nombre}"
       const q = `${(sug.set || '').replace(/^Pokemon\s+/i, '')} ${sug.nombre}`.trim()
@@ -653,6 +681,7 @@ export default function Ingresos() {
     }))
     setShowSug(false)
     setSuggestions([])
+    setCardSelected(true)
     setPreview({ imagen: sug.imagen, precio_usd: sug.precio_usd ?? null, precio_source: sug.source_price === 'pc' ? 'pc' : sug.source === 'market' ? 'tcgplayer' : null })
 
     // 1. Buscar precio de PriceCharting primero (fuente principal)
@@ -987,7 +1016,7 @@ export default function Ingresos() {
         setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM',
                   idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded',
                   tipo: 'sellado', sealedId: null, product_type: null })
-        setPreview(null); setSelectedCardId(null); setLoading(false)
+        setPreview(null); setSelectedCardId(null); setCardSelected(false); setLoading(false)
         return
       }
 
@@ -1090,6 +1119,7 @@ export default function Ingresos() {
       setForm({ nombre: '', set: '', set_id: null, numero: '', cantidad: 1, condicion: 'NM', idioma: 'en', precioVenta: '', finish: 'normal', grade: 'ungraded' })
       setPreview(null)
       setSelectedCardId(null)
+      setCardSelected(false)
     } catch (err) {
       console.error('Error al guardar carta:', err)
       showToast(err?.message || 'Error al guardar la carta', 'error')
@@ -1110,11 +1140,33 @@ export default function Ingresos() {
     setForm(f => ({ ...f, tipo, nombre: '', set: '', set_id: null, numero: '',
                     sealedId: null, product_type: null, precioVenta: '' }))
     setPreview(null); setSuggestions([]); setShowSug(false); setPcUrl('')
+    setCardSelected(false); setLinkError(null)
     allSetCardsRef.current = []
   }
 
   const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
   const labelCls = "text-xs text-gray-500 font-medium mb-1 block"
+  const disCls   = "disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
+
+  // ── Progressive disclosure: flags de habilitación (solo aplican a CARTA/LINKS) ──
+  // En LINKS los campos de identidad están SIEMPRE bloqueados (solo se cargan
+  // desde la URL). En CARTA se bloquean recién al seleccionar la carta.
+  const isCard         = form.tipo !== 'sellado'
+  const linkMode       = tab === 'links'
+  const identityLocked = isCard && (cardSelected || linkMode)      // idioma/nombre/set/número
+  const numeroDisabled = identityLocked || (!form.set_id && !form.nombre)
+  const detailsEnabled = !isCard || cardSelected                   // cantidad/cond/tipo/grado/precios/venta
+
+  // Resetea la carta seleccionada para elegir otra (mantiene idioma y tab).
+  const clearCard = () => {
+    setForm(f => ({ ...f, nombre: '', set: '', set_id: null, numero: '', cantidad: 1,
+                    condicion: 'NM', finish: 'normal', grade: 'ungraded', precioVenta: '',
+                    sealedId: null, product_type: null }))
+    setPreview(null); setSuggestions([]); setShowSug(false)
+    setSelectedCardId(null); setCardSelected(false)
+    setLinkError(null); setPcUrl('')
+    allSetCardsRef.current = []
+  }
 
   // ── Piezas reutilizables del formulario (mismas en CARTA/LINKS y SELLADO) ──
   // Se componen en distinto orden según el tab, sin duplicar la lógica.
@@ -1129,7 +1181,8 @@ export default function Ingresos() {
           ? 'Buscar sellado o elegí un set… ej: Elite Trainer Box'
           : (form.set_id ? t('ingresos_search_set') : t('ingresos_search_card'))}
         autoComplete="off"
-        className={inputCls}
+        disabled={identityLocked}
+        className={`${inputCls} ${disCls}`}
       />
       {sugLoading && (
         <div className="absolute right-3 top-8">
@@ -1195,11 +1248,13 @@ export default function Ingresos() {
         value={form.set}
         setId={form.set_id}
         lang={form.idioma}
+        disabled={identityLocked}
         onChange={async ({ set_name, set_id }) => {
           setForm(f => ({ ...f, set: set_name, set_id, numero: '', nombre: '' }))
           setSuggestions([])
           setShowSug(false)
           setPreview(null)
+          setCardSelected(false)
           allSetCardsRef.current = []
           // SELLADO: al elegir set, listar los sellados de ese set (ETB/Box/Bundle…)
           if (form.tipo === 'sellado') {
@@ -1221,12 +1276,14 @@ export default function Ingresos() {
         <label className={labelCls}>{t('ingresos_quantity')}</label>
         <input type="number" min="1" value={form.cantidad}
           onChange={e => setField('cantidad', e.target.value)}
-          className={inputCls} />
+          disabled={!detailsEnabled}
+          className={`${inputCls} ${disCls}`} />
       </div>
       <div>
         <label className={labelCls}>{t('ingresos_condition')}</label>
         <select value={form.condicion} onChange={e => setField('condicion', e.target.value)}
-          className={`${inputCls} bg-white`}>
+          disabled={!detailsEnabled}
+          className={`${inputCls} bg-white ${disCls}`}>
           {CONDICIONES.map(c => <option key={c}>{c}</option>)}
         </select>
       </div>
@@ -1284,6 +1341,20 @@ export default function Ingresos() {
                     </div>
                   )}
                 </div>
+                {/* Error del link (solo LINKS) */}
+                {tab === 'links' && linkError && (
+                  <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-red-600
+                                  bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <span>{linkError.msg}</span>
+                    {linkError.cta && (
+                      <button type="button" onClick={() => switchTab('carta')}
+                        className="shrink-0 font-semibold text-red-700 hover:text-red-900
+                                   bg-white border border-red-200 rounded-lg px-2 py-0.5 transition">
+                        Ir a CARTA
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               )}
 
@@ -1307,6 +1378,21 @@ export default function Ingresos() {
               ) : (
                 /* ── CARTA / LINKS: idioma → nombre+set → número → cantidad+cond → tipo+grado ── */
                 <>
+                  {/* Banner "carta seleccionada" con botón para cambiarla */}
+                  {cardSelected && (
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl
+                                    bg-blue-50 border border-blue-200">
+                      <span className="text-xs text-blue-700 font-medium truncate">
+                        ✓ {form.nombre}{form.set ? ` · ${form.set}` : ''}{form.numero ? ` · #${form.numero}` : ''}
+                      </span>
+                      <button type="button" onClick={clearCard}
+                        className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-800
+                                   bg-white border border-blue-200 rounded-lg px-2.5 py-1 transition">
+                        Cambiar carta
+                      </button>
+                    </div>
+                  )}
+
                   {/* Idioma — primer campo: acota el universo de búsqueda */}
                   <div>
                     <label className={labelCls}>{t('ingresos_language')}</label>
@@ -1318,7 +1404,8 @@ export default function Ingresos() {
                         setSuggestions([])
                         if (form.set_id) preloadSetCards(form.set_id, newIdioma)
                       }}
-                      className={`${inputCls} bg-white`}>
+                      disabled={identityLocked}
+                      className={`${inputCls} bg-white ${disCls}`}>
                       {IDIOMAS.map(i => <option key={i.code} value={i.code}>{i.flag} {i.label}</option>)}
                     </select>
                   </div>
@@ -1336,8 +1423,8 @@ export default function Ingresos() {
                       value={form.numero}
                       onChange={e => handleNumeroChange(e.target.value)}
                       placeholder={form.set_id ? '1, TG30…' : t('ingresos_card_number_ph')}
-                      disabled={!form.set_id && !form.nombre}
-                      className={`${inputCls} disabled:opacity-50`}
+                      disabled={numeroDisabled}
+                      className={`${inputCls} ${disCls}`}
                     />
                   </div>
 
@@ -1351,6 +1438,7 @@ export default function Ingresos() {
                       <FinishSelect
                         value={form.finish}
                         onChange={v => setField('finish', v)}
+                        disabled={!detailsEnabled}
                         className="w-full"
                       />
                     </div>
@@ -1372,7 +1460,8 @@ export default function Ingresos() {
                             }
                           }
                         }}
-                        className={`${inputCls} bg-white`}>
+                        disabled={!detailsEnabled}
+                        className={`${inputCls} bg-white ${disCls}`}>
                         <option value="ungraded">Sin graduar</option>
                         <option value="psa9">PSA 9</option>
                         <option value="psa10">PSA 10</option>
@@ -1409,7 +1498,7 @@ export default function Ingresos() {
                     <button
                       type="button"
                       onClick={() => fetchPreviewImage(form.nombre, form.numero, form.set)}
-                      disabled={previewLoad}
+                      disabled={previewLoad || !detailsEnabled}
                       title="Actualizar precio"
                       className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-700
                                  bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition disabled:opacity-40"
@@ -1461,7 +1550,8 @@ export default function Ingresos() {
                   value={form.precioVenta}
                   onChange={e => setField('precioVenta', e.target.value)}
                   placeholder={usd != null ? `${t('ingresos_suggested')}: ${fmtARS(arsBlue)}` : 'Ej: 14000'}
-                  className={inputCls}
+                  disabled={!detailsEnabled}
+                  className={`${inputCls} ${disCls}`}
                 />
               </div>
 
@@ -1474,7 +1564,7 @@ export default function Ingresos() {
                 {' '}{t('ingresos_scanner_tip_post')}
               </p>
 
-              <button type="submit" disabled={loading || !form.nombre.trim()}
+              <button type="submit" disabled={loading || !form.nombre.trim() || (isCard && !cardSelected)}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50
                            text-white font-bold rounded-xl transition flex items-center justify-center gap-2">
                 {loading ? <Spinner size={18} /> : t('ingresos_add_to_stock')}
