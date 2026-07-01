@@ -13,7 +13,7 @@ const SCANNER_URL = import.meta.env.VITE_SCANNER_URL || 'https://stock-tcg-produ
  * @returns { artists, total, isLoading, error }
  */
 export function useArtists({ lang = null, minCount = 1 } = {}) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['artists', STORE_ID, lang, minCount],
     queryFn: async () => {
       const p = new URLSearchParams({ store_id: STORE_ID, min_count: String(minCount) })
@@ -24,11 +24,14 @@ export function useArtists({ lang = null, minCount = 1 } = {}) {
       return { artists: j.artists ?? [], total: j.total_artists ?? 0 }
     },
     staleTime: 600_000,   // 10 min
+    retry: 1,
   })
   return {
     artists: data?.artists ?? [],
     total:   data?.total   ?? 0,
     isLoading,
+    isFetching,
     error,
+    refetch,
   }
 }

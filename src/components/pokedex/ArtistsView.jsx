@@ -101,7 +101,7 @@ function ArtistDetail({ artistName, onBack }) {
 
 /* ═══ Vista principal de Artistas ═══════════════════════════════════ */
 export default function ArtistsView() {
-  const { artists, total, isLoading } = useArtists()
+  const { artists, total, isLoading, error, refetch } = useArtists()
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('count')   // 'count' | 'alpha'
   const [selected, setSelected] = useState(null)
@@ -118,7 +118,26 @@ export default function ArtistsView() {
   if (selected) return <ArtistDetail artistName={selected} onBack={() => setSelected(null)} />
 
   if (isLoading) {
-    return <div className="flex justify-center py-20"><Spinner size={28} className="text-violet-400" /></div>
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <Spinner size={28} className="text-violet-400" />
+        <p className="text-sm text-gray-400">Cargando artistas de tu stock…</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <span className="text-4xl">😕</span>
+        <p className="font-semibold text-gray-600">No pudimos cargar los artistas</p>
+        <p className="text-sm text-gray-400 max-w-sm">Puede ser el servidor tardando. Probá de nuevo.</p>
+        <button onClick={() => refetch()}
+          className="mt-1 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-500 transition">
+          Reintentar
+        </button>
+      </div>
+    )
   }
 
   if (!artists.length) {
