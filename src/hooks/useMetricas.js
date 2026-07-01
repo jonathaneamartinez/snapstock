@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { getDolar } from '../lib/dolar'
 import { STORE_ID } from '../constants'
 
 export function useMetricas() {
@@ -49,14 +50,26 @@ export function useMetricas() {
         from += PAGE
       }
 
-      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd         || 0) * (r.quantity || 1), 0)
-      const valorARSBlue    = disponiblesRows.reduce((s, r) => s + (r.price_ars_blue    || 0) * (r.quantity || 1), 0)
-      const valorARSOficial = disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 1), 0)
+      // Cotización actual (blue/oficial). Los ARS se derivan SIEMPRE de
+      // price_usd × cotización (mismo criterio que el Stock), no de las columnas
+      // price_ars_* guardadas que quedan viejas tras un recálculo de precios.
+      const { blue, oficial } = await getDolar()
+
+      const valorUSD        = disponiblesRows.reduce((s, r) => s + (r.price_usd || 0) * (r.quantity || 1), 0)
+      const valorARSBlue    = blue
+        ? disponiblesRows.reduce((s, r) => s + (r.price_usd || 0) * blue    * (r.quantity || 1), 0)
+        : disponiblesRows.reduce((s, r) => s + (r.price_ars_blue    || 0) * (r.quantity || 1), 0)
+      const valorARSOficial = oficial
+        ? disponiblesRows.reduce((s, r) => s + (r.price_usd || 0) * oficial * (r.quantity || 1), 0)
+        : disponiblesRows.reduce((s, r) => s + (r.price_ars_oficial || 0) * (r.quantity || 1), 0)
 
       // ── 3. Deudas = reservas (inventory) + ventas impagas (sales.estado='deuda') ──
       // (mismo criterio que la página Deudas, para que los números coincidan)
       // Importe de reserva = precio de venta acordado (NO × cantidad), igual que la página Deudas.
-      const deudaReservas = reservadasRows.reduce((s, r) => s + ((r.sale_price_ars ?? r.price_ars_blue) || 0), 0)
+      const deudaReservas = reservadasRows.reduce((s, r) => {
+        const fallbackBlue = (r.price_usd && blue) ? r.price_usd * blue : r.price_ars_blue
+        return s + ((r.sale_price_ars ?? fallbackBlue) || 0)
+      }, 0)
       const { data: ventasDeuda } = await supabase
         .from('sales')
         .select('total_ars')
