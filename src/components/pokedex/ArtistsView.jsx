@@ -9,24 +9,24 @@ import { useQuery } from '@tanstack/react-query'
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 const LANG_FLAG = { en: '🇬🇧', jp: '🇯🇵', cn: '🇨🇳' }
 
-/* ── Tarjeta de artista ─────────────────────────────────────────────── */
+/* ── Card de artista (listado, nombre protagonista) ─────────────────── */
 function ArtistCard({ artist, onClick }) {
   const [src, setSrc] = useState(artist.sample_image_url || CARD_BACK)
   return (
     <button
       onClick={onClick}
-      className="flex flex-col rounded-2xl overflow-hidden border border-gray-100 bg-white
-                 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200
-                 cursor-pointer group text-left"
+      className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-2.5
+                 shadow-sm hover:shadow-md hover:border-violet-200 hover:-translate-y-0.5
+                 transition-all duration-200 text-left w-full group"
     >
-      <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden">
-        <img src={src} alt={artist.name} loading="lazy" onError={() => setSrc(CARD_BACK)}
-          className="w-full h-full object-contain group-hover:scale-[1.04] transition-transform duration-300" />
+      <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-50">
+        <img src={src} alt="" loading="lazy" onError={() => setSrc(CARD_BACK)}
+          className="w-full h-full object-contain group-hover:scale-[1.05] transition-transform duration-300" />
       </div>
-      <div className="p-2.5 flex flex-col gap-1">
-        <p className="text-xs font-bold text-gray-800 leading-tight line-clamp-2">{artist.name}</p>
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-[11px] text-gray-400">{artist.card_count} cartas</span>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-gray-800 text-sm leading-tight line-clamp-2">{artist.name}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-violet-600 font-semibold">{artist.card_count} cartas</span>
           <span className="flex gap-0.5">
             {(artist.languages || []).map(l => (
               <span key={l} className="text-[10px]">{LANG_FLAG[l] || ''}</span>
@@ -104,16 +104,27 @@ export default function ArtistsView() {
   const { artists, total, isLoading, error, refetch } = useArtists()
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('count')   // 'count' | 'alpha'
+  const [letter, setLetter] = useState(null)  // inicial seleccionada (A-Z / #)
   const [selected, setSelected] = useState(null)
+
+  const initialOf = (name) => {
+    const c = ((name || '').trim()[0] || '#').toUpperCase()
+    return /[A-Z]/.test(c) ? c : '#'
+  }
+
+  // Iniciales presentes → solo esas letras quedan activas en el índice
+  const initials = useMemo(() => new Set(artists.map(a => initialOf(a.name))), [artists])
 
   const list = useMemo(() => {
     const term = q.trim().toLowerCase()
-    let arr = term ? artists.filter(a => a.name.toLowerCase().includes(term)) : artists
+    let arr = artists
+    if (term)   arr = arr.filter(a => a.name.toLowerCase().includes(term))
+    if (letter) arr = arr.filter(a => initialOf(a.name) === letter)
     arr = [...arr]
     if (sort === 'alpha') arr.sort((a, b) => a.name.localeCompare(b.name))
     else arr.sort((a, b) => b.card_count - a.card_count)
     return arr
-  }, [artists, q, sort])
+  }, [artists, q, sort, letter])
 
   if (selected) return <ArtistDetail artistName={selected} onBack={() => setSelected(null)} />
 
@@ -172,10 +183,31 @@ export default function ArtistsView() {
           ))}
         </div>
       </div>
-      <p className="text-xs text-gray-400 mb-3">{total} artistas en tu stock</p>
+      {/* Índice alfabético (A-Z) */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        <button onClick={() => setLetter(null)}
+          className={`px-2 py-0.5 rounded-md text-xs font-bold transition
+            ${!letter ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+          Todos
+        </button>
+        {['#','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'].map(L => {
+          const has = initials.has(L)
+          return (
+            <button key={L} disabled={!has} onClick={() => setLetter(L === letter ? null : L)}
+              className={`w-6 py-0.5 rounded-md text-xs font-bold transition
+                ${letter === L ? 'bg-violet-600 text-white'
+                  : has ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        : 'text-gray-300 cursor-default'}`}>
+              {L}
+            </button>
+          )
+        })}
+      </div>
 
-      {/* Grilla */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+      <p className="text-xs text-gray-400 mb-3">{list.length} de {total} artistas</p>
+
+      {/* Listado — nombre protagonista, cards horizontales */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {list.map(a => (
           <ArtistCard key={a.name} artist={a} onClick={() => setSelected(a.name)} />
         ))}
