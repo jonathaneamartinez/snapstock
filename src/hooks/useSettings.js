@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { STORE_ID } from '../constants'
 
+const SCANNER_URL = import.meta.env.VITE_SCANNER_URL || 'https://stock-tcg-production.up.railway.app'
+
 export const PRICE_SOURCES = [
   { id: 'tcgplayer',     label: 'TCGPlayer',     currency: 'USD', flag: '🇺🇸', active: true,  note: 'mercado USA · TCGPlayer market price' },
   { id: 'pricecharting', label: 'PriceCharting',  currency: 'USD', flag: '🏷️', active: true,  note: 'ventas reales eBay + TCGPlayer · más preciso' },
@@ -32,8 +34,26 @@ export function useSettings() {
         .update({ margen_ganancia: Number(margen) })
         .eq('id', STORE_ID)
       if (error) throw error
+      // Dispara el recálculo del precio de venta en TODOS lados (Stock, Catálogo,
+      // Deudas, Claims) con el nuevo margen. Corre en background en el backend;
+      // si no responde, el cron diario lo recalcula igual.
+      try {
+        await fetch(`${SCANNER_URL}/recompute-sale-prices?store_id=${STORE_ID}`, { method: 'POST' })
+      } catch (_) { /* noop */ }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings'] })
+      // El recálculo corre async en el backend: refrescamos las vistas derivadas
+      // a los pocos segundos y de nuevo más tarde (por si la tienda es grande).
+      const refresh = () => {
+        qc.invalidateQueries({ queryKey: ['stock'] })
+        qc.invalidateQueries({ queryKey: ['claims'] })
+        qc.invalidateQueries({ queryKey: ['deudas'] })
+        qc.invalidateQueries({ queryKey: ['metricas'] })
+      }
+      setTimeout(refresh, 5000)
+      setTimeout(refresh, 20000)
+    },
   })
 
   const { mutateAsync: savePrecioFuente, isPending: savingFuente } = useMutation({

@@ -467,10 +467,13 @@ export default function Stock() {
   }
 
   // ── Guardar precio de venta inline (Feature 2) ──────────────────────────
-  const saveSalePrice = async (inventoryId, nuevoPrecio) => {
+  // Marca la edición como MANUAL (precios_fuentes._venta_manual) para que el
+  // recálculo por margen / ratchet diario la RESPETE y no la pise.
+  const saveSalePrice = async (inventoryId, nuevoPrecio, row = null) => {
+    const pf = { ...(row?.precios_fuentes || {}), _venta_manual: true, _auto_venta: nuevoPrecio }
     const { error } = await supabase
       .from('inventory')
-      .update({ sale_price_ars: nuevoPrecio })
+      .update({ sale_price_ars: nuevoPrecio, precios_fuentes: pf })
       .eq('id', inventoryId)
     if (!error) {
       queryClient.invalidateQueries({ queryKey: ['stock'] })
@@ -1129,7 +1132,7 @@ export default function Stock() {
                           type="number"
                           placeholder={t('stock_price_ph_none')}
                           formatDisplay={v => v != null ? fmtARS(v) : null}
-                          onSave={v => saveSalePrice(r.inventory_id, v)}
+                          onSave={v => saveSalePrice(r.inventory_id, v, r)}
                         />
                       </td>
                       <td className="px-3 py-2"><Badge label={r.status} /></td>
