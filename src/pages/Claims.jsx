@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../lib/i18n'
 import { useClaims } from '../hooks/useClaims'
+import { useClaimGenerator } from '../hooks/useClaimGenerator'
 import { supabase }  from '../lib/supabase'
 import { STORE_ID }  from '../constants'
 import FinishBadge   from '../components/ui/FinishBadge'
@@ -267,22 +268,47 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   const { t } = useI18n()
   const [selected,    setSelected]    = useState(new Set())
   const [sellError,   setSellError]   = useState(null)
+  const [tab,         setTab]         = useState('todas')   // 'todas' | 'sobrantes'
+  const gen = useClaimGenerator()
 
-  /* ── Cantidad disponible por carta (para venta/reserva parcial) ──────── */
-  const [availQty, setAvailQty] = useState({})   // inventory_id → cantidad en stock
-  const [qtyMap,   setQtyMap]   = useState({})   // inventory_id → cantidad elegida
+  /* ── Cantidad + estado por carta (para venta/reserva parcial y color) ──── */
+  const [availQty,  setAvailQty]  = useState({})   // inventory_id → cantidad en stock
+  const [statusMap, setStatusMap] = useState({})   // inventory_id → status real (vendida/reservada/disponible)
+  const [qtyMap,    setQtyMap]    = useState({})   // inventory_id → cantidad elegida
   useEffect(() => {
     const ids = cards.map(c => c.inventory_id).filter(Boolean)
     if (!ids.length) return
     let cancelled = false
-    supabase.from('inventory').select('id, quantity').in('id', ids)
+    supabase.from('inventory').select('id, quantity, status, estado').in('id', ids)
       .then(({ data }) => {
         if (cancelled || !data) return
-        const m = {}; data.forEach(r => { m[r.id] = r.quantity ?? 1 })
-        setAvailQty(m)
+        const q = {}, s = {}
+        data.forEach(r => { q[r.id] = r.quantity ?? 1; s[r.id] = r.status || r.estado || null })
+        setAvailQty(q); setStatusMap(s)
       })
     return () => { cancelled = true }
   }, [cards])
+
+  /* ── Estado por carta del claim (para color + tab Sobrantes) ──────────
+     Resuelta = tiene marca `resolved` en el claim, o el inventory ya está
+     vendido/reservado. Sin acción ("pendiente") = ninguna de esas. */
+  const estadoDe = (c) => {
+    if (c.resolved === 'vendida'   || statusMap[c.inventory_id] === 'vendida')   return 'vendida'
+    if (c.resolved === 'reservada' || statusMap[c.inventory_id] === 'reservada') return 'reservada'
+    if (c.resolved === 'stock') return 'stock'
+    return 'pendiente'
+  }
+
+  /* Marca las cartas accionadas en el claim (cards_data[].resolved) */
+  const markResolved = async (ids, status) => {
+    if (!claimId || !ids.length) return
+    const idset = new Set(ids)
+    const updated = cards.map(c => c.inventory_id && idset.has(c.inventory_id) ? { ...c, resolved: status } : c)
+    try {
+      await supabase.from('claims').update({ cards_data: updated }).eq('id', claimId)
+      qc.invalidateQueries({ queryKey: ['claims'] })
+    } catch (_) {}
+  }
 
   const setQty = (id, v, max) => {
     const n = Math.max(1, Math.min(max, parseInt(v, 10) || 1))
@@ -351,7 +377,11 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
 
   const hasInventoryIds = cards.some(c => c.inventory_id)
 
-  const allActionable = cards.filter(c => c.inventory_id)
+  // Sobrantes = cartas sin acción (ni vendida/reservada/stock)
+  const leftovers    = cards.filter(c => c.inventory_id && estadoDe(c) === 'pendiente')
+  const visibleCards = tab === 'sobrantes' ? leftovers : cards
+
+  const allActionable = visibleCards.filter(c => c.inventory_id)
   const allSelected   = allActionable.length > 0 && allActionable.every(c => selected.has(c.inventory_id))
   const someSelected  = selected.size > 0
 
@@ -405,6 +435,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
         if (error) { setSellError(`Error al registrar en ventas: ${error.message}`); console.error('[Claims] sales insert error:', error) }
         else setSellError(null)
       }
+      await markResolved(selectedCards.map(c => c.inventory_id).filter(Boolean), 'vendida')
     } finally {
       setQtyMap({})
       refreshAll()
@@ -425,13 +456,14 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
         })
         .eq('id', targetId)
     }
+    await markResolved(selectedCards.map(c => c.inventory_id).filter(Boolean), 'reservada')
     setQtyMap({})
     refreshAll()
   }
 
   /* ── Volver al stock ────────────────────────────────────────────── */
   const handleReturn = async () => {
-    const ids = selectedCards.map(c => c.inventory_id)
+    const ids = selectedCards.map(c => c.inventory_id).filter(Boolean)
     await supabase.from('inventory')
       .update({
         status:        'disponible',
@@ -443,6 +475,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
         sold_at_date:  null,
       })
       .in('id', ids)
+    await markResolved(ids, 'stock')
     refreshAll()
   }
 
@@ -450,12 +483,62 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
     <p className="text-xs text-gray-400 text-center py-3">{t('claims_no_data_cards')}</p>
   )
 
-  const totalBlue = cards.reduce((s, c) => s + (c.ars  ?? 0), 0)            // suma del ARS blue real
-  const totalARS  = cards.reduce((s, c) => s + (c.sale ?? c.ars ?? 0), 0)   // suma del precio de venta
-  const totalUSD  = cards.reduce((s, c) => s + (c.usd  ?? 0), 0)
+  const totalBlue = visibleCards.reduce((s, c) => s + (c.ars  ?? 0), 0)            // suma del ARS blue real
+  const totalARS  = visibleCards.reduce((s, c) => s + (c.sale ?? c.ars ?? 0), 0)   // suma del precio de venta
+  const totalUSD  = visibleCards.reduce((s, c) => s + (c.usd  ?? 0), 0)
+
+  // Cartas sobrantes en formato del generador de imágenes
+  const genLeftovers = () => gen.generate({
+    cards: leftovers.map(c => ({
+      card_id: c.id, image_url: c.img, nombre: c.name, numero: c.num,
+      set_name: c.set, sale_price_ars: c.sale ?? c.ars, condicion: c.cond,
+    })),
+    style: 'A', dark: false, showPrice: true, title: 'Sobrantes del claim',
+  })
 
   return (
     <div>
+      {/* Tabs: Todas | Sobrantes */}
+      {hasInventoryIds && (
+        <div className="flex gap-2 mb-3">
+          {[['todas', `Todas (${cards.length})`], ['sobrantes', `🟡 Sobrantes (${leftovers.length})`]].map(([v, lbl]) => (
+            <button key={v} type="button" onClick={() => { setTab(v); setSelected(new Set()) }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition
+                ${tab === v ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Panel de sobrantes: generar imagen + descargar */}
+      {tab === 'sobrantes' && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-amber-800 font-medium">
+              {leftovers.length} carta(s) sin acción (no vendidas, reservadas ni devueltas al stock).
+              Generá una imagen para re-ofrecerlas.
+            </p>
+            <button type="button" onClick={genLeftovers} disabled={gen.generating || !leftovers.length}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition disabled:opacity-50">
+              {gen.generating ? `Generando… ${gen.progress}%` : '🖼️ Generar imagen de sobrantes'}
+            </button>
+          </div>
+          {gen.error && <p className="text-[11px] text-red-600 mt-2">{gen.error}</p>}
+          {gen.images.length > 0 && (
+            <div className="flex flex-wrap gap-3 mt-3">
+              {gen.images.map((im, i) => (
+                <div key={i} className="flex flex-col items-center gap-1">
+                  <img src={im.dataUrl} alt={im.label} className="w-40 rounded-lg border border-amber-200 shadow-sm" />
+                  <a href={im.dataUrl} download={`sobrantes-${i + 1}.png`}
+                    className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">⬇ Descargar</a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tabla */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 mb-2">
         <table className="w-full text-xs">
@@ -482,13 +565,18 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {cards.map((c, i) => {
+            {visibleCards.map((c, i) => {
               const isSel = c.inventory_id && selected.has(c.inventory_id)
+              const est   = c.inventory_id ? estadoDe(c) : null
+              const estBg = isSel ? 'bg-violet-50'
+                : est === 'pendiente' ? 'bg-amber-50 hover:bg-amber-100'
+                : est === 'vendida'   ? 'bg-emerald-50/60 hover:bg-emerald-50'
+                : est === 'reservada' ? 'bg-blue-50/60 hover:bg-blue-50'
+                : 'hover:bg-gray-50'
               return (
                 <tr
                   key={i}
-                  className={`transition ${isSel ? 'bg-violet-50' : 'hover:bg-gray-50'}
-                    ${c.inventory_id ? 'cursor-pointer' : ''}`}
+                  className={`transition ${estBg} ${c.inventory_id ? 'cursor-pointer' : ''}`}
                   onClick={() => c.inventory_id && toggleOne(c.inventory_id)}
                 >
                   {/* ✕ eliminar carta del claim (solo en editMode) */}
@@ -525,6 +613,16 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
                       )}
                       <span className="truncate">{c.name || '—'}</span>
                       <FinishBadge finish={c.finish} />
+                      {est === 'pendiente' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700 shrink-0 whitespace-nowrap">Sin acción</span>
+                      )}
+                      {est && est !== 'pendiente' && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold shrink-0 whitespace-nowrap
+                          ${est === 'vendida' ? 'bg-emerald-100 text-emerald-700'
+                            : est === 'reservada' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {est === 'vendida' ? 'Vendida' : est === 'reservada' ? 'Reservada' : 'En stock'}
+                        </span>
+                      )}
                     </div>
                     {/* Cantidad parcial: solo si hay más de 1 en stock */}
                     {c.inventory_id && (availQty[c.inventory_id] ?? 1) > 1 && (
@@ -613,7 +711,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
                 colSpan={(hasInventoryIds ? 5 : 4) + (editMode ? 1 : 0)}
                 className="px-3 py-2 text-xs font-bold text-gray-600"
               >
-                Total ({cards.length} {t('claims_col_cards')})
+                Total ({visibleCards.length} {t('claims_col_cards')})
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-emerald-600 whitespace-nowrap">
                 {fmtUSD(totalUSD)}
