@@ -665,9 +665,15 @@ export default function Ingresos() {
                       product_type: sug.product_type, finish: 'normal', grade: 'ungraded' }))
       setShowSug(false); setSuggestions([]); setCardSelected(true)
       setPreview({ imagen: sug.imagen, precio_usd: null, precio_source: null })
-      // precio de mercado del sellado: /card-price por "{set} {nombre}"
-      const q = `${(sug.set || '').replace(/^Pokemon\s+/i, '')} ${sug.nombre}`.trim()
-      const pc = await scannerApi.cardPrice(q, '', 'en', 'normal', 'ungraded', false)
+      // precio de mercado del sellado: /card-price por "{set} {nombre}".
+      // Limpiamos corchetes ([Pokemon Center], etc.) y "Pokemon " para que PC matchee mejor.
+      const nombreLimpio = (sug.nombre || '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
+      const setLimpio    = (sug.set || '').replace(/^Pokemon\s+/i, '').trim()
+      let pc = await scannerApi.cardPrice(`${setLimpio} ${nombreLimpio}`.trim(), '', 'en', 'normal', 'ungraded', false)
+      // Reintento sin el set si no hubo match (algunos sellados PC solo por nombre)
+      if (!pc?.price_usd && nombreLimpio) {
+        pc = await scannerApi.cardPrice(nombreLimpio, '', 'en', 'normal', 'ungraded', false)
+      }
       if (pc?.price_usd) {
         setPreview(prev => ({ ...prev, precio_usd: pc.price_usd, precio_source: 'pc' }))
         if (blue) { const m = margen ?? 0; setField('precioVenta', String(Math.round(pc.price_usd * blue * (1 + m / 100) / 500) * 500)) }
@@ -1201,6 +1207,20 @@ export default function Ingresos() {
     allSetCardsRef.current = []
   }
 
+  // Banner "seleccionado" con botón para cambiar (carta o sellado)
+  const selectedBanner = cardSelected ? (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200">
+      <span className="text-xs text-blue-700 font-medium truncate">
+        ✓ {form.nombre}{form.set ? ` · ${form.set}` : ''}{form.numero ? ` · #${form.numero}` : ''}
+      </span>
+      <button type="button" onClick={clearCard}
+        className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-800
+                   bg-white border border-blue-200 rounded-lg px-2.5 py-1 transition">
+        Cambiar
+      </button>
+    </div>
+  ) : null
+
   // ── Piezas reutilizables del formulario (mismas en CARTA/LINKS y SELLADO) ──
   // Se componen en distinto orden según el tab, sin duplicar la lógica.
   const nombreField = (
@@ -1395,37 +1415,31 @@ export default function Ingresos() {
               {form.tipo === 'sellado' ? (
                 /* ── SELLADO: layout original (sin cambios funcionales) ── */
                 <>
-                  {nombreField}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {setEditionField}
-                    {form.product_type && (
-                      <div>
-                        <label className={labelCls}>Categoría</label>
-                        <div className="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm font-medium border border-amber-200">
-                          {sealedLabel(form.product_type)}
-                        </div>
+                  {selectedBanner}
+                  {/* Búsqueda: solo mientras no haya un sellado seleccionado */}
+                  {!cardSelected && (
+                    <>
+                      {nombreField}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {setEditionField}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  )}
+                  {/* Categoría del sellado seleccionado */}
+                  {cardSelected && form.product_type && (
+                    <div>
+                      <label className={labelCls}>Categoría</label>
+                      <div className="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm font-medium border border-amber-200">
+                        {sealedLabel(form.product_type)}
+                      </div>
+                    </div>
+                  )}
                   {qtyCondRow}
                 </>
               ) : (
                 /* ── CARTA / LINKS: idioma → nombre+set → número → cantidad+cond → tipo+grado ── */
                 <>
-                  {/* Banner "carta seleccionada" con botón para cambiarla */}
-                  {cardSelected && (
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl
-                                    bg-blue-50 border border-blue-200">
-                      <span className="text-xs text-blue-700 font-medium truncate">
-                        ✓ {form.nombre}{form.set ? ` · ${form.set}` : ''}{form.numero ? ` · #${form.numero}` : ''}
-                      </span>
-                      <button type="button" onClick={clearCard}
-                        className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-800
-                                   bg-white border border-blue-200 rounded-lg px-2.5 py-1 transition">
-                        Cambiar carta
-                      </button>
-                    </div>
-                  )}
+                  {selectedBanner}
 
                   {/* Idioma — primer campo: acota el universo de búsqueda */}
                   <div>
