@@ -315,13 +315,24 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       updateRow(key, {
         sealed_product_id: card.sealed_product_id, product_type: card.product_type,
         card_id: null, card_name: card.name, set_name: card.set_name || '',
+        image_url: card.image_url || null,
         _market: { image_url: card.image_url }, price_usd: '', price_ars: '',
         price_market_usd: null, suggestions: [],
       })
       try {
-        const q = `${(card.set_name || '').replace(/^Pokemon\s+/i, '')} ${card.name}`.trim()
-        const res = await fetch(`${BACKEND}/card-price?${new URLSearchParams({ name: q, lang: 'en', grade: 'ungraded' })}`)
-        if (res.ok) { const j = await res.json(); if (j.price_usd) updateRow(key, { price_market_usd: j.price_usd }) }
+        const nombreLimpio = (card.name || '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
+        const q = `${(card.set_name || '').replace(/^Pokemon\s+/i, '')} ${nombreLimpio}`.trim()
+        let res = await fetch(`${BACKEND}/card-price?${new URLSearchParams({ name: q, lang: 'en', grade: 'ungraded' })}`)
+        let j = res.ok ? await res.json() : null
+        if (!j?.price_usd && nombreLimpio) {   // reintento solo por nombre
+          res = await fetch(`${BACKEND}/card-price?${new URLSearchParams({ name: nombreLimpio, lang: 'en', grade: 'ungraded' })}`)
+          j = res.ok ? await res.json() : null
+        }
+        if (j?.price_usd) updateRow(key, {
+          price_market_usd: j.price_usd,
+          price_usd: String(j.price_usd),
+          price_ars: blue ? String(Math.round(j.price_usd * blue)) : '',
+        })
       } catch (_) {}
       return
     }
@@ -339,9 +350,11 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       set_name:         card.set_name || '',
       set_id:           card.set_id   || null,
       card_number:      card.card_number || null,
+      image_url:        card.image_url || null,
       _market:          isStockCard ? null : card,
-      price_usd:        '',              // usuario ingresa el costo real
-      price_ars:        '',
+      // Pre-carga el costo con el precio de mercado (editable por el usuario)
+      price_usd:        marketUsd != null ? String(marketUsd) : '',
+      price_ars:        (marketUsd != null && blue) ? String(Math.round(marketUsd * blue)) : '',
       price_market_usd: marketUsd,
       is_first_edition: firstEd.detected,
       can_be_first_ed:  firstEd.possible,
@@ -362,7 +375,11 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
         if (res.ok) {
           const json = await res.json()
           if (json.price_usd) {
-            updateRow(key, { price_market_usd: json.price_usd })
+            updateRow(key, {
+              price_market_usd: json.price_usd,
+              price_usd: String(json.price_usd),
+              price_ars: blue ? String(Math.round(json.price_usd * blue)) : '',
+            })
           }
         }
       } catch (_) {}
@@ -591,6 +608,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                 <CardRow
                   key={row._key}
                   row={row}
+                  blue={blue}
                   isLast={rows.length === 1}
                   onChange={patch => updateRow(row._key, patch)}
                   onSearch={q => debouncedSearch(q, row._key, row.language)}
@@ -665,7 +683,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 ══════════════════════════════════════════════════════════════════════════ */
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
-function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreload, onGradeChange }) {
+function CardRow({ row, blue, isLast, onChange, onSearch, onSelect, onRemove, onPreload }) {
   const wrapRef    = useRef(null)
   const numTimer   = useRef(null)
   const [numInput,   setNumInput]   = useState(row.card_number || '')
@@ -708,29 +726,32 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
       if (row.tipo === 'sellado') {
         const sp = await upsertSealedFromUrl(url, result)
         if (sp) {
+          const _cost = result.price_buy_usd != null ? result.price_buy_usd : result.price_usd
           onChange({
             sealed_product_id: sp.id, product_type: sp.product_type,
             card_id: null, card_name: sp.name, set_name: sp.set_name || result.set_name || '',
+            image_url: sp.image_url || result.image_url || null,
             _market: { image_url: sp.image_url || result.image_url },
             price_market_usd: result.price_usd ?? row.price_market_usd,
-            price_usd: result.price_buy_usd != null ? String(result.price_buy_usd)
-                       : (result.price_usd != null ? String(result.price_usd) : row.price_usd),
+            price_usd: _cost != null ? String(_cost) : row.price_usd,
+            price_ars: (_cost != null && blue) ? String(Math.round(_cost * blue)) : row.price_ars,
             suggestions: [], _setCards: [],
           })
         }
         setPcUrl('')
         return
       }
+      const _cost = result.price_buy_usd != null ? result.price_buy_usd : result.price_usd
       onChange({
         card_name:        result.name        || row.card_name,
         set_name:         result.set_name    || row.set_name,
         set_id:           null,
         card_number:      result.card_number || row.card_number,
         language:         result.lang        || row.language,
+        image_url:        result.image_url   || row.image_url || null,
         price_market_usd: result.price_usd   ?? row.price_market_usd,
-        price_usd:        result.price_buy_usd != null
-                            ? String(result.price_buy_usd)
-                            : (result.price_usd != null ? String(result.price_usd) : row.price_usd),
+        price_usd:        _cost != null ? String(_cost) : row.price_usd,
+        price_ars:        (_cost != null && blue) ? String(Math.round(_cost * blue)) : row.price_ars,
         suggestions:      [],
         _setCards:        [],
       })
@@ -952,9 +973,12 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
       {/* ── Banner seleccionado ─────────────────────────────────────────── */}
       {selected && (
         <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
-          <span className="text-[11px] text-blue-700 font-medium truncate">
-            ✓ {row.card_name}{row.set_name ? ` · ${row.set_name}` : ''}{row.card_number ? ` · #${row.card_number}` : ''}
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <SuggestionThumb card={{ image_url: row.image_url || row._market?.image_url, name: row.card_name, card_number: row.card_number, language: row.language }} />
+            <span className="text-[11px] text-blue-700 font-medium truncate">
+              {row.card_name}{row.set_name ? ` · ${row.set_name}` : ''}{row.card_number ? ` · #${row.card_number}` : ''}
+            </span>
+          </div>
           <button type="button" onClick={clearRow}
             className="shrink-0 text-[11px] font-semibold text-blue-600 hover:text-blue-800 bg-white border border-blue-200 rounded px-2 py-0.5">
             Cambiar
@@ -1065,7 +1089,9 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
                     if (row.set_name)    params.set('set_name', row.set_name)
                     if (row.card_number) params.set('number', row.card_number)
                     fetch(`${BACKEND}/card-price?${params}`).then(r => r.ok ? r.json() : null)
-                      .then(j => onChange({ price_market_usd: j?.price_usd ?? null })).catch(() => {})
+                      .then(j => onChange(j?.price_usd != null
+                        ? { price_market_usd: j.price_usd, price_usd: String(j.price_usd), price_ars: blue ? String(Math.round(j.price_usd * blue)) : '' }
+                        : { price_market_usd: null })).catch(() => {})
                   }
                 }}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition
