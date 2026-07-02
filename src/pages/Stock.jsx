@@ -27,6 +27,7 @@ import { useMarketKpiBatch } from '../hooks/useMarketKpi'
 import InlineTags    from '../components/ui/InlineTags'
 import FinishBadge   from '../components/ui/FinishBadge'
 import FinishSelect  from '../components/ui/FinishSelect'
+import ArtistCombobox from '../components/ui/ArtistCombobox'
 
 const fmtUSD = (n) => n != null ? `$${Number(n).toFixed(2)}` : '—'
 
@@ -816,6 +817,12 @@ export default function Stock() {
             </select>
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
           </div>
+
+          {/* Filtro por artista */}
+          <ArtistCombobox
+            value={filters.artist || ''}
+            onChange={(name) => set('artist', name)}
+          />
 
           {/* ── Controles KPI (solo plan pro) ── */}
           {FEATURES.marketIntel && (<>

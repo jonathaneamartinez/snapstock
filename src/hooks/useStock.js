@@ -36,7 +36,7 @@ const KPI_FILTER_STATES = {
 }
 
 export function useStock(filters = {}) {
-  const { estado, busqueda, idioma, condicion, page = 0, sortCol, sortDir = 'asc',
+  const { estado, busqueda, idioma, condicion, artist, page = 0, sortCol, sortDir = 'asc',
           kpiFilter = null } = filters
 
   return useQuery({
@@ -49,7 +49,7 @@ export function useStock(filters = {}) {
       const kpiStates       = kpiFilter ? (KPI_FILTER_STATES[kpiFilter] || null) : null
       const kpiConDatos     = kpiFilter === 'con_datos'
       const kpiActive       = !!(kpiStates || kpiConDatos)   // 'sin_datos' no soportado server-side
-      const needsCardFilter = !!(busqueda || idioma || sortDef0?.foreignTable || kpiActive)
+      const needsCardFilter = !!(busqueda || idioma || artist || sortDef0?.foreignTable || kpiActive)
       const cardJoin        = needsCardFilter ? 'cards!inner' : 'cards'
       // Embed de la señal dentro de cards (solo cuando se filtra por KPI)
       const kpiEmbed        = kpiActive ? ', market_signals_latest!inner(kpi_state)' : ''
@@ -71,6 +71,9 @@ export function useStock(filters = {}) {
             `language.eq.${l}`
           q = q.or(variants, { referencedTable: 'cards' })
         }
+
+        // Filtro por artista — server-side sobre cards (embed !inner)
+        if (artist) q = q.eq('cards.artist', artist)
 
         // Búsqueda de texto — server-side sobre cards (todas las páginas)
         if (busqueda) {
