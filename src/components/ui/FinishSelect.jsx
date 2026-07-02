@@ -13,7 +13,9 @@ import { FINISH_OPTIONS } from '../../constants'
 export default function FinishSelect({ value = 'normal', onChange, className = '', size = 'md', disabled = false }) {
   const sizeCls = size === 'sm'
     ? 'pl-2 pr-6 py-1 text-xs'
-    : 'pl-3 pr-7 py-2 text-sm'
+    : size === 'row'
+      ? 'pl-2 pr-7 py-1.5 text-xs'   // igual alto que inputs/selects de al lado
+      : 'pl-3 pr-7 py-2 text-sm'
 
   return (
     <div className={`relative inline-block ${className}`}>

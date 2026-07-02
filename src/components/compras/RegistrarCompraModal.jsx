@@ -1093,7 +1093,7 @@ function CardRow({ row, blue, isLast, onChange, onSearch, onSelect, onRemove, on
             <>
               <div>
                 <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Tipo</span>
-                <FinishSelect value={row.finish || 'normal'} onChange={v => onChange({ finish: v })} size="sm" className="w-full" />
+                <FinishSelect value={row.finish || 'normal'} onChange={v => onChange({ finish: v })} size="row" className="w-full" />
               </div>
               <div>
                 <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Cond.</span>
