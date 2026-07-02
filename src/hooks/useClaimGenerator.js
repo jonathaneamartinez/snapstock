@@ -377,9 +377,11 @@ export function useClaimGenerator() {
       // (se reutilizan en claims futuros)
       setImages(result)
       setProgress(100)
+      return result
     } catch (err) {
       setError(err.message || 'Error generando imágenes')
       console.error('[useClaimGenerator]', err)
+      return []
     } finally {
       setGenerating(false)
     }

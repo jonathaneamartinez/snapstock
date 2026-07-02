@@ -17,6 +17,16 @@ import { sealedLabel } from '../lib/sealedSearch'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 
+/* dataURL (base64) → Blob, para subir a Storage */
+function dataUrlToBlob(dataUrl) {
+  const [head, base64] = dataUrl.split(',')
+  const mime = (head.match(/:(.*?);/) || [])[1] || 'image/png'
+  const bin  = atob(base64)
+  const arr  = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new Blob([arr], { type: mime })
+}
+
 function ClaimAddThumb({ row }) {
   const [imgSrc, onImgError] = useCardImage(row.cards?.image_url, { name: row.cards?.name, number: row.cards?.card_number, lang: row.cards?.language })
   return imgSrc
@@ -269,7 +279,20 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   const [selected,    setSelected]    = useState(new Set())
   const [sellError,   setSellError]   = useState(null)
   const [tab,         setTab]         = useState('todas')   // 'todas' | 'sobrantes'
+  const [savedLeftoverUrls, setSavedLeftoverUrls] = useState([])   // imágenes de sobrantes guardadas
   const gen = useClaimGenerator()
+
+  // Trae las imágenes de sobrantes guardadas (aparte del select principal, así
+  // no rompe la lista de claims si la columna aún no existe en la base).
+  useEffect(() => {
+    if (!claimId) return
+    let cancelled = false
+    supabase.from('claims').select('leftover_image_urls').eq('id', claimId).maybeSingle()
+      .then(({ data, error }) => {
+        if (!cancelled && !error && data?.leftover_image_urls) setSavedLeftoverUrls(data.leftover_image_urls)
+      })
+    return () => { cancelled = true }
+  }, [claimId])
 
   /* ── Cantidad + estado por carta (para venta/reserva parcial y color) ──── */
   const [availQty,  setAvailQty]  = useState({})   // inventory_id → cantidad en stock
@@ -487,14 +510,30 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   const totalARS  = visibleCards.reduce((s, c) => s + (c.sale ?? c.ars ?? 0), 0)   // suma del precio de venta
   const totalUSD  = visibleCards.reduce((s, c) => s + (c.usd  ?? 0), 0)
 
-  // Cartas sobrantes en formato del generador de imágenes
-  const genLeftovers = () => gen.generate({
-    cards: leftovers.map(c => ({
-      card_id: c.id, image_url: c.img, nombre: c.name, numero: c.num,
-      set_name: c.set, sale_price_ars: c.sale ?? c.ars, condicion: c.cond,
-    })),
-    style: 'A', dark: false, showPrice: true, title: 'Sobrantes del claim',
-  })
+  // Genera la imagen de sobrantes, la SUBE a Storage y guarda las URLs en el claim
+  const genLeftovers = async () => {
+    const imgs = await gen.generate({
+      cards: leftovers.map(c => ({
+        card_id: c.id, image_url: c.img, nombre: c.name, numero: c.num,
+        set_name: c.set, sale_price_ars: c.sale ?? c.ars, condicion: c.cond,
+      })),
+      style: 'A', dark: false, showPrice: true, title: 'Sobrantes del claim',
+    })
+    if (!imgs?.length || !claimId) return
+    const urls = []
+    for (let i = 0; i < imgs.length; i++) {
+      try {
+        const blob = dataUrlToBlob(imgs[i].dataUrl)
+        const path = `${STORE_ID}/${claimId}/sobrantes_${String(i + 1).padStart(2, '0')}.png`
+        const { error } = await supabase.storage.from('claims').upload(path, blob, { contentType: 'image/png', upsert: true })
+        if (!error) { const { data: { publicUrl } } = supabase.storage.from('claims').getPublicUrl(path); urls.push(publicUrl) }
+      } catch (_) {}
+    }
+    if (urls.length) {
+      const { error } = await supabase.from('claims').update({ leftover_image_urls: urls }).eq('id', claimId)
+      if (!error) setSavedLeftoverUrls(urls)   // si la columna no existe aún, igual quedó la descarga
+    }
+  }
 
   return (
     <div>
@@ -525,17 +564,25 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
             </button>
           </div>
           {gen.error && <p className="text-[11px] text-red-600 mt-2">{gen.error}</p>}
-          {gen.images.length > 0 && (
-            <div className="flex flex-wrap gap-3 mt-3">
-              {gen.images.map((im, i) => (
-                <div key={i} className="flex flex-col items-center gap-1">
-                  <img src={im.dataUrl} alt={im.label} className="w-40 rounded-lg border border-amber-200 shadow-sm" />
-                  <a href={im.dataUrl} download={`sobrantes-${i + 1}.png`}
-                    className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">⬇ Descargar</a>
+          {(() => {
+            const srcs = gen.images.length > 0 ? gen.images.map(im => im.dataUrl) : (savedLeftoverUrls || [])
+            if (!srcs.length) return null
+            const persisted = gen.images.length === 0
+            return (
+              <div className="mt-3">
+                {persisted && <p className="text-[11px] text-amber-700 font-semibold mb-1">✓ Guardada en el claim</p>}
+                <div className="flex flex-wrap gap-3">
+                  {srcs.map((src, i) => (
+                    <div key={i} className="flex flex-col items-center gap-1">
+                      <img src={src} alt="" className="w-40 rounded-lg border border-amber-200 shadow-sm" />
+                      <a href={src} download={`sobrantes-${i + 1}.png`} target="_blank" rel="noreferrer"
+                        className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">⬇ Descargar</a>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )
+          })()}
         </div>
       )}
 
