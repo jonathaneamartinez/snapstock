@@ -63,6 +63,8 @@ function useArtistCards(artistName) {
 
 function ArtistDetail({ artistName, onBack }) {
   const { data: cards = [], isLoading } = useArtistCards(artistName)
+  const [visible, setVisible] = useState(48)   // render progresivo (evita 500 de golpe)
+  const shown = cards.slice(0, visible)
   return (
     <div>
       <button onClick={onBack}
@@ -76,24 +78,34 @@ function ArtistDetail({ artistName, onBack }) {
       {isLoading ? (
         <div className="flex justify-center py-16"><Spinner size={26} className="text-violet-400" /></div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {cards.map(c => (
-            <div key={c.id} className="flex flex-col rounded-2xl overflow-hidden border border-gray-100 bg-white shadow-sm">
-              <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden">
-                <img src={c.image_url || CARD_BACK} alt={c.name} loading="lazy"
-                  onError={e => { e.currentTarget.src = CARD_BACK }}
-                  className="w-full h-full object-contain" />
-              </div>
-              <div className="p-2 flex flex-col gap-0.5">
-                <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{c.name}</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] text-gray-400 truncate">{c.set_name}</p>
-                  {c.card_number && <span className="text-[9px] text-gray-300 shrink-0">#{c.card_number}</span>}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {shown.map(c => (
+              <div key={c.id} className="flex flex-col rounded-2xl overflow-hidden border border-gray-100 bg-white shadow-sm">
+                <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden">
+                  <img src={c.image_url || CARD_BACK} alt={c.name} loading="lazy"
+                    onError={e => { e.currentTarget.src = CARD_BACK }}
+                    className="w-full h-full object-contain" />
+                </div>
+                <div className="p-2 flex flex-col gap-0.5">
+                  <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{c.name}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-gray-400 truncate">{c.set_name}</p>
+                    {c.card_number && <span className="text-[9px] text-gray-300 shrink-0">#{c.card_number}</span>}
+                  </div>
                 </div>
               </div>
+            ))}
+          </div>
+          {visible < cards.length && (
+            <div className="flex justify-center mt-4">
+              <button onClick={() => setVisible(v => v + 48)}
+                className="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-500 transition">
+                Ver más ({cards.length - visible})
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   )
