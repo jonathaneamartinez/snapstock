@@ -1,13 +1,43 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { ChevronLeft, Search } from 'lucide-react'
 import { useArtists } from '../../hooks/useArtists'
 import { supabase } from '../../lib/supabase'
 import { STORE_ID } from '../../constants'
+import { scannerApi } from '../../lib/scanner'
+import { fetchCardImages } from '../../lib/pokemonTcg'
 import Spinner from '../ui/Spinner'
 import { useQuery } from '@tanstack/react-query'
 
 const CARD_BACK = 'https://images.pokemontcg.io/back.png'
 const LANG_FLAG = { en: '🇬🇧', jp: '🇯🇵', cn: '🇨🇳' }
+const _normLang = (l) => { const s = (l || '').toLowerCase(); return ['ja','jp'].includes(s) ? 'jp' : ['zh','cn'].includes(s) ? 'cn' : 'en' }
+
+/* Imagen que se auto-repara: si la URL guardada falla (R2 rota, etc.), resuelve
+   por pokemontcg.io (EN) / scanner (JP/CN) y persiste la buena en la base
+   (misma idea que CardImage del Stock → se cura en todos lados con el tiempo). */
+function HealImg({ card, className }) {
+  const [src, setSrc] = useState(card.image_url || CARD_BACK)
+  const tried = useRef(false)
+  const heal = async () => {
+    if (tried.current) { setSrc(CARD_BACK); return }
+    tried.current = true
+    const lang = _normLang(card.language)
+    let url = null
+    if (lang === 'en') {
+      try { const im = await fetchCardImages(card.name, card.card_number, card.set_name); url = im?.large || im?.small } catch {}
+      if (!url) { try { const r = await scannerApi.cardImageUrl(card.name, card.card_number, 'en'); url = r?.url } catch {} }
+    } else {
+      try { const r = await scannerApi.cardImageUrl(card.name, card.card_number, lang); url = r?.url } catch {}
+    }
+    if (url) {
+      setSrc(url)
+      if (card.id) supabase.from('cards').update({ image_url: url }).eq('id', card.id).then(() => {}, () => {})
+    } else {
+      setSrc(CARD_BACK)
+    }
+  }
+  return <img src={src} alt={card.name} loading="lazy" onError={heal} className={className} />
+}
 
 /* ── Card de artista (listado, nombre protagonista) ─────────────────── */
 function ArtistCard({ artist, onClick }) {
@@ -83,9 +113,7 @@ function ArtistDetail({ artistName, onBack }) {
             {shown.map(c => (
               <div key={c.id} className="flex flex-col rounded-2xl overflow-hidden border border-gray-100 bg-white shadow-sm">
                 <div className="aspect-[2.5/3.5] bg-gray-50 overflow-hidden">
-                  <img src={c.image_url || CARD_BACK} alt={c.name} loading="lazy"
-                    onError={e => { e.currentTarget.src = CARD_BACK }}
-                    className="w-full h-full object-contain" />
+                  <HealImg card={c} className="w-full h-full object-contain" />
                 </div>
                 <div className="p-2 flex flex-col gap-0.5">
                   <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{c.name}</p>
