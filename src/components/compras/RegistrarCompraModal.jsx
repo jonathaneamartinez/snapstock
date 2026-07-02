@@ -39,6 +39,44 @@ const normLang = (idioma) => {
   return 'en'
 }
 
+/* Panel de imagen a la derecha (como en Nuevos Ingresos) — muestra la carta/
+   sellado de la fila activa. */
+function PreviewPanel({ row }) {
+  const selected = !!(row && (row.card_id || row._market || row.sealed_product_id))
+  const [src] = useCardImage(
+    row?.image_url || row?._market?.image_url || null,
+    { name: row?.card_name, number: row?.card_number, lang: row?.language }
+  )
+  return (
+    <div className="hidden lg:flex w-72 shrink-0 border-l border-gray-100 bg-gray-50 flex-col items-center justify-start p-6 gap-3">
+      {selected ? (
+        <>
+          <div className="relative">
+            <img src={src || CARD_BACK_URL} alt={row.card_name}
+              onError={e => { e.currentTarget.src = CARD_BACK_URL }}
+              className="w-52 rounded-2xl shadow-xl object-contain" draggable={false} />
+            <div className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">✓</div>
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-semibold text-gray-800 leading-tight">{row.card_name}</p>
+            {row.set_name && <p className="text-xs text-gray-400 mt-0.5">{row.set_name}</p>}
+            {row.card_number && <p className="text-xs text-gray-400">#{row.card_number}</p>}
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-48 h-64 bg-white border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-center">
+            <div>
+              <img src={CARD_BACK_URL} alt="" className="w-12 opacity-30 mx-auto mb-2" />
+              <p className="text-xs text-gray-300 px-4">La imagen aparece al seleccionar la carta</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ─── Formatters ─────────────────────────────────────────────────────────── */
 const fmtARS = (n) =>
   n != null && n !== '' ? `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'
@@ -176,6 +214,11 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   const [saving,    setSaving]    = useState(false)
   const [errors,    setErrors]    = useState({})
   const [showConfirm, setShowConfirm] = useState(false)
+  const [activeKey, setActiveKey] = useState(null)   // fila cuya imagen se muestra a la derecha
+
+  const activeRow = rows.find(r => r._key === activeKey)
+    || rows.find(r => r.card_id || r._market || r.sealed_product_id)
+    || null
 
   const totalUSD = rows.reduce((s, r) => s + (parseFloat(r.price_usd) || 0) * (r.quantity || 1), 0)
   const totalARS = rows.reduce((s, r) => s + (parseFloat(r.price_ars) || 0) * (r.quantity || 1), 0)
@@ -310,6 +353,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
     setRows(prev => [...prev, emptyRow()])
 
   const selectCard = async (key, card, language = 'en', grade = 'ungraded') => {
+    setActiveKey(key)   // muestra su imagen en el panel derecho
     // SELLADO: referenciar sealed_products, sin card_id.
     if (card.source === 'sealed') {
       updateRow(key, {
@@ -533,7 +577,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
   /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
@@ -541,7 +585,8 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
         </div>
 
-        {/* Body */}
+        {/* Body + panel imagen */}
+        <div className="flex-1 overflow-hidden flex">
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
           {/* Encabezado */}
@@ -615,6 +660,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
                   onSelect={(card, lang, grade) => selectCard(row._key, card, lang ?? row.language, grade ?? row.grade)}
                   onRemove={() => removeRow(row._key)}
                   onPreload={(setId, lang) => preloadSetCards(setId, lang, row._key)}
+                  onActivate={() => setActiveKey(row._key)}
                 />
               ))}
             </div>
@@ -641,6 +687,8 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
           {errors.submit && (
             <p className="text-red-500 text-sm bg-red-50 rounded-xl px-4 py-3">{errors.submit}</p>
           )}
+        </div>
+          <PreviewPanel row={activeRow} />
         </div>
 
         {/* Footer */}
@@ -683,7 +731,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
 ══════════════════════════════════════════════════════════════════════════ */
 const IDIOMA_FLAG = { en: '🇬🇧', es: '🇪🇸', ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷' }
 
-function CardRow({ row, blue, isLast, onChange, onSearch, onSelect, onRemove, onPreload }) {
+function CardRow({ row, blue, isLast, onChange, onSearch, onSelect, onRemove, onPreload, onActivate }) {
   const wrapRef    = useRef(null)
   const numTimer   = useRef(null)
   const [numInput,   setNumInput]   = useState(row.card_number || '')
@@ -717,6 +765,7 @@ function CardRow({ row, blue, isLast, onChange, onSearch, onSelect, onRemove, on
 
   const handlePcUrl = async (url) => {
     setPcUrl(url)
+    onActivate?.()
     if (!url.includes('pricecharting.com/game/')) return
     setPcLoading(true)
     try {
@@ -794,6 +843,7 @@ function CardRow({ row, blue, isLast, onChange, onSearch, onSelect, onRemove, on
 
   // ── Al hacer focus en nombre con set ya elegido → cargas instantáneas ───
   const handleNameFocus = async () => {
+    onActivate?.()
     if (row.card_id) return
     // Preloaded → mostrar al instante (0ms)
     if (row._setCards?.length > 0) {
