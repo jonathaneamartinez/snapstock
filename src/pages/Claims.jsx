@@ -833,6 +833,10 @@ function ClaimRow({ claim, selected = false, onToggle = () => {} }) {
   const addTimerRef  = useRef(null)
 
   // Enriquecer precios PC cuando se expande el claim
+  // Firma del estado resuelto de las cartas: cuando cambia (tras vender/reservar/
+  // volver al stock), re-ejecuta el enriquecido para que la tabla y el tab
+  // Sobrantes vean el estado fresco (antes quedaba cacheado y no se actualizaba).
+  const resolvedSig = (claim.cards_data ?? []).map(c => `${c.inventory_id ?? ''}:${c.resolved ?? ''}`).join('|')
   useEffect(() => {
     if (!expanded) return
     const cards = claim.cards_data ?? []
@@ -842,7 +846,7 @@ function ClaimRow({ claim, selected = false, onToggle = () => {} }) {
     enrichClaimCardsWithPC(cards)
       .then(setEnrichedCards)
       .finally(() => setEnriching(false))
-  }, [expanded, claim.id])
+  }, [expanded, claim.id, resolvedSig])
 
   const hasImages = claim.image_urls?.length > 0
   const hasCards  = claim.cards_data?.length > 0
