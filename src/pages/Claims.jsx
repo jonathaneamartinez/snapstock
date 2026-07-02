@@ -280,6 +280,7 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
   const [sellError,   setSellError]   = useState(null)
   const [tab,         setTab]         = useState('todas')   // 'todas' | 'sobrantes'
   const [savedLeftoverUrls, setSavedLeftoverUrls] = useState([])   // imágenes de sobrantes guardadas
+  const [fullImg,     setFullImg]     = useState(null)      // imagen ampliada (lupa)
   const gen = useClaimGenerator()
 
   // Trae las imágenes de sobrantes guardadas (aparte del select principal, así
@@ -574,7 +575,13 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
                 <div className="flex flex-wrap gap-3">
                   {srcs.map((src, i) => (
                     <div key={i} className="flex flex-col items-center gap-1">
-                      <img src={src} alt="" className="w-40 rounded-lg border border-amber-200 shadow-sm" />
+                      <button type="button" onClick={() => setFullImg(src)}
+                        className="relative group rounded-lg overflow-hidden border-2 border-transparent hover:border-amber-400 transition">
+                        <img src={src} alt="" className="w-40 rounded-lg border border-amber-200 shadow-sm" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition">
+                          <span className="opacity-0 group-hover:opacity-100 text-white text-2xl">🔍</span>
+                        </div>
+                      </button>
                       <a href={src} download={`sobrantes-${i + 1}.png`} target="_blank" rel="noreferrer"
                         className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">⬇ Descargar</a>
                     </div>
@@ -808,6 +815,8 @@ function CardTable({ cards, claimId, onRemove, editMode }) {
           />
         )}
       </AnimatePresence>
+
+      {fullImg && <ImagenFullscreen src={fullImg} onClose={() => setFullImg(null)} />}
     </div>
   )
 }
