@@ -338,6 +338,7 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
       card_name:        card.name,
       set_name:         card.set_name || '',
       set_id:           card.set_id   || null,
+      card_number:      card.card_number || null,
       _market:          isStockCard ? null : card,
       price_usd:        '',              // usuario ingresa el costo real
       price_ars:        '',
@@ -586,15 +587,6 @@ export default function RegistrarCompraModal({ onClose, onDone }) {
             {errors.rows && <p className="text-red-500 text-xs mb-2">{errors.rows}</p>}
 
             <div className="border border-gray-200 rounded-xl overflow-visible divide-y divide-gray-100">
-              {/* Encabezados de columnas */}
-              <div className="grid grid-cols-[2fr_72px_64px_88px_88px_28px] gap-2 px-3 py-1.5 bg-gray-50 rounded-t-xl">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Carta</span>
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Cond.</span>
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-center">Cant.</span>
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">USD</span>
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">ARS</span>
-                <span />
-              </div>
               {rows.map((row) => (
                 <CardRow
                   key={row._key}
@@ -679,6 +671,31 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
   const [numInput,   setNumInput]   = useState(row.card_number || '')
   const [pcUrl,      setPcUrl]      = useState('')
   const [pcLoading,  setPcLoading]  = useState(false)
+  const [tab,        setTab]        = useState(row.tipo === 'sellado' ? 'sellado' : 'carta') // carta|numero|links|sellado
+
+  const numMode  = tab === 'numero'
+  const linkMode = tab === 'links'
+  const isSealed = tab === 'sellado'
+  const selected = !!(row.card_id || row._market || row.sealed_product_id)
+
+  const _numNorm = (s) => { const l = (s || '').trim().split('/')[0]; return /^\d+$/.test(l) ? String(parseInt(l, 10)) : l.toLowerCase() }
+
+  const _resetFields = {
+    tipo: 'carta', card_id: null, sealed_product_id: null, product_type: null,
+    card_name: '', set_name: '', set_id: null, card_number: '', _market: null,
+    price_market_usd: null, price_usd: '', price_ars: '', is_first_edition: false,
+    can_be_first_ed: false, suggestions: [], _setCards: [],
+  }
+  const switchTab = (t) => {
+    if (t === tab) return
+    setTab(t)
+    onChange({ ..._resetFields, tipo: t === 'sellado' ? 'sellado' : 'carta' })
+    setNumInput(''); setPcUrl('')
+  }
+  const clearRow = () => {
+    onChange({ ..._resetFields, tipo: row.tipo })
+    setNumInput(''); setPcUrl('')
+  }
 
   const handlePcUrl = async (url) => {
     setPcUrl(url)
@@ -734,16 +751,23 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
     return () => document.removeEventListener('mousedown', close)
   }, [])
 
-  // ── Cuando se escribe un número con set seleccionado → buscar esa carta ──
+  // ── Nº con set seleccionado → resuelve la carta (cache del set → EN pokemontcg) ──
   const handleNumberChange = (val) => {
     setNumInput(val)
+    onChange({ card_number: val })
     if (!row.set_id || !val.trim()) return
     clearTimeout(numTimer.current)
     numTimer.current = setTimeout(async () => {
-      onChange({ searching: true })
-      const card = await fetchCardBySetAndNumber(row.set_id, val.trim())
-      onChange({ searching: false })
-      if (card) onSelect(card)
+      const target = _numNorm(val)
+      // 1) buscar en el caché del set (sirve EN/JP/CN si está precargado)
+      let hit = (row._setCards || []).find(c => _numNorm(c.card_number) === target)
+      // 2) fallback EN: pokemontcg por set + número
+      if (!hit && normLang(row.language) === 'en') {
+        onChange({ searching: true })
+        hit = await fetchCardBySetAndNumber(row.set_id, val.trim())
+        onChange({ searching: false })
+      }
+      if (hit) onSelect(hit, row.language, row.grade)
     }, 400)
   }
 
@@ -805,274 +829,269 @@ function CardRow({ row, isLast, onChange, onSearch, onSelect, onRemove, onPreloa
     }
   }
 
-  const isSealed = row.tipo === 'sellado'
-  const setTipo = (t) => {
-    if (t === row.tipo) return
-    onChange({
-      tipo: t, card_id: null, sealed_product_id: null, product_type: null,
-      card_name: '', set_name: '', set_id: null, card_number: '', _market: null,
-      price_market_usd: null, suggestions: [], _setCards: [],
-    })
-    setNumInput('')
-  }
+  // ── Piezas de identidad (se componen según el tab) ──────────────────────
+  const nombreField = (
+    <div ref={wrapRef} className="relative">
+      <div className="flex items-center gap-1.5">
+        {row.card_id && <span className="text-emerald-500 text-xs shrink-0">✓</span>}
+        <input
+          type="text" value={row.card_name}
+          onFocus={handleNameFocus}
+          onChange={e => handleNameChange(e.target.value)}
+          placeholder={isSealed ? 'Buscar sellado (ETB, Box, Bundle…)' : (row.set_id ? 'Buscar en el set…' : 'Buscar carta…')}
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-200"
+        />
+        {row.searching && <Spinner size={12} className="text-gray-400 shrink-0" />}
+      </div>
+      {row.suggestions.length > 0 && (
+        <div className="absolute top-full left-0 z-[70] mt-1 bg-white border border-gray-200
+                        rounded-xl shadow-xl max-h-64 overflow-y-auto"
+             style={{ minWidth: '260px', width: 'max-content', maxWidth: '420px' }}>
+          {row.suggestions.map((card, idx) => {
+            const fe = detectFirstEdition(card)
+            return (
+              <button key={`${card.id || card.name}|${idx}`}
+                onClick={() => { onSelect(card, row.language, row.grade); onChange({ suggestions: [] }) }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
+                <SuggestionThumb card={card} />
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
+                  <span className="block text-gray-400 leading-tight truncate">
+                    {[card.set_name, card.card_number ? `#${card.card_number}` : null].filter(Boolean).join(' · ')}
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {card.price_usd && (
+                      <span className={`font-bold text-[10px] ${card.source_price === 'pc' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                        U$D {parseFloat(card.price_usd).toFixed(2)}
+                      </span>
+                    )}
+                    {card.source_price === 'pc' && (
+                      <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">PC</span>
+                    )}
+                    {fe.possible && (
+                      <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-semibold">
+                        {fe.detected ? '★ 1ª Ed' : '1ª Ed posible'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0
+                  ${card.source === 'sealed' ? 'bg-purple-100 text-purple-600'
+                    : card.source === 'stock' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
+                  {card.source === 'sealed' ? sealedLabel(card.product_type)
+                    : card.card_number ? `#${card.card_number}` : (card.source === 'stock' ? 'stock' : 'tcg')}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+
+  const setField = (
+    <SetSelect
+      value={row.set_name} setId={row.set_id} lang={row.language}
+      onChange={patch => {
+        onChange({ ...patch, _setCards: [], suggestions: [] })
+        if (patch.set_id) onPreload(patch.set_id, row.language)
+      }}
+      className="w-full" size="sm"
+    />
+  )
+
+  const numeroField = (
+    <input
+      type="text" value={numInput}
+      onChange={e => handleNumberChange(e.target.value)}
+      placeholder={row.set_id ? '151/159, GG13…' : (numMode ? 'Elegí el set primero' : '—')}
+      disabled={!row.set_id}
+      className="w-full border border-gray-100 bg-gray-50 rounded-lg px-2 py-1.5 text-xs text-center
+                 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition
+                 disabled:opacity-40 disabled:cursor-not-allowed"
+    />
+  )
+
+  const langField = (
+    <select value={row.language}
+      onChange={e => { const nl = e.target.value; onChange({ language: nl, _setCards: [], suggestions: [] }); if (row.set_id) onPreload(row.set_id, nl) }}
+      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
+                 focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer">
+      {IDIOMAS.map(i => <option key={i.code} value={i.code}>{IDIOMA_FLAG[i.code]} {i.label}</option>)}
+    </select>
+  )
 
   return (
     <div className="px-3 py-2.5 space-y-2">
 
-      {/* ── Toggle Carta / Sellado ──────────────────────────────────────── */}
-      <div className="inline-flex rounded-lg bg-gray-100 p-0.5 text-[11px] font-semibold">
-        {[['carta', '🃏 Carta'], ['sellado', '📦 Sellado']].map(([t, lbl]) => (
-          <button key={t} type="button" onClick={() => setTipo(t)}
-            className={`px-3 py-1 rounded-md transition ${
-              (row.tipo || 'carta') === t ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+      {/* ── Tabs CARTA / NÚMERO / LINKS / SELLADO ───────────────────────── */}
+      <div className="flex items-center gap-1.5">
+        {[['carta', '🃏 Carta'], ['numero', '🔢 N°'], ['links', '🔗 Links'], ['sellado', '📦 Sellado']].map(([tt, lbl]) => (
+          <button key={tt} type="button" onClick={() => switchTab(tt)}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition
+              ${tab === tt ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
             {lbl}
           </button>
         ))}
+        <button onClick={onRemove} disabled={isLast} title="Quitar fila"
+          className="ml-auto text-gray-300 hover:text-red-400 transition disabled:opacity-20 text-base leading-none px-1">✕</button>
       </div>
 
-      {/* ── PC URL ──────────────────────────────────────────────────────── */}
-      <div className="relative">
-        <input
-          value={pcUrl}
-          onChange={e => handlePcUrl(e.target.value)}
-          placeholder="Pegá URL de PriceCharting para autocompletar…"
-          className="w-full border border-gray-100 bg-gray-50 rounded-lg px-2.5 py-1.5 text-[11px] text-gray-500
-                     focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition pr-7"
-        />
-        {pcLoading && (
-          <div className="absolute right-2.5 top-2">
-            <div className="w-3.5 h-3.5 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
-      </div>
-
-      {/* ── Fila 1: Carta | Cond | Qty | USD | ARS | × ─────────────────── */}
-      <div className="grid grid-cols-[2fr_72px_64px_88px_88px_28px] gap-2 items-center">
-
-        {/* Carta con autocomplete */}
-        <div ref={wrapRef} className="relative">
-          <div className="flex items-center gap-1.5">
-            {row.card_id && <span className="text-emerald-500 text-xs shrink-0">✓</span>}
-            <input
-              type="text" value={row.card_name}
-              onFocus={handleNameFocus}
-              onChange={e => handleNameChange(e.target.value)}
-              placeholder={isSealed ? 'Buscar sellado (ETB, Box, Bundle…)' : (row.set_id ? 'Buscar en el set…' : 'Buscar carta…')}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white
-                         focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
-            {row.searching && <Spinner size={12} className="text-gray-400 shrink-0" />}
-          </div>
-
-          {row.suggestions.length > 0 && (
-            <div className="absolute top-full left-0 z-[70] mt-1 bg-white border border-gray-200
-                            rounded-xl shadow-xl max-h-64 overflow-y-auto"
-                 style={{ minWidth: '260px', width: 'max-content', maxWidth: '420px' }}>
-              {row.suggestions.map((card, idx) => {
-                const fe = detectFirstEdition(card)
-                return (
-                  <button key={`${card.id || card.name}|${idx}`}
-                    onClick={() => { onSelect(card, row.language, row.grade); onChange({ suggestions: [] }) }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50 transition">
-                    <SuggestionThumb card={card} />
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium text-gray-800 leading-tight line-clamp-1">{card.name}</span>
-                      <span className="block text-gray-400 leading-tight truncate">
-                        {[card.set_name, card.card_number ? `#${card.card_number}` : null].filter(Boolean).join(' · ')}
-                      </span>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {card.price_usd && (
-                          <span className={`font-bold text-[10px] ${card.source_price === 'pc' ? 'text-emerald-600' : 'text-blue-600'}`}>
-                            U$D {parseFloat(card.price_usd).toFixed(2)}
-                          </span>
-                        )}
-                        {card.source_price === 'pc' && (
-                          <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">PC</span>
-                        )}
-                        {fe.possible && (
-                          <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-semibold">
-                            {fe.detected ? '★ 1ª Ed' : '1ª Ed posible'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0
-                      ${card.source === 'sealed' ? 'bg-purple-100 text-purple-600'
-                        : card.source === 'stock' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
-                      {card.source === 'sealed' ? sealedLabel(card.product_type)
-                        : card.card_number ? `#${card.card_number}` : (card.source === 'stock' ? 'stock' : 'tcg')}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+      {/* ── PC URL — LINKS y SELLADO ────────────────────────────────────── */}
+      {(linkMode || isSealed) && (
+        <div className="relative">
+          <input value={pcUrl} onChange={e => handlePcUrl(e.target.value)}
+            placeholder="Pegá URL de PriceCharting para autocompletar…"
+            className="w-full border border-gray-100 bg-gray-50 rounded-lg px-2.5 py-1.5 text-[11px] text-gray-500
+                       focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition pr-7" />
+          {pcLoading && <div className="absolute right-2.5 top-2"><div className="w-3.5 h-3.5 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" /></div>}
         </div>
-
-        {isSealed ? (
-          <div className="col-span-2 text-[11px] font-semibold text-purple-600 self-center truncate pl-0.5">
-            {row.product_type ? sealedLabel(row.product_type) : '📦 Sellado'}
-          </div>
-        ) : (
-          <>
-            {/* Finish / Variante */}
-            <FinishSelect
-              value={row.finish || 'normal'}
-              onChange={v => onChange({ finish: v })}
-              size="sm"
-            />
-
-            {/* Condición */}
-            <select value={row.condition} onChange={e => onChange({ condition: e.target.value })}
-              className="border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs bg-white
-                         focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer">
-              {CONDICIONES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </>
-        )}
-
-        {/* Cantidad */}
-        <input type="number" min="1" value={row.quantity}
-          onChange={e => onChange({ quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-center
-                     focus:outline-none focus:ring-2 focus:ring-blue-200" />
-
-        {/* USD */}
-        <input type="number" min="0" step="0.01" value={row.price_usd}
-          onChange={e => onChange({ price_usd: e.target.value })}
-          placeholder="0.00"
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right
-                     focus:outline-none focus:ring-2 focus:ring-blue-200" />
-
-        {/* ARS */}
-        <input type="number" min="0" value={row.price_ars}
-          onChange={e => onChange({ price_ars: e.target.value })}
-          placeholder="0"
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right
-                     focus:outline-none focus:ring-2 focus:ring-blue-200" />
-
-        {/* Eliminar */}
-        <button onClick={onRemove} disabled={isLast}
-          className="text-gray-300 hover:text-red-400 transition disabled:opacity-20 text-sm leading-none">
-          ✕
-        </button>
-      </div>
-
-      {/* ── Fila 2: Set | Nº | Idioma | 1ª Edición (solo cartas) ────────── */}
-      {!isSealed && (
-      <div className="flex flex-wrap items-center gap-2 pl-1">
-
-        {/* Set — desplegable con todos los sets */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
-          <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Set</span>
-          <SetSelect
-            value={row.set_name}
-            setId={row.set_id}
-            onChange={patch => {
-              onChange({ ...patch, _setCards: [], suggestions: [] })
-              if (patch.set_id) onPreload(patch.set_id, row.language)
-            }}
-            className="flex-1 min-w-[160px]"
-            size="sm"
-          />
-        </div>
-
-        {/* Número — cuando hay set, busca la carta exacta */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Nº</span>
-          <input
-            type="text"
-            value={numInput}
-            onChange={e => handleNumberChange(e.target.value)}
-            placeholder={row.set_id ? '1, TG30…' : '—'}
-            disabled={!row.set_id}
-            className="w-16 border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs text-center
-                       focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition
-                       disabled:opacity-40 disabled:cursor-not-allowed"
-          />
-        </div>
-
-        {/* Idioma */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-gray-400 shrink-0 uppercase tracking-wide">Idioma</span>
-          <select
-            value={row.language}
-            onChange={e => {
-              const newLang = e.target.value
-              onChange({ language: newLang, _setCards: [], suggestions: [] })
-              if (row.set_id) onPreload(row.set_id, newLang)
-            }}
-            className="border border-gray-100 bg-gray-50 rounded-lg px-2 py-1 text-xs
-                       focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
-          >
-            {IDIOMAS.map(i => (
-              <option key={i.code} value={i.code}>{IDIOMA_FLAG[i.code]} {i.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* 1ª Edición */}
-        {(row.can_be_first_ed || row.is_first_edition) && (
-          <button
-            type="button"
-            onClick={() => onChange({ is_first_edition: !row.is_first_edition })}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
-              border transition select-none
-              ${row.is_first_edition
-                ? 'bg-yellow-400 border-yellow-500 text-yellow-900'
-                : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-yellow-50 hover:border-yellow-300'}`}
-            title={row.first_ed_reason}
-          >
-            ★ 1ª Ed
-            {row.is_first_edition
-              ? <span className="text-yellow-800 text-[10px]">✓</span>
-              : <span className="text-gray-400 text-[10px]">○</span>
-            }
-          </button>
-        )}
-      </div>
       )}
 
-      {/* ── Fila 3: Grado (solo cartas) + Badge precio PC referencia ────── */}
-      <div className="flex flex-wrap items-center gap-2 pl-1">
-        {!isSealed && (
-        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Grado</span>
-        )}
-        {!isSealed && GRADE_OPTIONS.map(g => (
-          <button
-            key={g.value}
-            type="button"
-            onClick={() => {
-              onChange({ grade: g.value })
-              // Re-fetch precio PC referencia para el nuevo grado
-              if (row.card_name) {
-                const params = new URLSearchParams({ name: row.card_name, lang: normLang(row.language), finish: row.finish || 'normal', grade: g.value })
-                if (row.set_name)    params.set('set_name', row.set_name)
-                if (row.card_number) params.set('number', row.card_number)
-                fetch(`${BACKEND}/card-price?${params}`)
-                  .then(r => r.ok ? r.json() : null)
-                  .then(json => {
-                    if (json?.price_usd) onChange({ price_market_usd: json.price_usd })
-                    else onChange({ price_market_usd: null })
-                  })
-                  .catch(() => {})
-              }
-            }}
-            className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition
-              ${row.grade === g.value
-                ? 'bg-slate-800 text-white border-slate-800'
-                : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}
-          >
-            {g.label}
-          </button>
-        ))}
-
-        {/* Badge precio PC referencia */}
-        {row.price_market_usd != null && (
-          <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700
-                           border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-            ● Mercado PC: U$D {Number(row.price_market_usd).toFixed(2)}
+      {/* ── Banner seleccionado ─────────────────────────────────────────── */}
+      {selected && (
+        <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
+          <span className="text-[11px] text-blue-700 font-medium truncate">
+            ✓ {row.card_name}{row.set_name ? ` · ${row.set_name}` : ''}{row.card_number ? ` · #${row.card_number}` : ''}
           </span>
+          <button type="button" onClick={clearRow}
+            className="shrink-0 text-[11px] font-semibold text-blue-600 hover:text-blue-800 bg-white border border-blue-200 rounded px-2 py-0.5">
+            Cambiar
+          </button>
+        </div>
+      )}
+
+      {/* ── Identidad (cascada) — mientras no haya selección ─────────────── */}
+      {!selected && !linkMode && (
+        <div className="space-y-2">
+          {!isSealed && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0 w-14">Idioma</span>
+              <div className="flex-1">{langField}</div>
+            </div>
+          )}
+          {isSealed ? (
+            <div className="space-y-2">{nombreField}{setField}</div>
+          ) : numMode ? (
+            <div className="grid grid-cols-[1fr_120px] gap-2">
+              <div>
+                <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Set</span>
+                {setField}
+              </div>
+              <div>
+                <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Nº</span>
+                {numeroField}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Nombre</span>
+                  {nombreField}
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Set</span>
+                  {setField}
+                </div>
+              </div>
+              <div className="w-32">
+                <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Nº</span>
+                {numeroField}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── LINKS sin selección → hint ──────────────────────────────────── */}
+      {!selected && linkMode && (
+        <p className="text-[11px] text-gray-400 bg-blue-50 rounded-lg px-3 py-2">
+          Pegá el link de PriceCharting arriba y se completan idioma, nombre, set, número y precio.
+        </p>
+      )}
+
+      {/* ── Detalle de compra — se habilita al seleccionar ──────────────── */}
+      <div className={selected ? '' : 'opacity-40 pointer-events-none select-none'}>
+        <div className="grid grid-cols-[repeat(2,minmax(0,1fr))_56px_84px_84px] gap-2 items-end">
+          {!isSealed ? (
+            <>
+              <div>
+                <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Tipo</span>
+                <FinishSelect value={row.finish || 'normal'} onChange={v => onChange({ finish: v })} size="sm" className="w-full" />
+              </div>
+              <div>
+                <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Cond.</span>
+                <select value={row.condition} onChange={e => onChange({ condition: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer">
+                  {CONDICIONES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div className="col-span-2">
+              <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Categoría</span>
+              <div className="text-[11px] font-semibold text-purple-600 truncate py-1.5">{row.product_type ? sealedLabel(row.product_type) : '📦 Sellado'}</div>
+            </div>
+          )}
+          <div>
+            <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5 text-center">Cant.</span>
+            <input type="number" min="1" value={row.quantity} onChange={e => onChange({ quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-center focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5 text-right">USD pagado</span>
+            <input type="number" min="0" step="0.01" value={row.price_usd} onChange={e => onChange({ price_usd: e.target.value })}
+              placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5 text-right">ARS</span>
+            <input type="number" min="0" value={row.price_ars} onChange={e => onChange({ price_ars: e.target.value })}
+              placeholder="0" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white text-right focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+        </div>
+
+        {/* Grado + 1ª Edición + badge PC (solo cartas) */}
+        {!isSealed && (
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Grado</span>
+            {GRADE_OPTIONS.map(g => (
+              <button key={g.value} type="button"
+                onClick={() => {
+                  onChange({ grade: g.value })
+                  if (row.card_name) {
+                    const params = new URLSearchParams({ name: row.card_name, lang: normLang(row.language), finish: row.finish || 'normal', grade: g.value })
+                    if (row.set_name)    params.set('set_name', row.set_name)
+                    if (row.card_number) params.set('number', row.card_number)
+                    fetch(`${BACKEND}/card-price?${params}`).then(r => r.ok ? r.json() : null)
+                      .then(j => onChange({ price_market_usd: j?.price_usd ?? null })).catch(() => {})
+                  }
+                }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition
+                  ${row.grade === g.value ? 'bg-slate-800 text-white border-slate-800' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                {g.label}
+              </button>
+            ))}
+            {(row.can_be_first_ed || row.is_first_edition) && (
+              <button type="button" onClick={() => onChange({ is_first_edition: !row.is_first_edition })}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition
+                  ${row.is_first_edition ? 'bg-yellow-400 border-yellow-500 text-yellow-900' : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-yellow-50 hover:border-yellow-300'}`}
+                title={row.first_ed_reason}>★ 1ª Ed {row.is_first_edition ? '✓' : '○'}</button>
+            )}
+            {row.price_market_usd != null && (
+              <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                ● Mercado PC: U$D {Number(row.price_market_usd).toFixed(2)}
+              </span>
+            )}
+          </div>
+        )}
+        {isSealed && row.price_market_usd != null && (
+          <div className="mt-2">
+            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+              ● Mercado PC: U$D {Number(row.price_market_usd).toFixed(2)}
+            </span>
+          </div>
         )}
       </div>
     </div>
